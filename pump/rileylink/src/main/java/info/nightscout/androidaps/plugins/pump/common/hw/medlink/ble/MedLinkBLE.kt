@@ -538,7 +538,7 @@ class MedLinkBLE //extends RileyLinkBLE
         aapsLogger.info(LTag.PUMPBTCOMM, connectionStatus.name)
         aapsLogger.info(LTag.PUMPBTCOMM, "" + msg.btSleepTime)
         if ((//connectionStatus == ConnectionStatus.DISCONNECTING ||
-                connectionStatus != ConnectionStatus.CONNECTED) && System.currentTimeMillis() - connectionStatusChange > 60000) {
+                connectionStatus != ConnectionStatus.CLOSED && connectionStatus != ConnectionStatus.CONNECTED) && System.currentTimeMillis() - connectionStatusChange > 60000) {
             disconnect()
         }
         if (msg.btSleepTime > 0) {

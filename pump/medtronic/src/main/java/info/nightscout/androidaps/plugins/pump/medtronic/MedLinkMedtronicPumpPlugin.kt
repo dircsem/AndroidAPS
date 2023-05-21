@@ -3063,7 +3063,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                         .comment(rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered))
                 )
 
-                if (detailedBolusInfo.bolusType != DetailedBolusInfo.BolusType.TBR || detailedBolusInfo.bolusType != DetailedBolusInfo.BolusType.SMB) {
+                if (detailedBolusInfo.bolusType != DetailedBolusInfo.BolusType.TBR && detailedBolusInfo.bolusType != DetailedBolusInfo.BolusType.SMB) {
                     Thread {
                         SystemClock.sleep(2000)
                         uiInteraction.runAlarm(f.answer.get().collect(Collectors.joining()), rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered), info.nightscout.core.ui.R.raw.boluserror)
@@ -3633,10 +3633,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     override fun handleBolusDelivered(lastBolusInfo: DetailedBolusInfo?) {
-        if (bolusHistoryCheck) {
+        if (bolusHistoryCheck &&lastBolusInfo != null) {
             val state = pumpSync.expectedPumpState()
-            if (lastBolusInfo != null &&
-                lastBolusInfo.insulin == medLinkPumpStatus.lastBolusAmount &&
+            if (lastBolusInfo.insulin == medLinkPumpStatus.lastBolusAmount &&
                 medLinkPumpStatus.lastBolusTime != null &&
                 state.bolus != null &&
                 medLinkPumpStatus.lastBolusTime!!.time > state.bolus?.timestamp!!
@@ -3647,9 +3646,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 bolusHistoryCheck = false
             } else {
                 aapsLogger.info(LTag.PUMPBTCOMM, "bolus not delivered")
-                aapsLogger.info(LTag.PUMPBTCOMM, lastBolusInfo.toString())
+                aapsLogger.info(LTag.PUMPBTCOMM, lastBolusInfo.toJsonString())
                 aapsLogger.info(LTag.PUMPBTCOMM, "" + medLinkPumpStatus.lastBolusAmount)
-                if (result != null) {
+                if (result != null && lastBolusInfo.bolusType != DetailedBolusInfo.BolusType.TBR &&  lastBolusInfo.bolusType != DetailedBolusInfo.BolusType.SMB ) {
                     Thread {
                         SystemClock.sleep(2000)
                         uiInteraction.runAlarm(result!!.comment, rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered), info.nightscout.core.ui.R.raw.boluserror)

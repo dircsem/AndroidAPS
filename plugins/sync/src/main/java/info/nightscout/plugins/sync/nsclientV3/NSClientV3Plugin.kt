@@ -38,7 +38,6 @@ import info.nightscout.plugins.sync.R
 import info.nightscout.plugins.sync.nsShared.NSClientFragment
 import info.nightscout.plugins.sync.nsShared.NsIncomingDataProcessor
 import info.nightscout.plugins.sync.nsShared.events.EventConnectivityOptionChanged
-import info.nightscout.plugins.sync.nsShared.events.EventNSClientResend
 import info.nightscout.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import info.nightscout.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import info.nightscout.plugins.sync.nsclient.ReceiverDelegate
@@ -224,27 +223,26 @@ class NSClientV3Plugin @Inject constructor(
                            aapsLogger.debug(LTag.NSCLIENT, event.action + " " + event.logText)
                        }, fabricPrivacy::logException)
         disposable += rxBus
-            .toObservable(EventNSClientResend::class.java)
-            .observeOn(aapsSchedulers.io)
-            .subscribe({ event -> resend(event.reason) }, fabricPrivacy::logException)
-        disposable += rxBus
             .toObservable(EventNewHistoryData::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ executeUpload("NEW_DATA", forceNew = false) }, fabricPrivacy::logException)
 
         runLoop = Runnable {
             var refreshInterval = T.mins(5).msecs()
-            repository.getLastGlucoseValueWrapped().blockingGet().let {
-                // if last value is older than 5 min or there is no bg
-                if (it is ValueWrapper.Existing) {
-                    if (it.value.timestamp < dateUtil.now() - T.mins(5).plus(T.secs(20)).msecs()) {
-                        refreshInterval = T.mins(1).msecs()
-                        executeLoop("MAIN_LOOP", forceNew = false)
+            if (nsClientSource.isEnabled())
+                repository.getLastGlucoseValueWrapped().blockingGet().let {
+                    // if last value is older than 5 min or there is no bg
+                    if (it is ValueWrapper.Existing) {
+                        if (it.value.timestamp < dateUtil.now() - T.mins(5).plus(T.secs(20)).msecs()) {
+                            refreshInterval = T.mins(1).msecs()
+                        }
                     }
-                } else executeLoop("MAIN_LOOP", forceNew = false)
-            }
+                }
+            if (!sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_use_ws, true))
+                executeLoop("MAIN_LOOP", forceNew = true)
+            else
+                rxBus.send(EventNSClientNewLog("● TICK", ""))
             handler.postDelayed(runLoop, refreshInterval)
-            rxBus.send(EventNSClientNewLog("● TICK", ""))
         }
         handler.postDelayed(runLoop, T.mins(2).msecs())
     }
@@ -383,6 +381,9 @@ class NSClientV3Plugin @Inject constructor(
                 val response = args[0] as JSONObject
                 wsConnected = if (response.optBoolean("success")) {
                     rxBus.send(EventNSClientNewLog("◄ WS", "Subscribed for: ${response.optString("collections")}"))
+                    // during disconnection updated data is not received
+                    // thus run non WS load to get missing data
+                    executeLoop("WS_CONNECT", forceNew = false)
                     true
                 } else {
                     rxBus.send(EventNSClientNewLog("◄ WS", "Auth failed"))
@@ -463,7 +464,17 @@ class NSClientV3Plugin @Inject constructor(
     private val onDataDelete = Emitter.Listener { args ->
         val response = args[0] as JSONObject
         aapsLogger.debug(LTag.NSCLIENT, "onDataDelete: $response")
-        rxBus.send(EventNSClientNewLog("◄ WS DELETE", "${response.optString("collection")} ${response.optString("doc")}"))
+        val collection = response.optString("colName") ?: return@Listener
+        val identifier = response.optString("identifier") ?: return@Listener
+        rxBus.send(EventNSClientNewLog("◄ WS DELETE", "$collection $identifier"))
+        if (collection == "treatments") {
+            storeDataForDb.deleteTreatment.add(identifier)
+            storeDataForDb.updateDeletedTreatmentsInDb()
+        }
+        if (collection == "entries") {
+            storeDataForDb.deleteGlucoseValue.add(identifier)
+            storeDataForDb.updateDeletedGlucoseValuesInDb()
+        }
     }
 
     private val onAnnouncement = Emitter.Listener { args ->
@@ -554,9 +565,9 @@ class NSClientV3Plugin @Inject constructor(
 
     override fun resend(reason: String) {
         if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_use_ws, true))
-            executeUpload("RESEND", forceNew = false)
+            executeUpload("START $reason", forceNew = true)
         else
-            executeLoop("RESEND", forceNew = false)
+            executeLoop("START $reason", forceNew = true)
     }
 
     override fun pause(newState: Boolean) {
@@ -618,7 +629,7 @@ class NSClientV3Plugin @Inject constructor(
                     404  -> rxBus.send(EventNSClientNewLog("◄ NOT_FOUND", "${dataPair.value.javaClass.simpleName} ${result.errorResponse}"))
 
                     else -> {
-                        rxBus.send(EventNSClientNewLog("◄ ERROR", "ProfileStore"))
+                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${result.errorResponse}"))
                         return true
                     }
                 }
@@ -642,13 +653,14 @@ class NSClientV3Plugin @Inject constructor(
                     404  -> rxBus.send(EventNSClientNewLog("◄ NOT_FOUND", "${dataPair.value.javaClass.simpleName} ${result.errorResponse}"))
 
                     else -> {
-                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${dataPair.value.javaClass.simpleName} "))
+                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${result.errorResponse} "))
                         return true
                     }
                 }
                 result.identifier?.let {
                     dataPair.value.interfaceIDs.nightscoutId = it
                     storeDataForDb.nsIdDeviceStatuses.add(dataPair.value)
+                    sp.putBoolean(info.nightscout.core.utils.R.string.key_objectives_pump_status_is_available_in_ns, true)
                 }
             }
         } catch (e: Exception) {
@@ -685,7 +697,7 @@ class NSClientV3Plugin @Inject constructor(
                     404  -> rxBus.send(EventNSClientNewLog("◄ NOT_FOUND", "${dataPair.value.javaClass.simpleName} ${result.errorResponse}"))
 
                     else -> {
-                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${dataPair.value.javaClass.simpleName} "))
+                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${result.errorResponse} "))
                         return true
                     }
                 }
@@ -730,7 +742,7 @@ class NSClientV3Plugin @Inject constructor(
                     404  -> rxBus.send(EventNSClientNewLog("◄ NOT_FOUND", "${dataPair.value.javaClass.simpleName} ${result.errorResponse}"))
 
                     else -> {
-                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${dataPair.value.javaClass.simpleName} "))
+                        rxBus.send(EventNSClientNewLog("◄ ERROR", "${result.errorResponse} "))
                         return true
                     }
                 }
@@ -796,7 +808,7 @@ class NSClientV3Plugin @Inject constructor(
                         404  -> rxBus.send(EventNSClientNewLog("◄ NOT_FOUND", "${dataPair.value.javaClass.simpleName} ${result.errorResponse}"))
 
                         else -> {
-                            rxBus.send(EventNSClientNewLog("◄ ERROR", "${dataPair.value.javaClass.simpleName} "))
+                            rxBus.send(EventNSClientNewLog("◄ ERROR", "${result.errorResponse} "))
                             return true
                         }
                     }
@@ -860,6 +872,7 @@ class NSClientV3Plugin @Inject constructor(
                     slowDown()
                 }
             } catch (e: Exception) {
+                rxBus.send(EventNSClientNewLog("◄ ERROR", e.localizedMessage))
                 aapsLogger.error(LTag.NSCLIENT, "Upload exception", e)
                 return false
             }

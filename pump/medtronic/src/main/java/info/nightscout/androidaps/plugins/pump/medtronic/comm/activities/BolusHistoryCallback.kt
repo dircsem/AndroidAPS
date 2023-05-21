@@ -29,7 +29,13 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
         val answers = ans.get().iterator()
         aapsLogger.info(LTag.PUMPBTCOMM, "Bolus history")
         aapsLogger.info(LTag.PUMPBTCOMM, ans.get().collect(Collectors.joining()))
-        while (answers.hasNext() && !answers.next().contains("bolus history:")) {
+        var incomplete  = false
+        var hist = ""
+        while (answers.hasNext() && !hist.contains("bolus history:")) {
+            hist = answers.next()
+            if(hist.contains("incomplete history payload")){
+                incomplete =true
+            }
         }
         //Empty Line
         if (answers.hasNext()) {
