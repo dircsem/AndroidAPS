@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 23,
-    "identityHash": "3d8b1be3762934392f61992f527a7e14",
+    "identityHash": "a3ee37800b6cda170d0ea64799ed7876",
     "entities": [
       {
         "tableName": "apsResults",
@@ -1377,7 +1377,7 @@
       },
       {
         "tableName": "glucoseValues",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `raw` REAL, `value` REAL NOT NULL, `trendArrow` TEXT NOT NULL, `noise` REAL, `sourceSensor` TEXT NOT NULL, `isig` REAL, `calibrationFactor` REAL, `sensorUptime` INTEGER, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `glucoseValues`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `raw` REAL, `value` REAL NOT NULL, `trendArrow` TEXT NOT NULL, `noise` REAL, `sourceSensor` TEXT NOT NULL, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `glucoseValues`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         "fields": [
           {
             "fieldPath": "id",
@@ -1450,24 +1450,6 @@
             "columnName": "sourceSensor",
             "affinity": "TEXT",
             "notNull": true
-          },
-          {
-            "fieldPath": "isig",
-            "columnName": "isig",
-            "affinity": "REAL",
-            "notNull": false
-          },
-          {
-            "fieldPath": "calibrationFactor",
-            "columnName": "calibrationFactor",
-            "affinity": "REAL",
-            "notNull": false
-          },
-          {
-            "fieldPath": "sensorUptime",
-            "columnName": "sensorUptime",
-            "affinity": "INTEGER",
-            "notNull": false
           },
           {
             "fieldPath": "interfaceIDs_backing.nightscoutSystemId",
@@ -1821,7 +1803,7 @@
       },
       {
         "tableName": "temporaryBasals",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `type` TEXT NOT NULL, `isAbsolute` INTEGER NOT NULL, `rate` REAL NOT NULL, `duration` INTEGER NOT NULL, `desiredRate` REAL, `desiredPct` INTEGER, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `temporaryBasals`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `type` TEXT NOT NULL, `isAbsolute` INTEGER NOT NULL, `rate` REAL NOT NULL, `duration` INTEGER NOT NULL, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `temporaryBasals`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         "fields": [
           {
             "fieldPath": "id",
@@ -1888,18 +1870,6 @@
             "columnName": "duration",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "desiredRate",
-            "columnName": "desiredRate",
-            "affinity": "REAL",
-            "notNull": false
-          },
-          {
-            "fieldPath": "desiredPct",
-            "columnName": "desiredPct",
-            "affinity": "INTEGER",
-            "notNull": false
           },
           {
             "fieldPath": "interfaceIDs_backing.nightscoutSystemId",
@@ -3721,12 +3691,42 @@
         ]
       },
       {
-        "tableName": "medlinkConfig",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `currentFrequency` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `medlinkConfig`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "tableName": "heartRate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `duration` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `beatsPerMinute` REAL NOT NULL, `device` TEXT NOT NULL, `utcOffset` INTEGER NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER)",
         "fields": [
           {
             "fieldPath": "id",
             "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duration",
+            "columnName": "duration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beatsPerMinute",
+            "columnName": "beatsPerMinute",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "device",
+            "columnName": "device",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "utcOffset",
+            "columnName": "utcOffset",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -3753,24 +3753,6 @@
             "columnName": "referenceId",
             "affinity": "INTEGER",
             "notNull": false
-          },
-          {
-            "fieldPath": "currentFrequency",
-            "columnName": "currentFrequency",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "timestamp",
-            "columnName": "timestamp",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "utcOffset",
-            "columnName": "utcOffset",
-            "affinity": "INTEGER",
-            "notNull": true
           },
           {
             "fieldPath": "interfaceIDs_backing.nightscoutSystemId",
@@ -3829,34 +3811,31 @@
         },
         "indices": [
           {
-            "name": "index_medlinkConfig_id",
+            "name": "index_heartRate_id",
             "unique": false,
             "columnNames": [
               "id"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_medlinkConfig_id` ON `${TABLE_NAME}` (`id`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_heartRate_id` ON `${TABLE_NAME}` (`id`)"
+          },
+          {
+            "name": "index_heartRate_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_heartRate_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
           }
         ],
-        "foreignKeys": [
-          {
-            "table": "medlinkConfig",
-            "onDelete": "NO ACTION",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "referenceId"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
+        "foreignKeys": []
       }
     ],
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3d8b1be3762934392f61992f527a7e14')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a3ee37800b6cda170d0ea64799ed7876')"
     ]
   }
 }
