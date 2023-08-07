@@ -61,7 +61,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
     @Inject lateinit var medtronicPumpStatus: MedLinkMedtronicPumpStatus
     @Inject lateinit var medLinkServiceData: MedLinkServiceData
     @Inject lateinit var aapsSchedulers: AapsSchedulers
-    
+
     private var disposable: CompositeDisposable = CompositeDisposable()
 
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
@@ -81,8 +81,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
     private val binding get() = _binding!!
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
-    MedlinkMedtronicFragmentBinding.inflate(inflater, container, false).also { _binding = it }.root
-
+        MedlinkMedtronicFragmentBinding.inflate(inflater, container, false).also { _binding = it }.root
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -104,7 +103,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         }
 
         binding.refresh.setOnClickListener {
-            val service =medLinkMedtronicPumpPlugin.medLinkService
+            val service = medLinkMedtronicPumpPlugin.medLinkService
             if (medLinkMedtronicPumpPlugin.medLinkService?.verifyConfiguration() != true) {
                 displayNotConfiguredDialog()
             } else {
@@ -203,15 +202,17 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
         when (medtronicPumpStatus.pumpDeviceState) {
             null,
-            PumpDeviceState.Sleeping            -> binding.medtronicPumpStatus.text = "{fa-bed}   " // + pumpStatus.pumpDeviceState.name());
+            PumpDeviceState.Sleeping,
+            -> binding.medtronicPumpStatus.text = "{fa-bed}   " // + pumpStatus.pumpDeviceState.name());
             PumpDeviceState.NeverContacted,
             PumpDeviceState.WakingUp,
             PumpDeviceState.PumpUnreachable,
             PumpDeviceState.ErrorWhenCommunicating,
             PumpDeviceState.TimeoutWhenCommunicating,
-            PumpDeviceState.InvalidConfiguration-> binding.medtronicPumpStatus.text =  rh.gs(medtronicPumpStatus.pumpDeviceState.resourceId)
+            PumpDeviceState.InvalidConfiguration,
+            -> binding.medtronicPumpStatus.text = rh.gs(medtronicPumpStatus.pumpDeviceState.resourceId)
 
-            PumpDeviceState.Active              -> {
+            PumpDeviceState.Active -> {
                 val cmd = medLinkMedtronicUtil.currentCommand
                 if (cmd == null)
                     binding.medtronicPumpStatus.text = rh.gs(medtronicPumpStatus.pumpDeviceState.resourceId)
@@ -224,17 +225,20 @@ class MedLinkMedtronicFragment : DaggerFragment() {
                         }
                             ?: rh.gs(R.string.medtronic_cmd_desc_get_settings)
                     } else {
-                        binding.medtronicPumpStatus.text = " " + (cmdResourceId?.let { if(it>0){ rh.gs(it) }}
+                        binding.medtronicPumpStatus.text = " " + (cmdResourceId?.let {
+                            if (it > 0) {
+                                rh.gs(it)
+                            }
+                        }
                             ?: cmd.getCommandDescription())
                     }
                 }
             }
 
-            else                                 -> aapsLogger.warn(LTag.PUMP, "Unknown pump state: " + medtronicPumpStatus.pumpDeviceState)
+            else                   -> aapsLogger.warn(LTag.PUMP, "Unknown pump state: " + medtronicPumpStatus.pumpDeviceState)
         }
 
-
-        var id  = if(medtronicPumpStatus.pumpRunningState == PumpRunningState.Running){
+        var id = if (medtronicPumpStatus.pumpRunningState == PumpRunningState.Running) {
             R.string.medtronic_pump_state_RUNNING;
         } else {
             R.string.medtronic_pump_state_SUSPENDED;
@@ -252,8 +256,10 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
     private fun displayNotConfiguredDialog() {
         context?.let {
-            OKDialog.show(it, rh.gs(R.string.medtronic_warning),
-                          rh.gs(R.string.medtronic_error_operation_not_possible_no_configuration) + "fragment", null)
+            OKDialog.show(
+                it, rh.gs(R.string.medtronic_warning),
+                rh.gs(R.string.medtronic_error_operation_not_possible_no_configuration) + "fragment", null
+            )
         }
     }
 
@@ -273,21 +279,29 @@ class MedLinkMedtronicFragment : DaggerFragment() {
                     binding.medtronicLastconnection.setText(R.string.medtronic_pump_connected_now)
                     binding.medtronicLastconnection.setTextColor(Color.WHITE)
                 }
+
                 medtronicPumpStatus.lastConnection + 30 * 60 * 1000 < System.currentTimeMillis() -> {
 
                     if (min < 60) {
                         binding.medtronicLastconnection.text = rh.gs(info.nightscout.shared.R.string.minago, min)
                     } else if (min < 1440) {
                         val h = (min / 60).toInt()
-                        ("${rh.gq(info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R.plurals.duration_hours, h, h)} ${rh.gs(R.string.ago)}").also { binding.medtronicLastconnection.text = it }
+                        ("${rh.gq(info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R.plurals.duration_hours, h, h)} ${rh.gs(R.string.ago)}").also {
+                            binding.medtronicLastconnection.text =
+                                it
+                        }
                     } else {
                         val h = (min / 60).toInt()
                         val d = h / 24
                         // h = h - (d * 24);
-                        ("${rh.gq(info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R.plurals.duration_days, d, d)} ${rh.gs(R.string.ago)}").also { binding.medtronicLastconnection.text = it }
+                        ("${rh.gq(info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R.plurals.duration_days, d, d)} ${rh.gs(R.string.ago)}").also {
+                            binding.medtronicLastconnection.text =
+                                it
+                        }
                     }
                     binding.medtronicLastconnection.setTextColor(Color.RED)
                 }
+
                 else                                                                             -> {
                     binding.medtronicLastconnection.text = minAgo
                     binding.medtronicLastconnection.setTextColor(Color.WHITE)
@@ -332,7 +346,11 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         warnColors.setColorInverse(binding.medtronicPumpstateBattery, medtronicPumpStatus.batteryRemaining.toDouble(), 25.0, 10.0)
 
         // reservoir
-        binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
+        if (medtronicPumpStatus.reservoirRemainingUnits < 10.0) {
+            binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.low_reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
+        } else {
+            binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
+        }
         warnColors.setColorInverse(binding.medtronicReservoir, medtronicPumpStatus.reservoirRemainingUnits, 50.0, 20.0)
 
         medLinkMedtronicPumpPlugin.medLinkService?.verifyConfiguration()
@@ -340,7 +358,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
         // next command
         val pump = activePlugin.activePump
-        if (pump is MedLinkMedtronicPumpPlugin ) {
+        if (pump is MedLinkMedtronicPumpPlugin) {
             if (pump.temporaryBasal != null) {
                 ("${pump.tempBasalMicrobolusOperations.operations.peek()?.toStringView()} \n${pump.nextScheduledCommand()}").also { binding.medtronicNextCommand.text = it }
             } else {
@@ -366,7 +384,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         val deviceBatteryVoltage = medtronicPumpStatus.deviceBatteryVoltage
         aapsLogger.info(LTag.EVENTS, "device battery$deviceBatteryRemaining $deviceBatteryVoltage")
 
-        binding.medtronicDevicestateBattery.text = "{fa-battery-${deviceBatteryRemaining/ 25} }  ${deviceBatteryRemaining}%";
+        binding.medtronicDevicestateBattery.text = "{fa-battery-${deviceBatteryRemaining / 25} }  ${deviceBatteryRemaining}%";
 
         warnColors.setColorInverse(binding.medtronicDevicestateBattery, deviceBatteryRemaining.toDouble(), 25.0, 10.0)
 
