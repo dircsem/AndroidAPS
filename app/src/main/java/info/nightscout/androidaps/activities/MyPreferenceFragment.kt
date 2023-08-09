@@ -132,7 +132,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
 
     @Inject lateinit var passwordCheck: PasswordCheck
     @Inject lateinit var nsSettingStatus: NSSettingsStatus
-    @Inject lateinit var openHumansUploaderPlugin: OpenHumansUploaderPlugin
     @Inject lateinit var diaconnG8Plugin: DiaconnG8Plugin
 
     override fun onAttach(context: Context) {
@@ -233,7 +232,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             addPreferencesFromResource(R.xml.pref_alerts, rootKey)
             addPreferencesFromResource(info.nightscout.configuration.R.xml.pref_datachoices, rootKey)
             addPreferencesFromResourceIfEnabled(maintenancePlugin, rootKey)
-            addPreferencesFromResourceIfEnabled(openHumansUploaderPlugin, rootKey)
         }
         initSummary(preferenceScreen, pluginId != -1)
         preprocessPreferences()

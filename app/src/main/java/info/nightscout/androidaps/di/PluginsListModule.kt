@@ -239,7 +239,6 @@ abstract class PluginsListModule {
     @IntKey(222)
     abstract fun bindOpenAPSSMBAutoISFPlugin(plugin: OpenAPSSMBDynamicISFPlugin): PluginBase
 
-
     @Binds
     @APS
     @IntoMap
@@ -348,12 +347,6 @@ abstract class PluginsListModule {
     @IntoMap
     @IntKey(366)
     abstract fun bindDataBroadcastPlugin(plugin: DataBroadcastPlugin): PluginBase
-
-    @Binds
-    @NotNSClient
-    @IntoMap
-    @IntKey(368)
-    abstract fun bindsOpenHumansPlugin(plugin: OpenHumansUploaderPlugin): PluginBase
 
     @Binds
     @AllConfigs

@@ -41,7 +41,7 @@ class CgmSourceTransaction constructor(
                     result.inserted.add(glucoseValue)
                 }
                 // different record, update
-                !current.contentEqualsTo(glucoseValue)                               -> {
+                !current.contentMedLinkEqualsTo(glucoseValue)                               -> {
                     glucoseValue.id = current.id
                     database.glucoseValueDao.updateExistingEntry(glucoseValue)
                     result.updated.add(glucoseValue)
