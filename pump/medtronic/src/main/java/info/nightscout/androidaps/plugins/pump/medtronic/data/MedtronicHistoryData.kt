@@ -796,7 +796,7 @@ open class MedtronicHistoryData @Inject constructor(
 
                 previousItem = null
             }
-            if (tempBasalProcessDTO.itemOneTbr!!.isZeroTBR) {
+            if (tempBasalProcessDTO.itemOneTbr!!.isZeroTBR  &&  tempBasalProcessDTO.itemTwo == null ) {
                 previousItem = tempBasalProcessDTO
             }
         }

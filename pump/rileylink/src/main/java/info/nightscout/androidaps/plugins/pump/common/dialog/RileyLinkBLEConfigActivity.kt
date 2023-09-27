@@ -17,6 +17,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.ParcelUuid
+import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -26,13 +28,14 @@ import android.widget.BaseAdapter
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import dagger.android.support.DaggerAppCompatActivity
+import androidx.core.view.MenuProvider
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.GattAttributes
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.RileyLinkBleConfigActivityBinding
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.pump.BlePreCheck
@@ -45,7 +48,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 // IMPORTANT: This activity needs to be called from RileyLinkSelectPreference (see pref_medtronic.xml as example)
-class RileyLinkBLEConfigActivity : DaggerAppCompatActivity() {
+class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var sp: SP
     @Inject lateinit var blePreCheck: BlePreCheck
@@ -118,6 +121,21 @@ class RileyLinkBLEConfigActivity : DaggerAppCompatActivity() {
                     updateCurrentlySelectedRileyLink()
                 })
         }
+
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     private fun updateCurrentlySelectedRileyLink() {
@@ -147,16 +165,6 @@ class RileyLinkBLEConfigActivity : DaggerAppCompatActivity() {
             rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkNewAddressSet, this) // Reconnect current RL
         }
     }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
-        when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
-            }
-
-            else              -> super.onOptionsItemSelected(item)
-        }
 
     private fun prepareForScanning() {
         val checkOK = blePreCheck.prerequisitesCheck(this)

@@ -150,4 +150,9 @@ interface OverviewData {
     val dsMinScale: Scale
     var dsMaxSeries: LineGraphSeries<ScaledDataPoint>
     var dsMinSeries: LineGraphSeries<ScaledDataPoint>
+    var heartRateScale: Scale
+    var heartRateGraphSeries: LineGraphSeries<DataPointWithLabelInterface>
+    var stepsForScale: Scale
+    var stepsCountGraphSeries: LineGraphSeries<DataPointWithLabelInterface>
+
 }

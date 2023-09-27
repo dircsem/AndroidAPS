@@ -3,8 +3,11 @@ package info.nightscout.androidaps.plugins.pump.omnipod.dash.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import androidx.core.view.MenuProvider
 import dagger.android.HasAndroidInjector
-import dagger.android.support.DaggerAppCompatActivity
 import info.nightscout.androidaps.plugins.pump.omnipod.common.queue.command.CommandPlayTestBeep
 import info.nightscout.androidaps.plugins.pump.omnipod.common.ui.wizard.activation.PodActivationWizardActivity
 import info.nightscout.androidaps.plugins.pump.omnipod.dash.databinding.OmnipodDashPodManagementBinding
@@ -12,6 +15,7 @@ import info.nightscout.androidaps.plugins.pump.omnipod.dash.driver.pod.definitio
 import info.nightscout.androidaps.plugins.pump.omnipod.dash.driver.pod.state.OmnipodDashPodStateManager
 import info.nightscout.androidaps.plugins.pump.omnipod.dash.ui.wizard.activation.DashPodActivationWizardActivity
 import info.nightscout.androidaps.plugins.pump.omnipod.dash.ui.wizard.deactivation.DashPodDeactivationWizardActivity
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.interfaces.queue.Callback
@@ -26,7 +30,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
 
-class DashPodManagementActivity : DaggerAppCompatActivity() {
+class DashPodManagementActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var commandQueue: CommandQueue
@@ -47,6 +51,10 @@ class DashPodManagementActivity : DaggerAppCompatActivity() {
 
         binding = OmnipodDashPodManagementBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        title = rh.gs(info.nightscout.androidaps.plugins.pump.omnipod.common.R.string.omnipod_common_pod_management_title)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
 
         binding.buttonActivatePod.setOnClickListener {
             val type: PodActivationWizardActivity.Type =
@@ -102,6 +110,20 @@ class DashPodManagementActivity : DaggerAppCompatActivity() {
         binding.buttonPodHistory.setOnClickListener {
             startActivity(Intent(this, DashPodHistoryActivity::class.java))
         }
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     override fun onResume() {

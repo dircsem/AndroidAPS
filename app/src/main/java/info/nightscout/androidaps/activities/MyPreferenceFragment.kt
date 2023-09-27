@@ -20,9 +20,8 @@ import info.nightscout.androidaps.R
 import info.nightscout.androidaps.danaRKorean.DanaRKoreanPlugin
 import info.nightscout.androidaps.danaRv2.DanaRv2Plugin
 import info.nightscout.androidaps.danar.DanaRPlugin
-import info.nightscout.androidaps.plugins.aps.loop.LoopPlugin
+import info.nightscout.plugins.aps.loop.LoopPlugin
 import info.nightscout.plugins.sync.openhumans.OpenHumansUploaderPlugin
-import info.nightscout.plugins.aps.openAPSaiSMB.OpenAPSaiSMBPlugin
 import info.nightscout.androidaps.plugins.pump.eopatch.EopatchPumpPlugin
 import info.nightscout.androidaps.plugins.pump.insight.LocalInsightPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
@@ -58,6 +57,7 @@ import info.nightscout.plugins.sync.tidepool.TidepoolPlugin
 import info.nightscout.pump.combo.ComboPlugin
 import info.nightscout.pump.combov2.ComboV2Plugin
 import info.nightscout.pump.diaconn.DiaconnG8Plugin
+import info.nightscout.pump.medtrum.MedtrumPlugin
 import info.nightscout.pump.virtual.VirtualPumpPlugin
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventPreferenceChange
@@ -109,7 +109,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @Inject lateinit var openAPSSMBPlugin: OpenAPSSMBPlugin
     @Inject lateinit var openAPSSMBDynamicISFPlugin: OpenAPSSMBDynamicISFPlugin
     @Inject lateinit var aimiPlugin: AIMIPlugin
-    @Inject lateinit var openAPSaiSMBPlugin: OpenAPSaiSMBPlugin
     @Inject lateinit var safetyPlugin: SafetyPlugin
     @Inject lateinit var sensitivityAAPSPlugin: SensitivityAAPSPlugin
     @Inject lateinit var sensitivityOref1Plugin: SensitivityOref1Plugin
@@ -129,6 +128,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @Inject lateinit var wearPlugin: WearPlugin
     @Inject lateinit var maintenancePlugin: MaintenancePlugin
     @Inject lateinit var eopatchPumpPlugin: EopatchPumpPlugin
+    @Inject lateinit var medtrumPlugin: MedtrumPlugin
 
     @Inject lateinit var passwordCheck: PasswordCheck
     @Inject lateinit var nsSettingStatus: NSSettingsStatus
@@ -218,6 +218,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             addPreferencesFromResourceIfEnabled(medtronicPumpPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(diaconnG8Plugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(eopatchPumpPlugin, rootKey, config.PUMPDRIVERS)
+            addPreferencesFromResourceIfEnabled(medtrumPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResource(R.xml.pref_pump, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(medLinkMedtronicPumpPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(virtualPumpPlugin, rootKey, !config.NSCLIENT)

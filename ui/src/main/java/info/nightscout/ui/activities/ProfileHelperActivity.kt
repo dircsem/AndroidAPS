@@ -4,12 +4,16 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.widget.ArrayAdapter
 import android.widget.TextView
+import androidx.core.view.MenuProvider
 import com.google.android.material.tabs.TabLayout
 import com.google.common.collect.Lists
-import dagger.android.support.DaggerAppCompatActivity
 import info.nightscout.core.profile.ProfileSealed
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.ui.toast.ToastUtils
 import info.nightscout.core.utils.fabric.FabricPrivacy
@@ -38,7 +42,7 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import java.text.DecimalFormat
 import javax.inject.Inject
 
-class ProfileHelperActivity : DaggerAppCompatActivity() {
+class ProfileHelperActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var tddCalculator: TddCalculator
     @Inject lateinit var profileFunction: ProfileFunction
@@ -82,6 +86,10 @@ class ProfileHelperActivity : DaggerAppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityProfilehelperBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        title = rh.gs(R.string.nav_profile_helper)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
 
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
@@ -246,6 +254,21 @@ class ProfileHelperActivity : DaggerAppCompatActivity() {
         binding.basalPctFromTddLabel.labelFor = binding.basalPctFromTdd.editTextId
 
         switchTab(0, typeSelected[0], false)
+
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     private fun getProfile(age: Int, tdd: Double, weight: Double, basalPct: Double, tab: Int): PureProfile? =

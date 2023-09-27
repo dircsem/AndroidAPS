@@ -13,6 +13,8 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -20,7 +22,8 @@ import android.widget.AdapterView
 import android.widget.AdapterView.OnItemClickListener
 import android.widget.BaseAdapter
 import android.widget.TextView
-import dagger.android.support.DaggerAppCompatActivity
+import androidx.core.view.MenuProvider
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.pump.BlePreCheck
@@ -37,7 +40,7 @@ import org.apache.commons.lang3.StringUtils
 import javax.inject.Inject
 
 @SuppressLint("MissingPermission")
-class PumpBLEConfigActivity : DaggerAppCompatActivity() {
+class PumpBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var sp: SP
@@ -140,6 +143,21 @@ class PumpBLEConfigActivity : DaggerAppCompatActivity() {
                     updateCurrentlySelectedBTDevice()
                 })
         }
+
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     private fun updateCurrentlySelectedBTDevice() {
@@ -155,16 +173,6 @@ class PumpBLEConfigActivity : DaggerAppCompatActivity() {
             binding.pumpBleConfigCurrentlySelectedPumpAddress.text = address
         }
     }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
-        when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
-            }
-
-            else              -> super.onOptionsItemSelected(item)
-        }
 
     override fun onResume() {
         super.onResume()

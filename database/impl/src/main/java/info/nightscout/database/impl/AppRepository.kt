@@ -105,6 +105,7 @@ import kotlin.math.roundToInt
         removed.add(Pair("OfflineEvent", database.offlineEventDao.deleteOlderThan(than)))
         removed.add(Pair("MedLinkConfig", database.medLinkDao.deleteOlderThan(than)))
         removed.add(Pair("HeartRate", database.heartRateDao.deleteOlderThan(than)))
+        removed.add(Pair("StepsCount", database.stepsCountDao.deleteOlderThan(than)))
 
         if (deleteTrackedChanges) {
             removed.add(Pair("GlucoseValue", database.glucoseValueDao.deleteTrackedChanges()))
@@ -124,6 +125,7 @@ import kotlin.math.roundToInt
             //database.foodDao.deleteHistory()
             removed.add(Pair("OfflineEvent", database.offlineEventDao.deleteTrackedChanges()))
             removed.add(Pair("HeartRate", database.heartRateDao.deleteTrackedChanges()))
+            removed.add(Pair("StepsCount", database.stepsCountDao.deleteTrackedChanges()))
         }
         val ret = StringBuilder()
         removed
@@ -257,6 +259,7 @@ import kotlin.math.roundToInt
 
     fun insert(word: UserEntry) {
         database.userEntryDao.insert(word)
+        changeSubject.onNext(mutableListOf(word)) // Not TraceableDao
     }
 
     // PROFILE SWITCH
@@ -721,8 +724,10 @@ import kotlin.math.roundToInt
         database.bolusCalculatorResultDao.getLastId()
 
     // DEVICE STATUS
-    fun insert(deviceStatus: DeviceStatus): Long =
+    fun insert(deviceStatus: DeviceStatus) {
         database.deviceStatusDao.insert(deviceStatus)
+        changeSubject.onNext(mutableListOf(deviceStatus)) // Not TraceableDao
+    }
 
     /*
        * returns a Pair of the next entity to sync and the ID of the "update".
@@ -734,10 +739,6 @@ import kotlin.math.roundToInt
 
     fun getNextSyncElementDeviceStatus(id: Long): Maybe<DeviceStatus> =
         database.deviceStatusDao.getNextModifiedOrNewAfter(id)
-            .subscribeOn(Schedulers.io())
-
-    fun getModifiedDeviceStatusDataFromId(lastId: Long): Single<List<DeviceStatus>> =
-        database.deviceStatusDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
 
     fun getLastDeviceStatusId(): Long? =
@@ -943,6 +944,18 @@ import kotlin.math.roundToInt
 
     fun getHeartRatesFromTime(timeMillis: Long) = database.heartRateDao.getFromTime(timeMillis)
 
+    fun getHeartRatesFromTimeToTime(startMillis: Long, endMillis: Long) =
+        database.heartRateDao.getFromTimeToTime(startMillis, endMillis)
+
+    fun getStepsCountFromTime(timeMillis: Long) = database.stepsCountDao.getFromTime(timeMillis)
+
+    fun getStepsCountFromTimeToTime(startMillis: Long, endMillis: Long) =
+        database.stepsCountDao.getFromTimeToTime(startMillis, endMillis)
+
+    fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long) =
+        database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+
+
     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),
         apsResultLinks = database.apsResultLinkDao.getNewEntriesSince(since, until, limit, offset),
@@ -962,7 +975,9 @@ import kotlin.math.roundToInt
         totalDailyDoses = database.totalDailyDoseDao.getNewEntriesSince(since, until, limit, offset),
         versionChanges = database.versionChangeDao.getNewEntriesSince(since, until, limit, offset),
         heartRates = database.heartRateDao.getNewEntriesSince(since, until, limit, offset),
+        stepsCount = database.stepsCountDao.getNewEntriesSince(since, until, limit, offset),
     )
+
 
     fun getLastNonTBRBolusTime(): Bolus? =
         database.bolusDao.getLastBolusRecord(Bolus.Type.TBR)

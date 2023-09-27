@@ -24,8 +24,6 @@ import info.nightscout.interfaces.plugin.PluginType
 import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.source.BgSource
 import info.nightscout.interfaces.sync.DataSyncSelector
-import info.nightscout.interfaces.sync.DataSyncSelectorV1
-import info.nightscout.interfaces.sync.DataSyncSelectorXdrip
 import info.nightscout.interfaces.utils.TrendCalculator
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
@@ -94,7 +92,6 @@ class MedLinkPlugin @Inject constructor(
         @Inject lateinit var dateUtil: DateUtil
         @Inject lateinit var dataWorker: DataWorkerStorage
         @Inject lateinit var xDripBroadcast: XDripBroadcast
-        @Inject lateinit var dataSyncSelectorV1: DataSyncSelectorV1
         @Inject lateinit var repository: AppRepository
         @Inject lateinit var uel: UserEntryLogger
         @Inject lateinit var trendCalculator: TrendCalculator

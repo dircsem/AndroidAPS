@@ -2704,7 +2704,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (isThisProfileSet(profile)) {
             return PumpEnactResult(injector) //
                 .success(true) //
-                .enacted(false) //
+                .enacted(true) //
                 .comment(rh.gs(R.string.medtronic_cmd_basal_profile_not_set_is_same))
         }
         setRefreshButtonEnabled(false)
@@ -3439,6 +3439,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun calibrate(calibrationInfo: Double) {
 
+        var calibrationValue = calibrationInfo
+        if (glucoseUnit() == BgSync.GlucoseUnit.MMOL){
+            calibrationValue*=18
+        }
         val medLinkCalibrationCallback = MedLinkCalibrationArgCallback(
             aapsLogger,
             this,
@@ -3453,7 +3457,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             this, medtronicUtil, rh, rxBus
         )
         val msg = CalibrateMedLinkMessage.invoke(
-            calibrationInfo,
+            calibrationValue,
             calibrationCallback,
             medLinkCalibrationCallback,
             btSleepTime = 30000,

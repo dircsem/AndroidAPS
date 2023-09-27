@@ -918,7 +918,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun updateIobCob() {
         val iobText = overviewData.iobText(iobCobCalculator)
         val iobDialogText = overviewData.iobDialogText(iobCobCalculator)
-        val displayText = overviewData.cobInfo(iobCobCalculator).displayText(rh, dateUtil, config.isEngineeringMode())
+        val displayText = overviewData.cobInfo(iobCobCalculator).displayText(rh)
         val lastCarbsTime = overviewData.lastCarbsTime
         runOnUiThread {
             _binding ?: return@runOnUiThread
@@ -933,7 +933,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (constraintsProcessed.carbsReq > 0) {
                     //only display carbsreq when carbs have not been entered recently
                     if (lastCarbsTime < lastRun.lastAPSRun) {
-                        cobText += " | " + constraintsProcessed.carbsReq + " " + rh.gs(info.nightscout.core.ui.R.string.required)
+                        cobText += "\n" + constraintsProcessed.carbsReq + " " + rh.gs(info.nightscout.core.ui.R.string.required)
                     }
                     if (carbAnimation?.isRunning == false)
                         carbAnimation?.start()
@@ -1034,6 +1034,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             var useRatioForScale = false
             var useDSForScale = false
             var useBGIForScale = false
+            var useHRForScale = false
+            var useSTEPSForScale = false
             when {
                 menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]      -> useABSForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]      -> useIobForScale = true
@@ -1042,6 +1044,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]      -> useBGIForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.SEN.ordinal]      -> useRatioForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal] -> useDSForScale = true
+                menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal]       -> useHRForScale = true
+                menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]    -> useSTEPSForScale = true
             }
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
 
@@ -1056,6 +1060,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (useDSForScale) 1.0 else 0.8,
                 useRatioForScale
             )
+            if (menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal]) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
+            if (menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
@@ -1071,7 +1077,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] ||
                     menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal] ||
                     menuChartSettings[g + 1][OverviewMenus.CharType.SEN.ordinal] ||
-                    menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal]
+                    menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal] ||
+                    menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal] ||
+                    menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]
                 ).toVisibility()
             secondaryGraphsData[g].performUpdate()
         }

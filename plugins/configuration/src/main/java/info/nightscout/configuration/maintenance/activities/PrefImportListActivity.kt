@@ -1,21 +1,22 @@
 package info.nightscout.configuration.maintenance.activities
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import dagger.android.support.DaggerAppCompatActivity
 import info.nightscout.configuration.R
 import info.nightscout.configuration.databinding.MaintenanceImportListActivityBinding
 import info.nightscout.configuration.databinding.MaintenanceImportListItemBinding
 import info.nightscout.configuration.maintenance.PrefsFileContract
-import info.nightscout.core.ui.locale.LocaleHelper
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.interfaces.maintenance.PrefFileListProvider
 import info.nightscout.interfaces.maintenance.PrefsFile
 import info.nightscout.interfaces.maintenance.PrefsMetadataKey
@@ -23,7 +24,7 @@ import info.nightscout.interfaces.maintenance.PrefsStatus
 import info.nightscout.shared.interfaces.ResourceHelper
 import javax.inject.Inject
 
-class PrefImportListActivity : DaggerAppCompatActivity() {
+class PrefImportListActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var prefFileListProvider: PrefFileListProvider
@@ -43,6 +44,21 @@ class PrefImportListActivity : DaggerAppCompatActivity() {
 
         binding.recyclerview.layoutManager = LinearLayoutManager(this)
         binding.recyclerview.adapter = RecyclerViewAdapter(prefFileListProvider.listPreferenceFiles(loadMetadata = true))
+
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     inner class RecyclerViewAdapter internal constructor(private var prefFileList: List<PrefsFile>) : RecyclerView.Adapter<RecyclerViewAdapter.PrefFileViewHolder>() {
@@ -107,17 +123,5 @@ class PrefImportListActivity : DaggerAppCompatActivity() {
 
             }
         }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
-    }
-
-    override fun attachBaseContext(newBase: Context) {
-        super.attachBaseContext(LocaleHelper.wrap(newBase))
     }
 }
