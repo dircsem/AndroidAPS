@@ -109,6 +109,7 @@ import info.nightscout.interfaces.plugin.MedLinkProfileParser
 import info.nightscout.interfaces.pump.actions.CustomActionType
 import info.nightscout.interfaces.pump.defs.ManufacturerType
 import info.nightscout.interfaces.queue.CustomCommand
+import info.nightscout.interfaces.utils.DecimalFormatter
 import info.nightscout.interfaces.utils.TimeChangeType
 import info.nightscout.shared.extensions.runOnUiThread
 import info.nightscout.shared.utils.T
@@ -140,6 +141,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     pumpSync: PumpSync?,
     pumpSyncStorage: PumpSyncStorage?,
     private val bgSync: BgSync,
+    decimalFormatter: DecimalFormatter,
     private val  parser: MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>
 ) : MedLinkPumpPluginAbstract(
     PluginDescription() //
@@ -153,7 +155,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     PumpType.MEDLINK_MEDTRONIC_554_754_VEO,  // we default to most basic model, correct model from config is loaded later
     injector, resourceHelper!!, aapsLogger, commandQueue!!, rxBus!!, activePlugin!!, sp,
     context!!, fabricPrivacy!!, dateUtil!!,
-    aapsSchedulers!!, pumpSync!!, pumpSyncStorage!!, uiInteract
+    aapsSchedulers!!, pumpSync!!, pumpSyncStorage!!, decimalFormatter, uiInteract
 ), Pump, MicrobolusPumpInterface, MedLinkPumpDevice, MedtronicPumpPluginInterface {
 
     private var changeStatusTimestamp: Long = 0
@@ -2704,7 +2706,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (isThisProfileSet(profile)) {
             return PumpEnactResult(injector) //
                 .success(true) //
-                .enacted(false) //
+                .enacted(true) //
                 .comment(rh.gs(R.string.medtronic_cmd_basal_profile_not_set_is_same))
         }
         setRefreshButtonEnabled(false)
@@ -2789,7 +2791,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     private val customActionClearBolusBlock = CustomAction(
-        R.string.medtronic_custom_action_clear_bolus_block, MedtronicCustomActionType.ClearBolusBlock, false
+        R.string.medtronic_custom_action_clear_bolus_block, MedtronicCustomActionType.ClearBolusBlock,info.nightscout.core.ui.R.drawable.ic_actions_profileswitch,  false
     )
 
     private fun setEnableCustomAction(customAction: MedtronicCustomActionType, isEnabled: Boolean) {
@@ -3439,6 +3441,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun calibrate(calibrationInfo: Double) {
 
+        var calibrationValue = calibrationInfo
+        if (glucoseUnit() == BgSync.GlucoseUnit.MMOL){
+            calibrationValue*=18
+        }
         val medLinkCalibrationCallback = MedLinkCalibrationArgCallback(
             aapsLogger,
             this,
@@ -3453,7 +3459,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             this, medtronicUtil, rh, rxBus
         )
         val msg = CalibrateMedLinkMessage.invoke(
-            calibrationInfo,
+            calibrationValue,
             calibrationCallback,
             medLinkCalibrationCallback,
             btSleepTime = 30000,

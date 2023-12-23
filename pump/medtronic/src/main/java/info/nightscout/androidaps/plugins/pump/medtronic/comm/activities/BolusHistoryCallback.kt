@@ -5,7 +5,8 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedL
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.R
 import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.interfaces.utils.JsonHelper.safeGetString
+
+import info.nightscout.core.utils.JsonHelper.safeGetString
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 

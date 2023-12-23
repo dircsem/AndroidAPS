@@ -76,7 +76,7 @@ abstract class CommandExecutor<B> protected constructor(
     }
 
     fun nextFunction(): Function<Supplier<Stream<String>>, out MedLinkStandardReturn<*>?>? {
-        return if (functionPosition < commandList.size && commandList[functionPosition].parseFunction.isPresent) {
+        return if (isConfirmed && functionPosition < commandList.size && commandList[functionPosition].parseFunction.isPresent) {
             currentCommand = commandList[functionPosition].command
             commandList[functionPosition].parseFunction.get().compose {
                 aapsLogger.info(

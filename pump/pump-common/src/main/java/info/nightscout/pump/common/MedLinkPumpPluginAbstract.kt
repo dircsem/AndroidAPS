@@ -54,8 +54,9 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     aapsSchedulers: AapsSchedulers,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
+    decimalFormatter: DecimalFormatter,
     var uiInteraction: UiInteraction,
-) : PumpPluginAbstract(pluginDescription, pumpType, injector, rh, aapsLogger, commandQueue, rxBus, activePlugin, sp, context, fabricPrivacy, dateUtil, aapsSchedulers, pumpSync, pumpSyncStorage), Pump,
+) : PumpPluginAbstract(pluginDescription, pumpType, injector, rh, aapsLogger, commandQueue, rxBus, activePlugin, sp, context, fabricPrivacy, dateUtil, aapsSchedulers, pumpSync, pumpSyncStorage, decimalFormatter), Pump,
     Constraints, info.nightscout.pump.common.sync.PumpSyncEntriesCreator, MedLinkPumpPluginBase {
 
     abstract val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
@@ -291,13 +292,13 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
 
         pumpStatusData.lastBolusTime?.let {
             if (it.time != 0L) {
-                ret += "LastBolus: ${DecimalFormatter.to2Decimal(pumpStatusData.lastBolusAmount!!)}U @${DateFormat.format("HH:mm", it)}\n"
+                ret += "LastBolus: ${decimalFormatter.to2Decimal(pumpStatusData.lastBolusAmount!!)}U @${DateFormat.format("HH:mm", it)}\n"
             }
         }
-        pumpSync.expectedPumpState().temporaryBasal?.let { ret += "Temp: ${it.toStringFull(dateUtil)}\n" }
-        pumpSync.expectedPumpState().extendedBolus?.let { ret += "Extended: ${it.toStringFull(dateUtil)}\n" }
+        pumpSync.expectedPumpState().temporaryBasal?.let { ret += "Temp: ${it.toStringFull(dateUtil, decimalFormatter)}\n" }
+        pumpSync.expectedPumpState().extendedBolus?.let { ret += "Extended: ${it.toStringFull(dateUtil, decimalFormatter)}\n" }
         ret += "IOB: ${pumpStatusData.iob}U\n"
-        ret += "Reserv: ${DecimalFormatter.to0Decimal(pumpStatusData.reservoirRemainingUnits)}U\n"
+        ret += "Reserv: ${decimalFormatter.to0Decimal(pumpStatusData.reservoirRemainingUnits)}U\n"
         ret += "Batt: ${pumpStatusData.batteryRemaining}\n"
         return ret
     }
