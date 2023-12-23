@@ -9,19 +9,22 @@ import android.widget.TextView
 import dagger.android.HasAndroidInjector
 import info.nightscout.configuration.setupwizard.SWNumberValidator
 import info.nightscout.core.ui.elements.NumberPicker
+import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.GlucoseUnit
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.shared.SafeParse
+import info.nightscout.shared.interfaces.ProfileUtil
 import java.text.DecimalFormat
 import javax.inject.Inject
 
-class SWEditNumberWithUnits(injector: HasAndroidInjector, private val init: Double, private val min: Double, private val max: Double) : SWItem(injector, Type.UNIT_NUMBER) {
+class SWEditNumberWithUnits(injector: HasAndroidInjector, private val init: Double, private val minMmol: Double, private val maxMmol: Double) : SWItem(injector, Type.UNIT_NUMBER) {
 
-    @Inject lateinit var profileFunction: ProfileFunction
+    @Inject lateinit var profileUtil: ProfileUtil
 
     private val validator: SWNumberValidator =
-        SWNumberValidator { value -> value in min..max }
+        if (profileUtil.units == GlucoseUnit.MMOL)
+            SWNumberValidator { value -> value in minMmol..maxMmol }
+        else
+            SWNumberValidator { value -> value in minMmol * Constants.MMOLL_TO_MGDL..maxMmol * Constants.MMOLL_TO_MGDL }
     private var updateDelay = 0
 
     override fun generateDialog(layout: LinearLayout) {
@@ -42,9 +45,12 @@ class SWEditNumberWithUnits(injector: HasAndroidInjector, private val init: Doub
         l.setTypeface(l.typeface, Typeface.BOLD)
         layout.addView(l)
         var initValue = sp.getDouble(preferenceId, init)
-        initValue = Profile.toCurrentUnits(profileFunction.getUnits(), initValue)
+        initValue = profileUtil.valueInCurrentUnitsDetect(initValue)
         val numberPicker = NumberPicker(context)
-        if (profileFunction.getUnits() == GlucoseUnit.MMOL) numberPicker.setParams(initValue, min, max, 0.1, DecimalFormat("0.0"), false, null, watcher) else numberPicker.setParams(initValue, min * 18, max * 18, 1.0, DecimalFormat("0"), false, null, watcher)
+        if (profileUtil.units == GlucoseUnit.MMOL)
+            numberPicker.setParams(initValue, minMmol, maxMmol, 0.1, DecimalFormat("0.0"), false, null, watcher)
+        else
+            numberPicker.setParams(initValue, minMmol * Constants.MMOLL_TO_MGDL, maxMmol * Constants.MMOLL_TO_MGDL, 1.0, DecimalFormat("0"), false, null, watcher)
 
         layout.addView(numberPicker)
         val c = TextView(context)

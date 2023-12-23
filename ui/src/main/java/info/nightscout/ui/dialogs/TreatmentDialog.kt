@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import com.google.common.base.Joiner
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.ui.toast.ToastUtils
+import info.nightscout.core.utils.HtmlHelper
 import info.nightscout.core.utils.extensions.formatColor
 import info.nightscout.database.entities.UserEntry
 import info.nightscout.database.entities.ValueWithUnit
@@ -26,7 +27,6 @@ import info.nightscout.interfaces.queue.Callback
 import info.nightscout.interfaces.queue.CommandQueue
 import info.nightscout.interfaces.ui.UiInteraction
 import info.nightscout.interfaces.utils.DecimalFormatter
-import info.nightscout.interfaces.utils.HtmlHelper
 import info.nightscout.rx.logging.LTag
 import info.nightscout.shared.SafeParse
 import info.nightscout.shared.interfaces.ResourceHelper
@@ -51,6 +51,7 @@ class TreatmentDialog : DialogFragmentWithDate() {
     @Inject lateinit var protectionCheck: ProtectionCheck
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var decimalFormatter: DecimalFormatter
 
     private var queryingProtection = false
     private val disposable = CompositeDisposable()
@@ -111,7 +112,14 @@ class TreatmentDialog : DialogFragmentWithDate() {
         )
         binding.insulin.setParams(
             savedInstanceState?.getDouble("insulin")
-                ?: 0.0, 0.0, maxInsulin, pumpDescription.bolusStep, DecimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump), false, binding.okcancel.ok, textWatcher
+                ?: 0.0,
+            0.0,
+            maxInsulin,
+            pumpDescription.bolusStep,
+            decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+            false,
+            binding.okcancel.ok,
+            textWatcher
         )
         binding.recordOnlyLayout.visibility = View.GONE
         binding.insulinLabel.labelFor = binding.insulin.editTextId
@@ -134,14 +142,27 @@ class TreatmentDialog : DialogFragmentWithDate() {
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(Constraint(carbs)).value()
 
         if (insulinAfterConstraints > 0) {
-            actions.add(rh.gs(info.nightscout.core.ui.R.string.bolus) + ": " + DecimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump, rh).formatColor(context, rh, info.nightscout.core.ui.R.attr.bolusColor))
+            actions.add(
+                rh.gs(info.nightscout.core.ui.R.string.bolus) + ": " + decimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump.pumpDescription.bolusStep)
+                    .formatColor(
+                        context, rh,
+                        info.nightscout.core.ui.R.attr.bolusColor
+                    )
+            )
             if (recordOnlyChecked)
                 actions.add(rh.gs(info.nightscout.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, info.nightscout.core.ui.R.attr.warningColor))
             if (abs(insulinAfterConstraints - insulin) > pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints))
-                actions.add(rh.gs(info.nightscout.core.ui.R.string.bolus_constraint_applied_warn, insulin, insulinAfterConstraints).formatColor(context, rh, info.nightscout.core.ui.R.attr.warningColor))
+                actions.add(
+                    rh.gs(info.nightscout.core.ui.R.string.bolus_constraint_applied_warn, insulin, insulinAfterConstraints).formatColor(context, rh, info.nightscout.core.ui.R.attr.warningColor)
+                )
         }
         if (carbsAfterConstraints > 0) {
-            actions.add(rh.gs(info.nightscout.core.ui.R.string.carbs) + ": " + rh.gs(info.nightscout.core.graph.R.string.format_carbs, carbsAfterConstraints).formatColor(context, rh, info.nightscout.core.ui.R.attr.carbsColor))
+            actions.add(
+                rh.gs(info.nightscout.core.ui.R.string.carbs) + ": " + rh.gs(info.nightscout.core.main.R.string.format_carbs, carbsAfterConstraints).formatColor(
+                    context, rh, info.nightscout
+                        .core.ui.R.attr.carbsColor
+                )
+            )
             if (carbsAfterConstraints != carbs)
                 actions.add(rh.gs(R.string.carbs_constraint_applied).formatColor(context, rh, info.nightscout.core.ui.R.attr.warningColor))
         }

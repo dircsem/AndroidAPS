@@ -2,14 +2,18 @@ package info.nightscout.pump.diaconn.activities
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.TextView
+import androidx.core.view.MenuProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import dagger.android.support.DaggerAppCompatActivity
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.profile.ProfileFunction
@@ -31,7 +35,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
 
-class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
+class DiaconnG8HistoryActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var fabricPrivacy: FabricPrivacy
@@ -42,6 +46,7 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var rh: ResourceHelper
+    @Inject lateinit var decimalFormatter: DecimalFormatter
 
     private val disposable = CompositeDisposable()
 
@@ -73,6 +78,10 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = DiaconnG8HistoryActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        title = rh.gs(info.nightscout.core.ui.R.string.pump_history)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
 
         binding.recyclerview.setHasFixedSize(true)
         binding.recyclerview.layoutManager = LinearLayoutManager(this)
@@ -112,6 +121,20 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
             showingType = selected.type
             swapAdapter(selected.type)
         }
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     inner class RecyclerViewAdapter internal constructor(private var historyList: List<DiaconnHistoryRecord>) : RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder>() {
@@ -122,10 +145,10 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
         override fun onBindViewHolder(holder: HistoryViewHolder, position: Int) {
             val record = historyList[position]
             holder.time.text = dateUtil.dateAndTimeString(record.timestamp)
-            holder.value.text = DecimalFormatter.to2Decimal(record.value)
+            holder.value.text = decimalFormatter.to2Decimal(record.value)
             holder.stringValue.text = record.stringValue
             holder.bolusType.text = record.bolusType
-            holder.duration.text = DecimalFormatter.to0Decimal(record.duration.toDouble())
+            holder.duration.text = decimalFormatter.to0Decimal(record.duration.toDouble())
             holder.alarm.text = record.alarm
             when (showingType) {
                 RecordTypes.RECORD_TYPE_ALARM     -> {
@@ -153,9 +176,9 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
                 }
 
                 RecordTypes.RECORD_TYPE_DAILY     -> {
-                    holder.dailyBasal.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBasal)
-                    holder.dailyBolus.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBolus)
-                    holder.dailyTotal.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBolus + record.dailyBasal)
+                    holder.dailyBasal.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBasal)
+                    holder.dailyBolus.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBolus)
+                    holder.dailyTotal.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBolus + record.dailyBasal)
                     holder.time.text = dateUtil.dateString(record.timestamp)
                     holder.time.visibility = View.VISIBLE
                     holder.value.visibility = View.GONE
@@ -168,18 +191,7 @@ class DiaconnG8HistoryActivity : DaggerAppCompatActivity() {
                     holder.alarm.visibility = View.GONE
                 }
 
-                RecordTypes.RECORD_TYPE_BASALHOUR -> {
-                    holder.time.visibility = View.VISIBLE
-                    holder.value.visibility = View.VISIBLE
-                    holder.stringValue.visibility = View.VISIBLE
-                    holder.bolusType.visibility = View.GONE
-                    holder.duration.visibility = View.GONE
-                    holder.dailyBasal.visibility = View.GONE
-                    holder.dailyBolus.visibility = View.GONE
-                    holder.dailyTotal.visibility = View.GONE
-                    holder.alarm.visibility = View.GONE
-                }
-
+                RecordTypes.RECORD_TYPE_BASALHOUR,
                 RecordTypes.RECORD_TYPE_REFILL    -> {
                     holder.time.visibility = View.VISIBLE
                     holder.value.visibility = View.VISIBLE

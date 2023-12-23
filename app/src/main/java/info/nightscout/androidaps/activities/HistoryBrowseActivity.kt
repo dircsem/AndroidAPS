@@ -4,16 +4,20 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.util.DisplayMetrics
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
+import androidx.core.view.MenuProvider
 import com.google.android.material.datepicker.MaterialDatePicker
 import com.jjoe64.graphview.GraphView
 import dagger.android.HasAndroidInjector
-import dagger.android.support.DaggerAppCompatActivity
 import info.nightscout.androidaps.databinding.ActivityHistorybrowseBinding
 import info.nightscout.core.events.EventIobCalculationProgress
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.core.workflow.CalculationWorkflow
 import info.nightscout.interfaces.Config
@@ -42,7 +46,7 @@ import java.util.GregorianCalendar
 import javax.inject.Inject
 import kotlin.math.min
 
-class HistoryBrowseActivity : DaggerAppCompatActivity() {
+class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var historyBrowserData: HistoryBrowserData
     @Inject lateinit var injector: HasAndroidInjector
@@ -75,6 +79,10 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityHistorybrowseBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        title = rh.gs(info.nightscout.plugins.R.string.nav_history_browser)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
 
         binding.left.setOnClickListener {
             adjustTimeRange(historyBrowserData.overviewData.fromTime - T.hours(rangeToDisplay.toLong()).msecs())
@@ -140,6 +148,20 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
             historyBrowserData.overviewData.fromTime = bundle.getLong("start", 0)
             historyBrowserData.overviewData.toTime = bundle.getLong("end", 0)
         }
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     override fun onPause() {
@@ -167,7 +189,7 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
         disposable += rxBus
             .toObservable(EventIobCalculationProgress::class.java)
             .observeOn(aapsSchedulers.main)
-            .subscribe({ updateCalcProgress(it.pass.finalPercent(it.progressPct)) }, fabricPrivacy::logException)
+            .subscribe({ updateCalcProgress(it.finalPercent) }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventUpdateOverviewGraph::class.java)
             .observeOn(aapsSchedulers.main)
@@ -327,6 +349,8 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
             var useRatioForScale = false
             var useDSForScale = false
             var useBGIForScale = false
+            var useHRForScale = false
+            var useSTEPSForScale = false
             when {
                 menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]      -> useABSForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]      -> useIobForScale = true
@@ -335,6 +359,8 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
                 menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]      -> useBGIForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.SEN.ordinal]      -> useRatioForScale = true
                 menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal] -> useDSForScale = true
+                menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal]       -> useHRForScale = true
+                menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]    -> useSTEPSForScale = true
             }
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
 
@@ -345,6 +371,9 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
             if (menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]) secondGraphData.addMinusBGI(useBGIForScale, if (alignDevBgiScale) 1.0 else 0.8)
             if (menuChartSettings[g + 1][OverviewMenus.CharType.SEN.ordinal]) secondGraphData.addRatio(useRatioForScale, if (useRatioForScale) 1.0 else 0.8)
             if (menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal] && config.isDev()) secondGraphData.addDeviationSlope(useDSForScale, 1.0)
+            if (menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal] && config.isDev()) secondGraphData.addHeartRate(useHRForScale, 1.0)
+            if (menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal] && config.isDev()) secondGraphData.addSteps(useSTEPSForScale, 1.0)
+
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
@@ -360,7 +389,9 @@ class HistoryBrowseActivity : DaggerAppCompatActivity() {
                     menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] ||
                     menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal] ||
                     menuChartSettings[g + 1][OverviewMenus.CharType.SEN.ordinal] ||
-                    menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal]
+                    menuChartSettings[g + 1][OverviewMenus.CharType.DEVSLOPE.ordinal] ||
+                    menuChartSettings[g + 1][OverviewMenus.CharType.HR.ordinal] ||
+                    menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]
                 ).toVisibility()
             secondaryGraphsData[g].performUpdate()
         }

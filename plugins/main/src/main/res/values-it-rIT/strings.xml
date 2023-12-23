@@ -24,6 +24,10 @@
     <string name="smscommunicator_otp_reset_header">Resetta autenticatori</string>
     <string name="smscommunicator_otp_install_info">Su ogni telefono follower installa una app autenticatore che supporta i token RFC 6238 TOTP. App gratuite popolari sono:\n • Authy\n • Google Authenticator\n • LastPass Authenticator\n • FreeOTP Authenticator</string>
     <string name="smscommunicator_otp_reset_warning">Resettando l\'autenticatore rendi non validi tutti gli autenticatori già forniti. Dovrai configurarli di nuovo!</string>
+    <string name="smscommunicator_otp_verification_ok">OK</string>
+    <string name="smscommunicator_otp_verification_ivalid_size">DIMENSIONE NON VALIDA!</string>
+    <string name="smscommunicator_otp_verification_wrong_pin">PIN ERRATO</string>
+    <string name="smscommunicator_otp_verification_wrong_otp">OTP ERRATO</string>
     <string name="sms_wrong_code">Codice errato. Comando cancellato.</string>
     <string name="sms_timeout_while_waiting">Timeout nell\'attesa della fine della precedente comunicazione col micro.</string>
     <string name="smscommunicator_allowednumbers">Numeri di telefono consentiti</string>
@@ -104,11 +108,7 @@
     <string name="sms_profile_switch_created">Cambio profilo creato</string>
     <string name="sms_wrong_tbr_duration">La durata del TBR deve essere un multiplo di %1$d minuti e maggiore di 0.</string>
     <string name="a11y_otp_qr_code">Codice QR per configurare OTP</string>
-    <string name="xdrip_status_detailed_iob_title">Mostra IOB dettagliato</string>
-    <string name="xdrip_status_detailed_iob_summary">Dividi IOB in bolo e basale sulla watchface</string>
     <string name="disabled_loop">Loop disabilitato</string>
-    <string name="xdrip_status_show_bgi_title">Mostra BGI</string>
-    <string name="xdrip_status_show_bgi_summary">Aggiungi BGI alla statusline</string>
     <!-- Food-->
     <string name="food_short">Cibo</string>
     <string name="description_food">Visualizza i preset dei cibi definiti in Nightscout</string>
@@ -243,6 +243,7 @@
     <string name="short_tabtitles">Accorcia titoli schede</string>
     <string name="overview_show_notes_field_in_dialogs_title">Finestre tratt.nto: mostra campo note</string>
     <string name="deliverpartofboluswizard">Il calcolatore esegue il calcolo, ma solo questa parte dell\'insulina calcolata è erogata. Utile con algoritmo SMB.</string>
+    <string name="deliver_part_of_boluswizard_reset_time">Eroga bolo completo (100%) se la glicemia è più \"vecchia\" di</string>
     <string name="enable_bolus_advisor">Abilita consiglio bolo</string>
     <string name="enable_bolus_advisor_summary">Usa un promemoria per iniziare a mangiare invece del risultato del calcolatore durante la glicemia alta (\"pre-bolo\")</string>
     <string name="enablesuperbolus">Abilita superbolo nel calcolatore</string>
@@ -253,6 +254,7 @@
     <!--    OverviewMenu-->
     <string name="overview_show_predictions">Predizioni</string>
     <string name="overview_show_treatments">Trattamenti</string>
+    <string name="overview_show_heartRate">Frequenza cardiaca</string>
     <string name="overview_show_deviation_slope">Pendenza deviazione</string>
     <string name="overview_show_activity">Attività</string>
     <string name="overview_show_bgi">Impatto glicemia (BGI)</string>
@@ -270,6 +272,7 @@
     <string name="abs_insulin_shortname">ASS</string>
     <string name="devslope_shortname">PENDEV</string>
     <string name="treatments_shortname">TRATT</string>
+    <string name="heartRate_shortname">FC</string>
     <string name="sensitivity_shortname">SENS</string>
     <string name="graph_scale">Scala del grafico</string>
     <string name="graph_menu_divider_header">Grafico</string>
@@ -305,16 +308,22 @@
     <string name="wearcontrol_title">Controlli da smartwatch</string>
     <string name="wearcontrol_summary">Imposta Temp-Target e inserisci trattamenti dallo smartwatch.</string>
     <string name="wear_wizard_settings_summary">Calcoli inclusi nel risultato del Calcolatore:</string>
-    <string name="wear_display_settings">Impostazioni di visualizzazione</string>
     <string name="wear_general_settings">Impostazioni generali</string>
-    <string name="wear_detailed_delta_title">Mostra delta dettagliato</string>
-    <string name="wear_detailed_delta_summary">Mostra delta con una cifra decimale in più</string>
     <string name="wear_notifysmb_title">Notifica SMB</string>
     <string name="wear_notifysmb_summary">Mostra SMB sullo smartwatch come un bolo standard.</string>
-    <string name="wear_predictions_summary">Mostra le predizioni sulla watchface.</string>
-    <string name="wear_predictions_title">Predizioni</string>
+    <string name="wear_custom_watchface_settings">Impostazioni watchface personalizzata</string>
+    <string name="wear_custom_watchface_authorization_title">Autorizzazione watchface personalizzata</string>
+    <string name="wear_custom_watchface_authorization_summary">Autorizza la watchface personalizzata caricata a cambiare e bloccare alcune delle impostazioni di visualizzazione dell\'orologio per adattarsi al design della watchface</string>
+    <string name="wear_custom_watchface">Watchface personalizzata: %1$s</string>
+    <string name="wear_load_watchface">Carica watchface</string>
+    <string name="wear_infos_watchface">Informazioni watchface</string>
+    <string name="wear_export_watchface">Esporta template</string>
+    <string name="wear_new_custom_watchface_exported">Esportato template personalizzato di Watchface</string>
     <string name="resend_all_data">Invia di nuovo tutti i dati</string>
     <string name="open_settings_on_wear">Apri impostazioni sullo smartwatch</string>
+    <string name="cwf_infos_pref_locked">Elenco impostazioni bloccate dalla watchface</string>
+    <string name="cwf_infos_pref_required">Elenco impostazioni richieste per la watchface</string>
+    <string name="cwf_infos_view_title">Elenco dei campi inclusi nella watchface</string>
     <!--    PersistentNotification-->
     <string name="description_persistent_notification">Mostra una notifica persistente con una breve panoramica di ciò che sta facendo il tuo loop</string>
     <string name="old_data">DATI VECCHI</string>
@@ -323,7 +332,7 @@
     <string name="grams_short">g</string>
     <string name="hour_short">h</string>
     <string name="no_active_profile">Nessun cambio profilo attivo!</string>
-    <string name="profile_message">Profilo:\n\nTimeshift: %1$\nPercentuale: %2$d%%\"</string>
+    <string name="profile_message">Profilo:\n\nTimeshift: %1$d\nPercentuale: %2$d%%\"</string>
     <string name="tdd_line">%1$.2fU %1$.0f%%</string>
     <string name="no_profile">Nessun profilo caricato</string>
     <string name="aps_only">Si applica solo in modalità APS!</string>

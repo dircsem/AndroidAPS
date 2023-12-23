@@ -5,16 +5,18 @@ import android.os.Bundle
 import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.util.forEach
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import dagger.android.support.DaggerAppCompatActivity
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.utils.ActionModeHelper
 import info.nightscout.core.utils.fabric.FabricPrivacy
@@ -38,7 +40,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
 
-class QuickWizardListActivity : DaggerAppCompatActivity(), OnStartDragListener {
+class QuickWizardListActivity : TranslatedDaggerAppCompatActivity(), OnStartDragListener {
 
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var rxBus: RxBus
@@ -72,7 +74,7 @@ class QuickWizardListActivity : DaggerAppCompatActivity(), OnStartDragListener {
             holder.binding.from.text = dateUtil.timeString(entry.validFromDate())
             holder.binding.to.text = dateUtil.timeString(entry.validToDate())
             holder.binding.buttonText.text = entry.buttonText()
-            holder.binding.carbs.text = rh.gs(info.nightscout.core.graph.R.string.format_carbs, entry.carbs())
+            holder.binding.carbs.text = rh.gs(info.nightscout.core.main.R.string.format_carbs, entry.carbs())
             if (entry.device() == QuickWizardEntry.DEVICE_ALL) {
                 holder.binding.device.visibility = View.GONE
             } else {
@@ -152,6 +154,14 @@ class QuickWizardListActivity : DaggerAppCompatActivity(), OnStartDragListener {
             val editQuickWizardDialog = EditQuickWizardDialog()
             editQuickWizardDialog.show(manager, "EditQuickWizardDialog")
         }
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(info.nightscout.core.utils.R.menu.menu_actions, menu)
+            }
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                actionHelper.onOptionsItemSelected(menuItem)
+        })
     }
 
     override fun onResume() {
@@ -181,26 +191,10 @@ class QuickWizardListActivity : DaggerAppCompatActivity(), OnStartDragListener {
         })
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(info.nightscout.core.utils.R.menu.menu_actions, menu)
-        return super.onCreateOptionsMenu(menu)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
-        when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
-            }
-
-            else              -> actionHelper.onOptionsItemSelected(item)
-
-        }
-
     private fun getConfirmationText(selectedItems: SparseArray<QuickWizardEntry>): String {
         if (selectedItems.size() == 1) {
             val entry = selectedItems.valueAt(0)
-            return "${rh.gs(info.nightscout.core.ui.R.string.remove_button)} ${entry.buttonText()} ${rh.gs(info.nightscout.core.graph.R.string.format_carbs, entry.carbs())}\n" +
+            return "${rh.gs(info.nightscout.core.ui.R.string.remove_button)} ${entry.buttonText()} ${rh.gs(info.nightscout.core.main.R.string.format_carbs, entry.carbs())}\n" +
                 "${dateUtil.timeString(entry.validFromDate())} - ${dateUtil.timeString(entry.validToDate())}"
         }
         return rh.gs(info.nightscout.core.ui.R.string.confirm_remove_multiple_items, selectedItems.size())

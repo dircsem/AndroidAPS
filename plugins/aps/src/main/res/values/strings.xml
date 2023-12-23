@@ -27,13 +27,13 @@
     <string name="key_openapssmb_max_smb">key_openapssmb_max_smb</string>
     <string name="openapsaismb">OpenAPS aiSMB</string>
     <string name="key_openapsaismb_settings">OpenAPS aiSMB Settings</string>
-    <string name="description_aismb">Small micro boluses based on Artifical Intelligence and Machine Learning.</string>
     <string name="oaps_aismb_shortname">aiSMB</string>
 
 
     <string name="dynisf_adjust_sensitivity">Adjust sensitivity and BG</string>
     <string name="DynISFAdjust_title" formatted="false">DynamicISF Adjustment Factor %</string>
     <string name="DynISFAdjust_summary" formatted="false">Adjustment factor for DynamicISF. Set more than 100% for more aggressive correction doses, and less than 100% for less aggressive corrections.</string>
+    <string name="DynISF_variant_title" formatted="false">Variant</string>
     <string name="high_temptarget_raises_sensitivity_title">High temptarget raises sensitivity</string>
     <string name="high_temptarget_raises_sensitivity_summary"><![CDATA[Raise sensitivity for temptargets >= 100]]></string>
     <string name="low_temptarget_lowers_sensitivity_title">Low temptarget lowers sensitivity</string>
@@ -156,11 +156,12 @@
     <string name="loop_smb_set_by_pump_label">SMB set by pump</string>
     <string name="loop_open_mode_min_change">Minimal request change [%]</string>
     <string name="loop_open_mode_min_change_summary" formatted="false">Open Loop will popup new change request only if change is bigger than this value in %. Default value is 20%</string>
+    <string name="fallback_smb_no_tdd">Fallback to SMB. Not enough TDD data.</string>
 
     <!--    Loop -->
 
     <string name="aimi">AIMI</string>
-    <string name="description_aimi">Automated Insulin Management Interface</string>
+    <string name="description_aimi">Automated Insulin Management Interface, base on artificial intelligence and machine learning decision.</string>
     <string name="key_aimi_settings" translatable="false">aimi_settings</string>
     <string name="key_use_AimiIgnoreCOB" translatable="false">key_use_AimiIgnoreCOB</string>
     <string name="key_use_Aimiprotein" translatable="false">key_use_Aimiprotein</string>
@@ -212,11 +213,13 @@
     <string name="key_use_AIMI_SlowInsulin" translatable="false">key_use_AIMI_SlowInsulin</string>
     <string name="key_use_AIMI_PBolus" translatable="false">key_use_AIMI_PBolus</string>
     <string name="key_use_AIMI_BreakFastLight" translatable="false">key_use_AIMI_BreakfastLight</string>
-    <string name="key_AIMI_BreakFastLight_timeend">key_AIMI_BreakFastLight_timeend</string>
-    <string name="key_AIMI_BreakFastLight_timestart">key_AIMI_BreakFastLight_timestart</string>
-    <string name="key_use_AimiUAM" translatable="false">key_use_AimiUAM</string>
-    <string name="key_use_AimiPower" translatable="false">key_use_AimiUAM</string>
-    <string name="key_use_AimiUAM_ISF" translatable="false">key_use_AimiUAM</string>
+    <string name="key_use_AIMI_factor" translatable="false">key_use_AIMI_factor</string>
+    <string name="key_AIMI_NoSMB_timeend">key_AIMI_NoSMB_timeend</string>
+    <string name="key_AIMI_NoSMB_timestart">key_AIMI_NoSMB_timestart</string>
+    <string name="key_use_AimiUAM" translatable="false">AIMI</string>
+    <string name="key_use_AimiPower" translatable="false">AIMI_Power</string>
+    <string name="key_use_noNightsmb" translatable="false">No Night SMB</string>
+    <string name="key_use_AimiUAM_ISF" translatable="false">AIMI_ISF</string>
     <string name="key_use_AimiBreak" translatable="false">key_use_AimiBreak</string>
     <string name="key_use_disable_b30_BFL" translatable="false">key_use_disable_b30_BFL</string>
     <string name="key_use_b30mssv" translatable="false">Variant B30-MSSV</string>
@@ -224,12 +227,22 @@
     <string name="key_use_mssv" translatable="false">Variant MSSV </string>
     <string name="key_use_pammssv" translatable="false">Variant PAM-MSSV</string>
     <string name="key_use_pam" translatable="false">Variant PAM</string>
-    <string name="DynISF_variant" formatted="false">Variant</string>
     <string name="key_use_newSMB" translatable="false">new aimi smb calculation proportional</string>
     <string name="key_use_enable_mssv" translatable="false">Enable the variation of max smb size</string>
     <string name="key_use_countsteps" translatable="false">Enable counting steps</string>
+    <string name="key_use_fcl_smb" translatable="false">Enable FCL Automated SMB</string>
+    <string name="count_steps_watch" translatable="false">Enable Steps from the watch</string>
     <string name="key_iTime_B30_bolus">key_iTime_B30_bolus</string>
     <string name="key_iTime_B30_bolus_duration">key_iTime_B30_bolus_duration</string>
     <string name="key_use_Aimib30bolus">key_use_Aimib30bolus</string>
+    <string name="key_use_enable_circadian">key_use_enable_circadian</string>
+    <string name="key_mbi">AIMI smb interval duration after a bolus</string>
+    <string name="key_aimiweight">key_aimiweight</string>
+    <string name="key_tdd7">key_tdd7</string>
+    <string name="key_cho">key_cho</string>
+    <string name="key_UAMpredBG">key_UAMpredBG</string>
+    <string name="key_fcl_smb">key_fcl_smb</string>
+    <string name="key_use_AimiPregnancy">key_use_AimiPregnancy</string>
+
 
 </resources>

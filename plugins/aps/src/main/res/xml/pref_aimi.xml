@@ -9,110 +9,227 @@
         app:initialExpandedChildrenCount="0">
 
     <info.nightscout.plugins.aps.loop.LoopVariantPreference
-        android:title="@string/DynISF_variant"
+        android:title="@string/DynISF_variant_title"
         android:defaultValue="default"
         android:selectable="true"
         app:pluginFolder="AIMI" />
 
-    <androidx.preference.PreferenceScreen
-        android:key="b30_adavanced_settings"
-        android:title="AIMI B30 Preferences">
+        <androidx.preference.PreferenceScreen
+            android:key="b30_adavanced_settings"
+            android:title="AIMI Basal Preferences">
 
 
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="150"
-            android:dialogMessage="If BG is bigger than this value, B30 (basal 500% during 30 minutes) will not running"
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_B30_upperBG"
-            android:title="B30 Upper BG to stop B30"
-            validate:floatmaxNumber="200"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="150"
+                android:dialogMessage="If BG is bigger than this value, B30 (basal 500% during 30 minutes) will not running"
+                android:inputType="numberDecimal"
+                android:key="@string/key_iTime_B30_upperBG"
+                android:title="B30 Upper BG to stop B30"
+                validate:floatmaxNumber="200"
+                validate:floatminNumber="0"
+                validate:testType="floatNumericRange" />
 
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="6"
-            android:dialogMessage="If delta is bigger than this value, B30 (basal 500% during 30 minutes) will not running"
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_B30_upperdelta"
-            android:title="B30 Upper delta to stop B30"
-            validate:floatmaxNumber="15"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="6"
+                android:dialogMessage="If delta is bigger than this value, B30 (basal 500% during 30 minutes) will not running"
+                android:inputType="numberDecimal"
+                android:key="@string/key_iTime_B30_upperdelta"
+                android:title="B30 Upper delta to stop B30"
+                validate:floatmaxNumber="15"
+                validate:floatminNumber="0"
+                validate:testType="floatNumericRange" />
 
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="20"
-            android:dialogMessage="b30 duration is the duration in minutes of the first basal action after the manual bolus (> iTime_Starting_Bolus)"
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_B30_duration"
-            android:title="first B30 duration after a bolus"
-            validate:floatmaxNumber="100"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_Aimiprotein"
-            android:title="meal low carbs"
-            android:summary="meal low carbs with proteins and lipids. this option will force b30" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="60"
-            android:dialogMessage="with meal low carbs enable, this value define how many time after the bolus started iTime you want to force B30"
-            android:inputType="numberDecimal"
-            android:key="@string/key_aimi_B30_proteinstart"
-            android:title="B30 protein start"
-            validate:floatmaxNumber="180"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="60"
-            android:dialogMessage="with meal low carbs enable, this value define the duration of the B30 for proteins and lipids"
-            android:inputType="numberDecimal"
-            android:key="@string/key_aimi_B30_proteinduration"
-            android:title="B30 protein duration"
-            validate:floatmaxNumber="180"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="300"
-            android:dialogMessage="with meal low carbs enable, this value define the % of the B30 for proteins and lipids"
-            android:inputType="numberDecimal"
-            android:key="@string/key_aimi_B30_proteinpercent"
-            android:title="B30 protein %"
-            validate:floatmaxNumber="500"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_Aimib30bolus"
-            android:title="Automated Bolus"
-            android:summary="Enabling an automated bolus which will happen xx minutes after the manual bolus and which is a % of the manual bolus. The condition of application is only this option enable, for now the code don't check anything else. The variable will define the time after the manual bolus et the % of this one you want receive. This is only working with the variant Extended_Bolus_and_b30Bolus and the variant Mathieu." />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="50"
-            android:dialogMessage="This variable define which % of the manual bolus you will receive xx minutes after the bolus. This is only working with the variant Extended Bolus and b30Bolus."
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_B30_bolus"
-            android:title="B30 bolus %"
-            validate:floatmaxNumber="500"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="50"
-            android:dialogMessage="This variable define the time after the manual bolus, you will receive this SMB b30_bolus. This is only working with the variant Extended Bolus and b30Bolus."
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_B30_bolus_duration"
-            android:title="B30_bolus Time after the manual bolus"
-            validate:floatmaxNumber="500"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="20"
+                android:dialogMessage="b30 duration is the duration in minutes of the first basal action after the manual bolus (> iTime_Starting_Bolus)"
+                android:inputType="numberDecimal"
+                android:key="@string/key_iTime_B30_duration"
+                android:title="first B30 duration after a bolus"
+                validate:floatmaxNumber="100"
+                validate:floatminNumber="0"
+                validate:testType="floatNumericRange" />
 
 
-    </androidx.preference.PreferenceScreen>
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="50"
+                android:dialogMessage="Weight in kg to calculate the basal"
+                android:inputType="numberDecimal"
+                android:key="@string/key_aimiweight"
+                android:title="Weight in kg"
+                validate:floatmaxNumber="150"
+                validate:floatminNumber="0"
+                validate:testType="floatNumericRange" />
+
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="50"
+                android:dialogMessage="TDD average 7 days"
+                android:inputType="numberDecimal"
+                android:key="@string/key_tdd7"
+                android:title="TDD 7 days"
+                validate:floatmaxNumber="150"
+                validate:floatminNumber="0"
+                validate:testType="floatNumericRange" />
+
+            <info.nightscout.core.validators.ValidatingEditTextPreference
+                android:defaultValue="120"
+                android:dialogMessage="Value of the prediction UAMpredBG under the one you will not receive SMB"
+                android:inputType="numberDecimal"
+                android:key="@string/key_UAMpredBG"
+                android:title="No SMB if prediction is under UAMpredBG"
+                validate:floatmaxNumber="150"
+                validate:floatminNumber="80"
+                validate:testType="floatNumericRange" />
+
+
+        </androidx.preference.PreferenceScreen>
+
+            <androidx.preference.PreferenceScreen
+                android:key="@string/key_aimi_aggressive_settings"
+                android:title="AIMI Increase aggressiveness Preferences">
+
+                <SwitchPreference
+                    android:defaultValue="false"
+                    android:key="@string/key_use_AimiPower"
+                    android:title="Authorise more power applying B30 settings"
+                    android:summary="when enable AIMI will be more aggressive during the duration of B30 settings section" />
+
+                <info.nightscout.core.validators.ValidatingEditTextPreference
+                    android:defaultValue="30"
+                    android:dialogMessage="Duration after a manual bolus AIMI doesn't manage the SMB interval. The max smb size = manual bolus"
+                    android:inputType="numberDecimal"
+                    android:key="@string/key_mbi"
+                    android:title="AIMI SMB interval management + MSS value"
+                    validate:floatmaxNumber="120"
+                    validate:floatminNumber="0"
+                    validate:testType="floatNumericRange" />
+
+                <info.nightscout.core.validators.ValidatingEditTextPreference
+                    android:defaultValue="150"
+                    android:dialogMessage="Value in % of increase the basal profile to determine the value of MaxSmb size with AIMI_UAM. If this SMB is send, the interval with the next SMB will be 20 minutes."
+                    android:inputType="numberDecimal"
+                    android:key="@string/key_use_AIMI_CAP"
+                    android:title="MaxSmb size AIMI_UAM : % of basal profile between 50% and 2000%"
+                    validate:floatmaxNumber="2000"
+                    validate:floatminNumber="50"
+                    validate:testType="floatNumericRange" />
+
+                <SwitchPreference
+                    android:defaultValue="false"
+                    android:key="@string/key_use_enable_mssv"
+                    android:title="Enable the variation of max smb size"
+                    android:summary="If it's enable mssv will discrease the value when TIR low during the last hour > 5%, or if the target have changed for a higher one and the basal value discrease. The opposite is true about lowering the target, that will increase the basal value and increase the mssv value until +100% of the initial value in the settings. If it's disable, the calculation will be using constant value, basal from the profile and the mssv settings in the preferences." />
+
+                <SwitchPreference
+                    android:defaultValue="false"
+                    android:key="@string/key_use_AimiUAM_ISF"
+                    android:summary="Dependency with AIMI_UAM mode, active a faster scale ISF"
+                    android:title="AIMI UAM Super ISF" />
+
+                <SwitchPreference
+                    android:defaultValue="false"
+                    android:key="@string/key_use_AimiPregnancy"
+                    android:title="Enable an active mode for pregnancy"
+                    android:summary="specific mode to allow more TBR action if the BG > 110" />
+
+
+            </androidx.preference.PreferenceScreen>
+
+                <androidx.preference.PreferenceScreen
+                    android:key="@string/key_aimi_conservative_settings"
+                    android:title="AIMI conservative Preferences">
+
+                    <info.nightscout.core.validators.ValidatingEditTextPreference
+                        android:defaultValue="50"
+                        android:dialogMessage="Average carbs for a meal. it's an estimation not a precise value"
+                        android:inputType="numberDecimal"
+                        android:key="@string/key_cho"
+                        android:title="CHO / Meal"
+                        validate:floatmaxNumber="150"
+                        validate:floatminNumber="0"
+                        validate:testType="floatNumericRange" />
+
+                    <SwitchPreference
+                        android:defaultValue="false"
+                        android:key="@string/key_use_noNightsmb"
+                        android:title="No SMB during the night"
+                        android:summary="This option will disable SMB during the interval you define in the next options start and end time" />
+
+                    <info.nightscout.core.validators.ValidatingEditTextPreference
+                        android:defaultValue="1"
+                        android:dependency="@string/key_use_noNightsmb"
+                        android:dialogMessage="No SMB during the night : Start time"
+                        android:inputType="numberDecimal"
+                        android:key="@string/key_AIMI_NoSMB_timestart"
+                        android:title="No SMB during the night : Start time"
+                        validate:floatmaxNumber="12"
+                        validate:floatminNumber="0"
+                        validate:testType="floatNumericRange" />
+
+                    <info.nightscout.core.validators.ValidatingEditTextPreference
+                        android:defaultValue="7"
+                        android:dependency="@string/key_use_noNightsmb"
+                        android:dialogMessage="No SMB during the night : End time"
+                        android:inputType="numberDecimal"
+                        android:key="@string/key_AIMI_NoSMB_timeend"
+                        android:title="No SMB during the night : End time"
+                        validate:floatmaxNumber="14"
+                        validate:floatminNumber="1"
+                        validate:testType="floatNumericRange" />
+
+                    <SwitchPreference
+                        android:defaultValue="false"
+                        android:key="@string/key_use_AIMI_BreakFastLight"
+                        android:title="Breakfast Light"
+                        android:summary="variant test : This option will divide by two the SMB calculation between 6 and 11 am. the interval will be adjust to 10 minutes during this period." />
+
+                </androidx.preference.PreferenceScreen>
+
+                    <androidx.preference.PreferenceScreen
+                        android:key="@string/key_aimi_activity_settings"
+                        android:title="AIMI ACTIVITY Preferences">
+
+                        <SwitchPreference
+                            android:defaultValue="false"
+                            android:key="@string/key_use_countsteps"
+                            android:title="Enable counting steps"
+                            android:summary="This option will enable the function counting steps from the hardware of your android phone. The action will be increasing the ISF and the target, discreasing the basal." />
+
+                        <SwitchPreference
+                            android:defaultValue="false"
+                            android:key="@string/count_steps_watch"
+                            android:title="Enable Counting from the watch"
+                            android:summary="This option will use the hardware from the watch instead of the phone. Both option about the steps need to be enable." />
+
+                    </androidx.preference.PreferenceScreen>
+
+                        <androidx.preference.PreferenceScreen
+                            android:key="@string/key_aimi_FCL"
+                            android:title="AIMI Variant FCL Settings">
+
+                            <SwitchPreference
+                                android:defaultValue="false"
+                                android:key="@string/key_use_fcl_smb"
+                                android:title="Enable Automated SMB when TT lesser or egual at 80 is enable"
+                                android:summary="This option will enable SMB with the value you set in FCL_SMB_Value, each 5 minutes for the duration of the TT if the prediction is not announcing an hypo." />
+
+                            <info.nightscout.core.validators.ValidatingEditTextPreference
+                                android:defaultValue="0.5"
+                                android:dependency="@string/key_use_fcl_smb"
+                                android:dialogMessage="Size of the automated smb during the TT lesser or egual 80. You will receive this value each 5 minutes. The purpose is testing small value with TBR to avoid the first wave. "
+                                android:inputType="numberDecimal"
+                                android:key="@string/key_fcl_smb"
+                                android:title="FCL TT Automated SMB"
+                                validate:floatmaxNumber="2"
+                                validate:floatminNumber="0.1"
+                                validate:testType="floatNumericRange" />
+
+                            <SwitchPreference
+                                android:defaultValue="false"
+                                android:key="@string/key_use_AIMI_factor"
+                                android:title="Enable a factor for smb and max smb size"
+                                android:summary="This factor is following the BG difference with the target. that can provide smaller max smb size or higher one if IOB is lesser than maxiob divide by 2.5 and delta greater than 10." />
+
+                        </androidx.preference.PreferenceScreen>
 
         <info.nightscout.core.validators.ValidatingEditTextPreference
             android:defaultValue="1"
@@ -134,49 +251,14 @@
             validate:floatminNumber="0"
             validate:testType="floatNumericRange" />
 
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="180"
-            android:dialogMessage="@string/iTime_summary"
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime"
-            android:title="@string/iTime_title"
-            validate:floatmaxNumber="1500"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
 
-
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="2"
-            android:dialogMessage="@string/iTime_Starting_Bolus_summary"
-            android:inputType="numberDecimal"
-            android:key="@string/key_iTime_Starting_Bolus"
-            android:title="@string/iTime_Starting_Bolus_title"
-            validate:floatmaxNumber="5"
-            validate:floatminNumber="0"
-            validate:testType="floatNumericRange" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="150"
-            android:dialogMessage="Value in % of increase the basal profile to determine the value of MaxSmb size with AIMI_UAM. If this SMB is send, the interval with the next SMB will be 20 minutes."
-            android:inputType="numberDecimal"
-            android:key="@string/key_use_AIMI_CAP"
-            android:title="MaxSmb size AIMI_UAM : % of basal profile between 50% and 2000%"
-            validate:floatmaxNumber="2000"
-            validate:floatminNumber="50"
-            validate:testType="floatNumericRange" />
 
         <SwitchPreference
             android:defaultValue="false"
-            android:key="@string/key_use_enable_mssv"
-            android:title="Enable the variation of max smb size"
-            android:summary="If it's enable mssv will discrease the value when TIR low during the last hour > 5%, or if the target have changed for a higher one and the basal value discrease. The opposite is true about lowering the target, that will increase the basal value and increase the mssv value until +100% of the initial value in the settings. If it's disable, the calculation will be using constant value, basal from the profile and the mssv settings in the preferences." />
+            android:key="@string/key_use_enable_circadian"
+            android:title="Enable the circadian model"
+            android:summary="Enable circadian model on the ISF calculation and the basal profile" />
 
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_countsteps"
-            android:title="Enable counting steps"
-            android:summary="This option will enable the function counting steps from the hardware of your android phone. The action will be increasing the ISF and the target, discreasing the basal." />
 
         <SwitchPreference
             android:defaultValue="false"
@@ -185,27 +267,10 @@
 
         <SwitchPreference
             android:defaultValue="false"
-            android:key="@string/key_use_newSMB"
-            android:title="new smb aimi calculation"
-            android:summary="new smb aimi calculation" />
-
-        <SwitchPreference
-            android:defaultValue="false"
+            android:dependency="@string/key_use_AimiUAM"
             android:key="@string/key_use_AimiIgnoreCOB"
             android:title="Ignore COB"
             android:summary="Ignore COB value for all calculations, only triggering Full UAM mode." />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_AimiBreak"
-            android:title="Break SMB 10 minutes"
-            android:summary="If smb = 0,6 * max_smb_size or if you received 2 smb in the same hour, the interval change for 10 minutes" />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_AimiIOBpredBG"
-            android:title="BFIOB"
-            android:summary="Using the IOBpredBG instead of UAMpredBG during the breakfast" />
 
         <SwitchPreference
             android:defaultValue="false"
@@ -213,59 +278,11 @@
             android:title="Use AIMI FULL UAM"
             android:summary="Enable the Full UAM code to define the size of the SMB. Need iTime true with an SMB >= iTime_Starting_Bolus" />
 
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_AimiPower"
-            android:title="Use AIMI Power"
-            android:summary="Enable give the full AIMI UAM power during the iTime duration, disable give a 50% power answer during the iTime duration" />
-
-
-        <SwitchPreference
+       <SwitchPreference
             android:defaultValue="false"
             android:key="@string/key_use_smb"
             android:summary="@string/enable_smb_summary"
             android:title="@string/enable_smb" />
-
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_AimiUAM_ISF"
-            android:summary="Dependency with AIMI_UAM mode, active a faster scale ISF"
-            android:title="AIMI UAM Super ISF" />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_use_AIMI_BreakFastLight"
-            android:summary="Active with AIMI FULL UAM mode a smaller answer during the night and the morning"
-            android:title="AIMI UAM BreakFast Light/Night or for very small need give smaller SMB (for this case start time has to 1 and end time 23) " />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:dependency="@string/key_use_AIMI_BreakFastLight"
-            android:key="@string/key_use_disable_b30_BFL"
-            android:summary="Disable B30 if Breakfast Light is enable. In this case you will not get 500% basal after the first 20 minutes"
-            android:title="AIMI UAM BreakFast Light/Night B30 disable" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="6"
-            android:dialogMessage="Enter AIMI UAM Light Breakfast start time in 24h e.g. 6AM is 6"
-            android:inputType="number"
-            android:key="@string/key_AIMI_BreakFastLight_timestart"
-            android:title="Start Time AIMI UAM Breakfast Light "
-            validate:maxNumber="23"
-            validate:minNumber="0"
-            validate:testType="numericRange" />
-
-        <info.nightscout.core.validators.ValidatingEditTextPreference
-            android:defaultValue="10"
-            android:dialogMessage="Enter AIMI UAM Light Breakfast end time in 24h e.g. 5AM is 10"
-            android:inputType="number"
-            android:key="@string/key_AIMI_BreakFastLight_timeend"
-            android:title="End Time AIMI UAM Breakfast Light"
-            validate:maxNumber="23"
-            validate:minNumber="0"
-            validate:testType="numericRange" />
-
 
         <SwitchPreference
             android:defaultValue="false"
@@ -431,76 +448,6 @@
                 android:title="@string/openapsama_current_basal_safety_multiplier"
                 validate:floatmaxNumber="20"
                 validate:floatminNumber="1"
-                validate:testType="floatNumericRange" />
-
-            <info.nightscout.core.validators.ValidatingEditTextPreference
-                android:defaultValue="0.5"
-                android:dialogMessage="@string/openapsama_smb_delivery_ratio_summary"
-                android:digits="0123456789.,"
-                android:inputType="number"
-                android:key="@string/key_openapsama_smb_delivery_ratio"
-                android:maxLines="20"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:title="@string/openapsama_smb_delivery_ratio"
-                validate:floatmaxNumber="1"
-                validate:floatminNumber="0.1"
-                validate:testType="floatNumericRange" />
-
-            <info.nightscout.core.validators.ValidatingEditTextPreference
-                android:defaultValue="0.5"
-                android:dialogMessage="@string/openapsama_smb_delivery_ratio_min_summary"
-                android:digits="0123456789.,"
-                android:inputType="number"
-                android:key="@string/key_openapsama_smb_delivery_ratio_min"
-                android:maxLines="20"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:title="@string/openapsama_smb_delivery_ratio_min"
-                validate:floatmaxNumber="1"
-                validate:floatminNumber="0.1"
-                validate:testType="floatNumericRange" />
-
-            <info.nightscout.core.validators.ValidatingEditTextPreference
-                android:defaultValue="0.7"
-                android:dialogMessage="@string/openapsama_smb_delivery_ratio_max_summary"
-                android:digits="0123456789.,"
-                android:inputType="number"
-                android:key="@string/key_openapsama_smb_delivery_ratio_max"
-                android:maxLines="20"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:title="@string/openapsama_smb_delivery_ratio_max"
-                validate:floatmaxNumber="1"
-                validate:floatminNumber="0.1"
-                validate:testType="floatNumericRange" />
-
-            <info.nightscout.core.validators.ValidatingEditTextPreference
-                android:defaultValue="40"
-                android:dialogMessage="@string/openapsama_smb_delivery_ratio_bg_range_summary"
-                android:digits="0123456789.,"
-                android:inputType="number"
-                android:key="@string/key_openapsama_smb_delivery_ratio_bg_range"
-                android:maxLines="20"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:title="@string/openapsama_smb_delivery_ratio_bg_range"
-                validate:floatmaxNumber="100"
-                validate:floatminNumber="0"
-                validate:testType="floatNumericRange" />
-
-            <info.nightscout.core.validators.ValidatingEditTextPreference
-                android:defaultValue="1"
-                android:dialogMessage="@string/openapsama_smb_max_range_extension_summary"
-                android:digits="0123456789.,"
-                android:inputType="number"
-                android:key="@string/key_openapsama_smb_max_range_extension"
-                android:maxLines="20"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:title="@string/openapsama_smb_max_range_extension"
-                validate:floatmaxNumber="1.2"
-                validate:floatminNumber="0.8"
                 validate:testType="floatNumericRange" />
 
         </androidx.preference.PreferenceScreen>

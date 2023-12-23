@@ -3,7 +3,6 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-kapt'
     id 'kotlin-allopen'
-    id 'com.hiya.jacoco-android'
 }
 
 apply from: "${project.rootDir}/core/main/android_dependencies.gradle"
@@ -23,8 +22,8 @@ dependencies {
     implementation project(':core:utils')
     implementation project(':core:validators')
     implementation project(':pump:pump-common')
-    implementation project(':pump:pump-core')
     implementation project(':pump:rileylink')
-    implementation project(path: ':core:main')
+
+    testImplementation project(':app-wear-shared:shared-tests')
     testImplementation project(':database:impl')
 }

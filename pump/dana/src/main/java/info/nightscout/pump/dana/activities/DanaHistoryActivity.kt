@@ -2,17 +2,19 @@ package info.nightscout.pump.dana.activities
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import androidx.core.view.MenuProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import dagger.android.support.DaggerAppCompatActivity
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.utils.fabric.FabricPrivacy
-import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.pump.defs.PumpType
 import info.nightscout.interfaces.queue.Callback
@@ -30,6 +32,7 @@ import info.nightscout.rx.events.EventDanaRSyncStatus
 import info.nightscout.rx.events.EventPumpStatusChanged
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.utils.DateUtil
 import info.nightscout.shared.utils.T
@@ -37,18 +40,20 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
 
-class DanaHistoryActivity : DaggerAppCompatActivity() {
+class DanaHistoryActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var profileFunction: ProfileFunction
+    @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var danaHistoryRecordDao: DanaHistoryRecordDao
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var aapsSchedulers: AapsSchedulers
+    @Inject lateinit var decimalFormatter: DecimalFormatter
 
     private val disposable = CompositeDisposable()
 
@@ -71,9 +76,9 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
             .toObservable(EventDanaRSyncStatus::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe({
-                aapsLogger.debug(LTag.PUMP, "EventDanaRSyncStatus: " + it.message)
-                binding.status.text = it.message
-            }, fabricPrivacy::logException)
+                           aapsLogger.debug(LTag.PUMP, "EventDanaRSyncStatus: " + it.message)
+                           binding.status.text = it.message
+                       }, fabricPrivacy::logException)
         swapAdapter(showingType)
     }
 
@@ -86,6 +91,10 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = DanarHistoryActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        title = rh.gs(info.nightscout.core.ui.R.string.pump_history)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
 
         binding.recyclerview.setHasFixedSize(true)
         binding.recyclerview.layoutManager = LinearLayoutManager(this)
@@ -133,6 +142,20 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
             showingType = selected.type
             swapAdapter(selected.type)
         }
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     inner class RecyclerViewAdapter internal constructor(private var historyList: List<DanaHistoryRecord>) : RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder>() {
@@ -143,7 +166,7 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
         override fun onBindViewHolder(holder: HistoryViewHolder, position: Int) {
             val record = historyList[position]
             holder.binding.time.text = dateUtil.dateAndTimeString(record.timestamp)
-            holder.binding.value.text = DecimalFormatter.to2Decimal(record.value)
+            holder.binding.value.text = decimalFormatter.to2Decimal(record.value)
             holder.binding.stringValue.text = record.stringValue
             holder.binding.bolusType.text = record.bolusType
             holder.binding.duration.text = record.duration.toString()
@@ -174,9 +197,9 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
                 }
 
                 RecordTypes.RECORD_TYPE_DAILY                                                                                                                                                              -> {
-                    holder.binding.dailyBasal.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBasal)
-                    holder.binding.dailyBolus.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBolus)
-                    holder.binding.dailyTotal.text = rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, record.dailyBolus + record.dailyBasal)
+                    holder.binding.dailyBasal.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBasal)
+                    holder.binding.dailyBolus.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBolus)
+                    holder.binding.dailyTotal.text = rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, record.dailyBolus + record.dailyBasal)
                     holder.binding.time.text = dateUtil.dateString(record.timestamp)
                     holder.binding.time.visibility = View.VISIBLE
                     holder.binding.value.visibility = View.GONE
@@ -190,7 +213,7 @@ class DanaHistoryActivity : DaggerAppCompatActivity() {
                 }
 
                 RecordTypes.RECORD_TYPE_GLUCOSE                                                                                                                                                            -> {
-                    holder.binding.value.text = Profile.toUnitsString(record.value, record.value * Constants.MGDL_TO_MMOLL, profileFunction.getUnits())
+                    holder.binding.value.text = profileUtil.fromMgdlToStringInUnits(record.value)
                     holder.binding.time.visibility = View.VISIBLE
                     holder.binding.value.visibility = View.VISIBLE
                     holder.binding.stringValue.visibility = View.GONE

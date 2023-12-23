@@ -10,7 +10,9 @@ import info.nightscout.core.graph.data.CarbsDataPoint
 import info.nightscout.core.graph.data.DataPointWithLabelInterface
 import info.nightscout.core.graph.data.EffectiveProfileSwitchDataPoint
 import info.nightscout.core.graph.data.ExtendedBolusDataPoint
+import info.nightscout.core.graph.data.HeartRateDataPoint
 import info.nightscout.core.graph.data.PointsWithLabelGraphSeries
+import info.nightscout.core.graph.data.StepsDataPoint
 import info.nightscout.core.graph.data.TherapyEventDataPoint
 import info.nightscout.core.utils.receivers.DataWorkerStorage
 import info.nightscout.core.utils.worker.LoggingWorker
@@ -22,10 +24,10 @@ import info.nightscout.interfaces.GlucoseUnit
 import info.nightscout.interfaces.Translator
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.profile.DefaultValueHelper
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.profile.ProfileFunction
+import info.nightscout.interfaces.utils.DecimalFormatter
 import info.nightscout.interfaces.utils.Round
 import info.nightscout.rx.bus.RxBus
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.utils.T
 import kotlinx.coroutines.Dispatchers
@@ -37,13 +39,14 @@ class PrepareTreatmentsDataWorker(
 ) : LoggingWorker(context, params, Dispatchers.Default) {
 
     @Inject lateinit var dataWorkerStorage: DataWorkerStorage
-    @Inject lateinit var profileFunction: ProfileFunction
+    @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var translator: Translator
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var repository: AppRepository
     @Inject lateinit var defaultValueHelper: DefaultValueHelper
+    @Inject lateinit var decimalFormatter: DecimalFormatter
 
     class PrepareTreatmentsData(
         val overviewData: OverviewData
@@ -64,8 +67,8 @@ class PrepareTreatmentsDataWorker(
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
         repository.getBolusesDataFromTimeToTime(fromTime, endTime, true).blockingGet()
-            .map { BolusDataPoint(it, rh, activePlugin, defaultValueHelper) }
-            .filter { it.data.type == Bolus.Type.NORMAL || it.data.type == Bolus.Type.SMB || it.data.type == Bolus.Type.TBR}
+            .map { BolusDataPoint(it, rh, activePlugin, defaultValueHelper, decimalFormatter) }
+            .filter { it.data.type == Bolus.Type.NORMAL || it.data.type == Bolus.Type.SMB }
             .forEach {
                 it.y = getNearestBg(data.overviewData, it.x.toLong())
                 filteredTreatments.add(it)
@@ -91,7 +94,7 @@ class PrepareTreatmentsDataWorker(
                 TherapyEventDataPoint(
                     TherapyEvent(timestamp = it.timestamp, duration = it.duration, type = TherapyEvent.Type.APS_OFFLINE, glucoseUnit = TherapyEvent.GlucoseUnit.MMOL),
                     rh,
-                    profileFunction,
+                    profileUtil,
                     translator
                 )
             }
@@ -100,7 +103,7 @@ class PrepareTreatmentsDataWorker(
         // Extended bolus
         if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) {
             repository.getExtendedBolusDataFromTimeToTime(fromTime, endTime, true).blockingGet()
-                .map { ExtendedBolusDataPoint(it, rh) }
+                .map { ExtendedBolusDataPoint(it, rh, decimalFormatter) }
                 .filter { it.duration != 0L }
                 .forEach {
                     it.y = getNearestBg(data.overviewData, it.x.toLong())
@@ -110,7 +113,7 @@ class PrepareTreatmentsDataWorker(
 
         // Careportal
         repository.compatGetTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), endTime).blockingGet()
-            .map { TherapyEventDataPoint(it, rh, profileFunction, translator) }
+            .map { TherapyEventDataPoint(it, rh, profileUtil, translator) }
             .filterTimeframe(fromTime, endTime)
             .forEach {
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
@@ -129,21 +132,31 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 
+        data.overviewData.heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
+            repository.getHeartRatesFromTimeToTime(fromTime, endTime)
+                .map { hr -> HeartRateDataPoint(hr, rh) }
+                .toTypedArray()).apply { color = rh.gac(null, info.nightscout.core.ui.R.attr.heartRateColor) }
+
+        data.overviewData.stepsCountGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
+            repository.getStepsCountFromTimeToTime(fromTime, endTime)
+                .map { steps -> StepsDataPoint(steps, rh) }
+                .toTypedArray()).apply { color = rh.gac(null, info.nightscout.core.ui.R.attr.stepsColor) }
+
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_TREATMENTS_DATA, 100, null))
         return Result.success()
     }
 
     private fun addUpperChartMargin(maxBgValue: Double) =
-        if (profileFunction.getUnits() == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
+        if (profileUtil.units == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
 
     private fun getNearestBg(overviewData: OverviewData, date: Long): Double {
         overviewData.bgReadingsArray.let { bgReadingsArray ->
             for (reading in bgReadingsArray) {
                 if (reading.timestamp > date) continue
-                return Profile.fromMgdlToUnits(reading.value, profileFunction.getUnits())
+                return profileUtil.fromMgdlToUnits(reading.value)
             }
-            return if (bgReadingsArray.isNotEmpty()) Profile.fromMgdlToUnits(bgReadingsArray[0].value, profileFunction.getUnits())
-            else Profile.fromMgdlToUnits(100.0, profileFunction.getUnits())
+            return if (bgReadingsArray.isNotEmpty()) profileUtil.fromMgdlToUnits(bgReadingsArray[0].value)
+            else profileUtil.fromMgdlToUnits(100.0)
         }
     }
 

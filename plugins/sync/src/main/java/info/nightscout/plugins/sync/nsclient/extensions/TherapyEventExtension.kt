@@ -1,9 +1,9 @@
 package info.nightscout.plugins.sync.nsclient.extensions
 
+import info.nightscout.core.utils.JsonHelper
 import info.nightscout.database.entities.TherapyEvent
 import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.GlucoseUnit
-import info.nightscout.interfaces.utils.JsonHelper
 import info.nightscout.plugins.sync.nsclient.data.NSMbg
 import info.nightscout.shared.utils.DateUtil
 import info.nightscout.shared.utils.T
@@ -20,7 +20,8 @@ fun therapyEventFromNsMbg(mbg: NSMbg) =
         glucose = mbg.mbg,
         glucoseUnit = TherapyEvent.GlucoseUnit.MGDL
     )
-fun therapyEventFromJson(jsonObject: JSONObject): TherapyEvent? {
+
+fun TherapyEvent.Companion.fromJson(jsonObject: JSONObject): TherapyEvent? {
     val glucoseUnit = if (JsonHelper.safeGetString(jsonObject, "units", Constants.MGDL) == Constants.MGDL) TherapyEvent.GlucoseUnit.MGDL else TherapyEvent.GlucoseUnit.MMOL
     val timestamp = JsonHelper.safeGetLongAllowNull(jsonObject, "mills", null) ?: return null
     val type = TherapyEvent.Type.fromString(JsonHelper.safeGetString(jsonObject, "eventType", TherapyEvent.Type.NONE.text))

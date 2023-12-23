@@ -18,11 +18,10 @@ import info.nightscout.interfaces.source.BgSource
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.T
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
-import java.lang.Math.random
+import java.security.SecureRandom
 import java.util.Calendar
 import java.util.GregorianCalendar
 import javax.inject.Inject
@@ -35,7 +34,6 @@ class RandomBgPlugin @Inject constructor(
     injector: HasAndroidInjector,
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
-    private val sp: SP,
     private val repository: AppRepository,
     private val virtualPump: VirtualPump,
     private val config: Config
@@ -44,9 +42,9 @@ class RandomBgPlugin @Inject constructor(
         .mainType(PluginType.BGSOURCE)
         .fragmentClass(BGSourceFragment::class.java.name)
         .pluginIcon(R.drawable.ic_dice)
+        .preferencesId(R.xml.pref_bgsource)
         .pluginName(R.string.random_bg)
         .shortName(R.string.random_bg_short)
-        .preferencesId(R.xml.pref_bgsource)
         .description(R.string.description_source_random_bg),
     aapsLogger, rh, injector
 ), BgSource {
@@ -73,9 +71,6 @@ class RandomBgPlugin @Inject constructor(
 
     override fun advancedFilteringSupported(): Boolean = true
 
-    override fun shouldUploadToNs(glucoseValue: GlucoseValue): Boolean =
-        glucoseValue.sourceSensor == GlucoseValue.SourceSensor.RANDOM && sp.getBoolean(info.nightscout.core.utils.R.string.key_do_ns_upload, false)
-
     override fun onStart() {
         super.onStart()
         val cal = GregorianCalendar()
@@ -100,7 +95,7 @@ class RandomBgPlugin @Inject constructor(
 
         val cal = GregorianCalendar()
         val currentMinute = cal[Calendar.MINUTE] + (cal[Calendar.HOUR_OF_DAY] % 2) * 60
-        val bgMgdl = min + ((max - min) + (max - min) * sin(currentMinute / period * 2 * PI)) / 2 + (random() - 0.5) * (max - min) * 0.4
+        val bgMgdl = min + ((max - min) + (max - min) * sin(currentMinute / period * 2 * PI)) / 2 + (SecureRandom().nextDouble() - 0.5) * (max - min) * 0.4
 
         cal[Calendar.MILLISECOND] = 0
         cal[Calendar.SECOND] = 0
@@ -111,14 +106,12 @@ class RandomBgPlugin @Inject constructor(
             value = bgMgdl,
             raw = 0.0,
             noise = null,
-            trendArrow = GlucoseValue.TrendArrow.NONE,
+            trendArrow = GlucoseValue.TrendArrow.values().toList().shuffled().first(),
             sourceSensor = GlucoseValue.SourceSensor.RANDOM
         )
         disposable += repository.runTransactionForResult(CgmSourceTransaction(glucoseValues, emptyList(), null))
             .subscribe({ savedValues ->
-                           savedValues.inserted.forEach {
-                               aapsLogger.debug(LTag.DATABASE, "Inserted bg $it")
-                           }
+                           savedValues.inserted.forEach { aapsLogger.debug(LTag.DATABASE, "Inserted bg $it") }
                        }, { aapsLogger.error(LTag.DATABASE, "Error while saving values from Random plugin", it) }
             )
     }

@@ -4,10 +4,10 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.collection.LongSparseArray
-import info.nightscout.androidaps.annotations.OpenForTesting
-import info.nightscout.shared.interfaces.ResourceHelper
+import info.nightscout.annotations.OpenForTesting
 import info.nightscout.shared.R
 import info.nightscout.shared.SafeParse
+import info.nightscout.shared.interfaces.ResourceHelper
 import org.apache.commons.lang3.time.DateUtils.isSameDay
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
@@ -101,9 +101,9 @@ class DateUtil @Inject constructor(private val context: Context) {
         return calendar.timeInMillis
     }
 
-    fun toSeconds(hh_colon_mm: String): Int {
+    fun toSeconds(hhColonMm: String): Int {
         val p = Pattern.compile("(\\d+):(\\d+)( a.m.| p.m.| AM| PM|AM|PM|)")
-        val m = p.matcher(hh_colon_mm)
+        val m = p.matcher(hhColonMm)
         var retVal = 0
         if (m.find()) {
             retVal = SafeParse.stringToInt(m.group(1)) * 60 * 60 + SafeParse.stringToInt(m.group(2)) * 60
@@ -124,10 +124,10 @@ class DateUtil @Inject constructor(private val context: Context) {
         val beginOfToday = beginOfDay(now())
         return if (mills < now()) // Past
             when {
-                mills > beginOfToday                     -> rh.gs(R.string.today)
+                mills > beginOfToday -> rh.gs(R.string.today)
                 mills > beginOfToday - T.days(1).msecs() -> rh.gs(R.string.yesterday)
                 mills > beginOfToday - T.days(7).msecs() -> dayAgo(mills, rh, true)
-                else                                     -> day
+                else -> day
             }
         else // Future
             when {
@@ -155,6 +155,10 @@ class DateUtil @Inject constructor(private val context: Context) {
         return DateTime(mills).toString(DateTimeFormat.forPattern(format))
     }
 
+    fun secondString(): String = secondString(now())
+    fun secondString(mills: Long): String =
+        DateTime(mills).toString(DateTimeFormat.forPattern("ss"))
+
     fun minuteString(): String = minuteString(now())
     fun minuteString(mills: Long): String =
         DateTime(mills).toString(DateTimeFormat.forPattern("mm"))
@@ -172,17 +176,17 @@ class DateUtil @Inject constructor(private val context: Context) {
     fun amPm(mills: Long): String =
         DateTime(mills).toString(DateTimeFormat.forPattern("a"))
 
-    fun dayNameString(): String = dayNameString(now())
-    fun dayNameString(mills: Long): String =
-        DateTime(mills).toString(DateTimeFormat.forPattern("E"))
+    fun dayNameString(format: String = "E"): String = dayNameString(now(), format)
+    fun dayNameString(mills: Long, format: String = "E"): String =
+        DateTime(mills).toString(DateTimeFormat.forPattern(format))
 
     fun dayString(): String = dayString(now())
     fun dayString(mills: Long): String =
         DateTime(mills).toString(DateTimeFormat.forPattern("dd"))
 
-    fun monthString(): String = monthString(now())
-    fun monthString(mills: Long): String =
-        DateTime(mills).toString(DateTimeFormat.forPattern("MMM"))
+    fun monthString(format: String = "MMM"): String = monthString(now(), format)
+    fun monthString(mills: Long, format: String = "MMM"): String =
+        DateTime(mills).toString(DateTimeFormat.forPattern(format))
 
     fun weekString(): String = weekString(now())
     fun weekString(mills: Long): String =
@@ -343,8 +347,8 @@ class DateUtil @Inject constructor(private val context: Context) {
             minutes = rh.gs(R.string.shortminute)
         }
         var result = ""
-        if (diff[TimeUnit.DAYS]!! > 0) result += diff[TimeUnit.DAYS].toString() + days
-        if (diff[TimeUnit.HOURS]!! > 0) result += diff[TimeUnit.HOURS].toString() + hours
+        if (diff.getOrDefault(TimeUnit.DAYS, -1) > 0) result += diff[TimeUnit.DAYS].toString() + days
+        if (diff.getOrDefault(TimeUnit.HOURS, -1) > 0) result += diff[TimeUnit.HOURS].toString() + hours
         if (diff[TimeUnit.DAYS] == 0L) result += diff[TimeUnit.MINUTES].toString() + minutes
         return result
     }
@@ -369,6 +373,7 @@ class DateUtil @Inject constructor(private val context: Context) {
                     if (t > 28) {
                         unit = rh.gs(R.string.unit_week)
                         t /= 7
+                        @Suppress("KotlinConstantConditions")
                         if (t != 1L) unit = rh.gs(R.string.unit_weeks)
                     }
                 }
@@ -407,8 +412,8 @@ class DateUtil @Inject constructor(private val context: Context) {
         } else {
             thisDf = DecimalFormat("#", dfs)
         }
-        thisDf!!.maximumFractionDigits = digits
-        return thisDf.format(x)
+        thisDf?.maximumFractionDigits = digits
+        return thisDf?.format(x) ?: ""
     }
 
     fun formatHHMM(timeAsSeconds: Int): String {
@@ -433,9 +438,9 @@ class DateUtil @Inject constructor(private val context: Context) {
     fun timeStampToUtcDateMillis(timestamp: Long): Long {
         val current = Calendar.getInstance().apply { timeInMillis = timestamp }
         return Calendar.getInstance().apply {
-            set(Calendar.YEAR, current.get(Calendar.YEAR))
-            set(Calendar.MONTH, current.get(Calendar.MONTH))
-            set(Calendar.DAY_OF_MONTH, current.get(Calendar.DAY_OF_MONTH))
+            set(Calendar.YEAR, current[Calendar.YEAR])
+            set(Calendar.MONTH, current[Calendar.MONTH])
+            set(Calendar.DAY_OF_MONTH, current[Calendar.DAY_OF_MONTH])
         }.timeInMillis
     }
 
@@ -443,9 +448,9 @@ class DateUtil @Inject constructor(private val context: Context) {
         val selected = Calendar.getInstance().apply { timeInMillis = dateUtcMillis }
         return Calendar.getInstance().apply {
             timeInMillis = timestamp
-            set(Calendar.YEAR, selected.get(Calendar.YEAR))
-            set(Calendar.MONTH, selected.get(Calendar.MONTH))
-            set(Calendar.DAY_OF_MONTH, selected.get(Calendar.DAY_OF_MONTH))
+            set(Calendar.YEAR, selected[Calendar.YEAR])
+            set(Calendar.MONTH, selected[Calendar.MONTH])
+            set(Calendar.DAY_OF_MONTH, selected[Calendar.DAY_OF_MONTH])
         }.timeInMillis
     }
 

@@ -7,8 +7,6 @@ import dagger.multibindings.IntoMap
 import info.nightscout.androidaps.danaRKorean.DanaRKoreanPlugin
 import info.nightscout.androidaps.danaRv2.DanaRv2Plugin
 import info.nightscout.androidaps.danar.DanaRPlugin
-import info.nightscout.androidaps.plugins.aps.loop.LoopPlugin
-import info.nightscout.plugins.aps.openAPSaiSMB.OpenAPSaiSMBPlugin
 import info.nightscout.plugins.sync.openhumans.OpenHumansUploaderPlugin
 import info.nightscout.androidaps.plugins.pump.eopatch.EopatchPumpPlugin
 import info.nightscout.androidaps.plugins.pump.insight.LocalInsightPlugin
@@ -29,6 +27,7 @@ import info.nightscout.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
 import info.nightscout.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import info.nightscout.plugins.aps.openAPSSMBDynamicISF.OpenAPSSMBDynamicISFPlugin
 import info.nightscout.plugins.aps.aimi.AIMIPlugin
+import info.nightscout.plugins.aps.loop.LoopPlugin
 import info.nightscout.plugins.constraints.bgQualityCheck.BgQualityCheckPlugin
 import info.nightscout.plugins.constraints.objectives.ObjectivesPlugin
 import info.nightscout.plugins.constraints.safety.SafetyPlugin
@@ -50,6 +49,7 @@ import info.nightscout.plugins.sync.tidepool.TidepoolPlugin
 import info.nightscout.plugins.sync.xdrip.XdripPlugin
 import info.nightscout.pump.combo.ComboPlugin
 import info.nightscout.pump.combov2.ComboV2Plugin
+import info.nightscout.pump.medtrum.MedtrumPlugin
 import info.nightscout.pump.diaconn.DiaconnG8Plugin
 import info.nightscout.pump.virtual.VirtualPumpPlugin
 import info.nightscout.sensitivity.SensitivityAAPSPlugin
@@ -210,6 +210,12 @@ abstract class PluginsListModule {
     abstract fun bindEopatchPumpPlugin(plugin: EopatchPumpPlugin): PluginBase
 
     @Binds
+    @PumpDriver
+    @IntoMap
+    @IntKey(160)
+    abstract fun bindMedtrumPlugin(plugin: MedtrumPlugin): PluginBase
+
+    @Binds
     @AllConfigs
     @IntoMap
     @IntKey(170)
@@ -245,11 +251,6 @@ abstract class PluginsListModule {
     @IntKey(230)
     abstract fun bindAIMIPlugin(plugin: AIMIPlugin): PluginBase
 
-    @Binds
-    @Unfinished
-    @IntoMap
-    @IntKey(223)
-    abstract fun bindOpenAPSaiSMBPlugin(plugin: OpenAPSaiSMBPlugin): PluginBase
 
     @Binds
     @AllConfigs

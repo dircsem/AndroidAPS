@@ -1,29 +1,26 @@
 package info.nightscout.configuration.maintenance.activities
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import dagger.android.support.DaggerAppCompatActivity
 import info.nightscout.configuration.R
 import info.nightscout.configuration.databinding.MaintenanceImportListActivityBinding
 import info.nightscout.configuration.databinding.MaintenanceImportListItemBinding
 import info.nightscout.configuration.maintenance.PrefsFileContract
-import info.nightscout.core.ui.locale.LocaleHelper
+import info.nightscout.configuration.maintenance.PrefsMetadataKeyImpl
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.interfaces.maintenance.PrefFileListProvider
 import info.nightscout.interfaces.maintenance.PrefsFile
-import info.nightscout.interfaces.maintenance.PrefsMetadataKey
-import info.nightscout.interfaces.maintenance.PrefsStatus
+import info.nightscout.interfaces.maintenance.PrefsStatusImpl
 import info.nightscout.shared.interfaces.ResourceHelper
 import javax.inject.Inject
 
-class PrefImportListActivity : DaggerAppCompatActivity() {
+class PrefImportListActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var prefFileListProvider: PrefFileListProvider
@@ -85,39 +82,27 @@ class PrefImportListActivity : DaggerAppCompatActivity() {
                 metaDateTimeIcon.visibility = View.VISIBLE
                 metaAppVersion.visibility = View.VISIBLE
 
-                prefFile.metadata[PrefsMetadataKey.AAPS_FLAVOUR]?.let {
+                prefFile.metadata[PrefsMetadataKeyImpl.AAPS_FLAVOUR]?.let {
                     metaVariantFormat.text = it.value
-                    val colorAttr = if (it.status == PrefsStatus.OK) info.nightscout.core.ui.R.attr.metadataTextOkColor else info.nightscout.core.ui.R.attr.metadataTextWarningColor
+                    val colorAttr = if (it.status == PrefsStatusImpl.OK) info.nightscout.core.ui.R.attr.metadataTextOkColor else info.nightscout.core.ui.R.attr.metadataTextWarningColor
                     metaVariantFormat.setTextColor(rh.gac(metaVariantFormat.context, colorAttr))
                 }
 
-                prefFile.metadata[PrefsMetadataKey.CREATED_AT]?.let {
+                prefFile.metadata[PrefsMetadataKeyImpl.CREATED_AT]?.let {
                     metaDateTime.text = prefFileListProvider.formatExportedAgo(it.value)
                 }
 
-                prefFile.metadata[PrefsMetadataKey.AAPS_VERSION]?.let {
+                prefFile.metadata[PrefsMetadataKeyImpl.AAPS_VERSION]?.let {
                     metaAppVersion.text = it.value
-                    val colorAttr = if (it.status == PrefsStatus.OK) info.nightscout.core.ui.R.attr.metadataTextOkColor else info.nightscout.core.ui.R.attr.metadataTextWarningColor
+                    val colorAttr = if (it.status == PrefsStatusImpl.OK) info.nightscout.core.ui.R.attr.metadataTextOkColor else info.nightscout.core.ui.R.attr.metadataTextWarningColor
                     metaAppVersion.setTextColor(rh.gac(metaVariantFormat.context, colorAttr))
                 }
 
-                prefFile.metadata[PrefsMetadataKey.DEVICE_NAME]?.let {
+                prefFile.metadata[PrefsMetadataKeyImpl.DEVICE_NAME]?.let {
                     metaDeviceName.text = it.value
                 }
 
             }
         }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
-    }
-
-    override fun attachBaseContext(newBase: Context) {
-        super.attachBaseContext(LocaleHelper.wrap(newBase))
     }
 }

@@ -34,6 +34,7 @@ import info.nightscout.interfaces.iob.IobTotal
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.profile.DefaultValueHelper
 import info.nightscout.interfaces.profile.ProfileFunction
+import info.nightscout.interfaces.utils.DecimalFormatter
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
@@ -52,7 +53,8 @@ class OverviewDataImpl @Inject constructor(
     private val activePlugin: ActivePlugin,
     private val defaultValueHelper: DefaultValueHelper,
     private val profileFunction: ProfileFunction,
-    private val repository: AppRepository
+    private val repository: AppRepository,
+    private val decimalFormatter: DecimalFormatter
 ) : OverviewData {
 
     override var rangeToDisplay = 6 // for graph
@@ -64,6 +66,7 @@ class OverviewDataImpl @Inject constructor(
         pumpStatus = ""
         calcProgressPct = 100
         bgReadingsArray = ArrayList()
+        maxBgValue = Double.MIN_VALUE
         bucketedGraphSeries = PointsWithLabelGraphSeries()
         bgReadingGraphSeries = PointsWithLabelGraphSeries()
         predictionsGraphSeries = PointsWithLabelGraphSeries()
@@ -71,22 +74,38 @@ class OverviewDataImpl @Inject constructor(
         tempBasalGraphSeries = LineGraphSeries()
         basalLineGraphSeries = LineGraphSeries()
         absoluteBasalGraphSeries = LineGraphSeries()
+        temporaryTargetSeries = LineGraphSeries()
+        maxIAValue = 0.0
         activitySeries = FixedLineGraphSeries()
         activityPredictionSeries = FixedLineGraphSeries()
+        maxIobValueFound = Double.MIN_VALUE
         iobSeries = FixedLineGraphSeries()
         absIobSeries = FixedLineGraphSeries()
         iobPredictions1Series = PointsWithLabelGraphSeries()
         //iobPredictions2Series = PointsWithLabelGraphSeries()
+        maxBGIValue = Double.MIN_VALUE
         minusBgiSeries = FixedLineGraphSeries()
         minusBgiHistSeries = FixedLineGraphSeries()
+        maxCobValueFound = Double.MIN_VALUE
         cobSeries = FixedLineGraphSeries()
         cobMinFailOverSeries = PointsWithLabelGraphSeries()
+        maxDevValueFound = Double.MIN_VALUE
         deviationsSeries = BarGraphSeries()
+        maxRatioValueFound = 5.0                    //even if sens data equals 0 for all the period, minimum scale is between 95% and 105%
+        minRatioValueFound = -maxRatioValueFound
         ratioSeries = LineGraphSeries()
+        maxFromMaxValueFound = Double.MIN_VALUE
+        maxFromMinValueFound = Double.MIN_VALUE
         dsMaxSeries = LineGraphSeries()
         dsMinSeries = LineGraphSeries()
+        maxTreatmentsValue = 0.0
         treatmentsSeries = PointsWithLabelGraphSeries()
+        maxEpsValue = 0.0
         epsSeries = PointsWithLabelGraphSeries()
+        maxTherapyEventValue = 0.0
+        therapyEventSeries = PointsWithLabelGraphSeries()
+        heartRateGraphSeries = PointsWithLabelGraphSeries()
+        stepsCountGraphSeries = PointsWithLabelGraphSeries()
     }
 
     override fun initRange() {
@@ -122,11 +141,11 @@ class OverviewDataImpl @Inject constructor(
      */
 
     override fun lastBg(autosensDataStore: AutosensDataStore): InMemoryGlucoseValue? =
-        autosensDataStore.bucketedData?.let { if (it.size > 0) it[0] else null }
-    // repository.getLastGlucoseValueWrapped().blockingGet().let { gvWrapped ->
-    //     if (gvWrapped is ValueWrapper.Existing) gvWrapped.value
-    //     else null
-    // }
+        autosensDataStore.bucketedData?.firstOrNull()
+            ?: repository.getLastGlucoseValueWrapped().blockingGet().let { gvWrapped ->
+                if (gvWrapped is ValueWrapper.Existing) InMemoryGlucoseValue(gvWrapped.value)
+                else null
+            }
 
     override fun isLow(autosensDataStore: AutosensDataStore): Boolean =
         lastBg(autosensDataStore)?.let { lastBg ->
@@ -166,7 +185,7 @@ class OverviewDataImpl @Inject constructor(
         profileFunction.getProfile()?.let { profile ->
             var temporaryBasal = iobCobCalculator.getTempBasalIncludingConvertedExtended(dateUtil.now())
             if (temporaryBasal?.isInProgress == false) temporaryBasal = null
-            temporaryBasal?.let { "T:" + it.toStringShort() }
+            temporaryBasal?.let { "T:" + it.toStringShort(decimalFormatter) }
                 ?: rh.gs(info.nightscout.core.ui.R.string.pump_base_basal_rate, profile.getBasal())
         } ?: rh.gs(info.nightscout.core.ui.R.string.value_unavailable_short)
 
@@ -174,7 +193,7 @@ class OverviewDataImpl @Inject constructor(
         profileFunction.getProfile()?.let { profile ->
             iobCobCalculator.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
                 "${rh.gs(info.nightscout.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(info.nightscout.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}" +
-                    "\n" + rh.gs(info.nightscout.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil)
+                    "\n" + rh.gs(info.nightscout.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil, decimalFormatter)
             }
                 ?: "${rh.gs(info.nightscout.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(info.nightscout.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}"
         } ?: rh.gs(info.nightscout.core.ui.R.string.value_unavailable_short)
@@ -211,7 +230,7 @@ class OverviewDataImpl @Inject constructor(
         } ?: ""
 
     override fun extendedBolusDialogText(iobCobCalculator: IobCobCalculator): String =
-        iobCobCalculator.getExtendedBolus(dateUtil.now())?.toStringFull(dateUtil) ?: ""
+        iobCobCalculator.getExtendedBolus(dateUtil.now())?.toStringFull(dateUtil, decimalFormatter) ?: ""
 
     /*
      * IOB, COB
@@ -227,12 +246,12 @@ class OverviewDataImpl @Inject constructor(
         }
 
     override fun iobText(iobCobCalculator: IobCobCalculator): String =
-        rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob + basalIob(iobCobCalculator).basaliob)
+        rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob + basalIob(iobCobCalculator).basaliob)
 
     override fun iobDialogText(iobCobCalculator: IobCobCalculator): String =
-        rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob + basalIob(iobCobCalculator).basaliob) + "\n" +
-            rh.gs(info.nightscout.core.ui.R.string.bolus) + ": " + rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob) + "\n" +
-            rh.gs(info.nightscout.core.ui.R.string.basal) + ": " + rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, basalIob(iobCobCalculator).basaliob)
+        rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob + basalIob(iobCobCalculator).basaliob) + "\n" +
+            rh.gs(info.nightscout.core.ui.R.string.bolus) + ": " + rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, bolusIob(iobCobCalculator).iob) + "\n" +
+            rh.gs(info.nightscout.core.ui.R.string.basal) + ": " + rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, basalIob(iobCobCalculator).basaliob)
 
     /*
      * TEMP TARGET
@@ -322,4 +341,8 @@ class OverviewDataImpl @Inject constructor(
     override val dsMinScale = Scale()
     override var dsMaxSeries: LineGraphSeries<ScaledDataPoint> = LineGraphSeries()
     override var dsMinSeries: LineGraphSeries<ScaledDataPoint> = LineGraphSeries()
+    override var heartRateScale = Scale()
+    override var heartRateGraphSeries: PointsWithLabelGraphSeries<DataPointWithLabelInterface> = PointsWithLabelGraphSeries()
+    override var stepsForScale = Scale()
+    override var stepsCountGraphSeries: PointsWithLabelGraphSeries<DataPointWithLabelInterface> = PointsWithLabelGraphSeries()
 }

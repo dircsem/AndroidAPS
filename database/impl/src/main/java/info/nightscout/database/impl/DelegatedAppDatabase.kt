@@ -6,6 +6,8 @@ import info.nightscout.database.entities.interfaces.DBEntry
 import info.nightscout.database.impl.daos.*
 import info.nightscout.database.impl.daos.delegated.*
 import info.nightscout.database.impl.daos.delegated.DelegatedHeartRateDao
+import info.nightscout.database.impl.daos.delegated.DelegatedStepsCountDao
+import info.nightscout.database.impl.daos.stepsCountDao
 
 internal class DelegatedAppDatabase(val changes: MutableList<DBEntry>, val database: AppDatabase) {
 
@@ -31,5 +33,6 @@ internal class DelegatedAppDatabase(val changes: MutableList<DBEntry>, val datab
     val offlineEventDao: OfflineEventDao = DelegatedOfflineEventDao(changes, database.offlineEventDao)
     val medLinkConfigDao: MedLinkDao = DelegatedMedLinkDao(changes, database.medLinkDao)
     val heartRateDao: HeartRateDao = DelegatedHeartRateDao(changes, database.heartRateDao)
+    val stepsCountDao: stepsCountDao = DelegatedStepsCountDao(changes, database.stepsCountDao)
     fun clearAllTables() = database.clearAllTables()
 }

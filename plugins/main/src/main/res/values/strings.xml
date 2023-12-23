@@ -31,6 +31,10 @@
     <string name="smscommunicator_otp_reset_header">Reset Authenticators</string>
     <string name="smscommunicator_otp_install_info">On each follower phone install Authenticator app that support RFC 6238 TOTP tokens. Popular free apps are:\n • Authy\n • Google Authenticator\n • LastPass Authenticator\n • FreeOTP Authenticator</string>
     <string name="smscommunicator_otp_reset_warning">By resetting authenticator you make all already provisioned authenticators invalid. You will need to set up them again!</string>
+    <string name="smscommunicator_otp_verification_ok">OK</string>
+    <string name="smscommunicator_otp_verification_ivalid_size">INVALID SIZE!</string>
+    <string name="smscommunicator_otp_verification_wrong_pin">WRONG PIN</string>
+    <string name="smscommunicator_otp_verification_wrong_otp">WRONG OTP</string>
     <string name="sms_wrong_code">Wrong code. Command cancelled.</string>
     <string name="sms_timeout_while_waiting">Timeout while waiting for finish of previous pump communication</string>
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
@@ -112,11 +116,7 @@
     <string name="sms_wrong_tbr_duration">TBR duration must be a multiple of %1$d minutes and greater than 0.</string>
     <string name="a11y_otp_qr_code">QR Code for setup one time password</string>
 
-    <string name="xdrip_status_detailed_iob_title">Show detailed IOB</string>
-    <string name="xdrip_status_detailed_iob_summary">Break down IOB into bolus and basal IOB on the watchface</string>
     <string name="disabled_loop">Loop Disabled</string>
-    <string name="xdrip_status_show_bgi_title">Show BGI</string>
-    <string name="xdrip_status_show_bgi_summary">Add BGI to status line</string>
 
     <!-- Food-->
     <string name="food_short">Food</string>
@@ -278,6 +278,7 @@
     <string name="short_tabtitles">Shorten tab titles</string>
     <string name="overview_show_notes_field_in_dialogs_title">Show notes field in treatment dialogs</string>
     <string name="deliverpartofboluswizard">Bolus wizard performs calculation but only this part of calculated insulin is delivered. Useful with SMB algorithm.</string>
+    <string name="deliver_part_of_boluswizard_reset_time">Deliver full bolus (100%) if glycemia is older than</string>
     <string name="enable_bolus_advisor">Enable bolus advisor</string>
     <string name="enable_bolus_advisor_summary">Use reminder to start eating later instead of wizard result during high glycemia ("pre-bolus")</string>
     <string name="enablesuperbolus">Enable superbolus in wizard</string>
@@ -291,6 +292,8 @@
 
     <string name="overview_show_predictions">Predictions</string>
     <string name="overview_show_treatments">Treatments</string>
+    <string name="overview_show_heartRate">Heart Rate</string>
+    <string name="overview_show_steps">STEPS</string>
     <string name="overview_show_deviation_slope">Deviation slope</string>
     <string name="overview_show_activity">Activity</string>
     <string name="overview_show_bgi">Blood Glucose Impact</string>
@@ -308,6 +311,8 @@
     <string name="abs_insulin_shortname">ABS</string>
     <string name="devslope_shortname">DEVSLOPE</string>
     <string name="treatments_shortname">TREAT</string>
+    <string name="heartRate_shortname">HR</string>
+    <string name="steps_shortname">STEPS</string>
     <string name="sensitivity_shortname">SENS</string>
     <string name="graph_scale">Graph scale</string>
     <string name="graph_menu_divider_header">Graph</string>
@@ -350,16 +355,23 @@
     <string name="wearcontrol_title">Controls from Watch</string>
     <string name="wearcontrol_summary">Set Temp-Targets and enter Treatments from the watch.</string>
     <string name="wear_wizard_settings_summary">Calculations included in the Wizard result:</string>
-    <string name="wear_display_settings">Display Settings</string>
     <string name="wear_general_settings">General Settings</string>
-    <string name="wear_detailed_delta_title">Show detailed delta</string>
-    <string name="wear_detailed_delta_summary">Show delta with one more decimal place</string>
     <string name="wear_notifysmb_title">Notify on SMB</string>
     <string name="wear_notifysmb_summary">Show SMB on the watch like a standard bolus.</string>
-    <string name="wear_predictions_summary">Show the predictions on the watchface.</string>
-    <string name="wear_predictions_title">Predictions</string>
+    <string name="wear_custom_watchface_settings">Custom Watchface Settings</string>
+    <string name="wear_custom_watchface_authorization_title">Custom Watchface Authorization</string>
+    <string name="wear_custom_watchface_authorization_summary">Authorize loaded custom watchface to change and lock some watch display settings to suit watchface design</string>
+    <string name="wear_custom_watchface">Custom Watchface: %1$s</string>
+    <string name="wear_load_watchface">Load Watchface</string>
+    <string name="wear_infos_watchface">Infos Watchface</string>
+    <string name="wear_export_watchface">Export template</string>
+    <string name="wear_new_custom_watchface_exported">Custom watchface template exported</string>
     <string name="resend_all_data">Resend All Data</string>
     <string name="open_settings_on_wear">Open Settings on Wear</string>
+    <string name="cwf_infos_pref_locked">List of prefs locked by the Watchface</string>
+    <string name="cwf_infos_pref_required">List of prefs required for the Watchface</string>
+    <string name="cwf_infos_view_title">List of fields included into the Watchface</string>
+
 
     <!--    PersistentNotification-->
     <string name="ongoingnotificaction" translatable="false">Ongoing Notification</string>
@@ -370,8 +382,7 @@
     <string name="grams_short">g</string>
     <string name="hour_short">h</string>
     <string name="no_active_profile">No active profile switch!</string>
-    <string name="profile_message">Profile:\n\nTimeshift: %1$\nPercentage: %2$d%%\"</string>
-    <string name="key_wear_predictions" translatable="false">wear_predictions</string>
+    <string name="profile_message">Profile:\n\nTimeshift: %1$d\nPercentage: %2$d%%\"</string>
     <string name="tdd_line">%1$.2fU %1$.0f%%</string>
     <string name="no_profile">No profile loaded</string>
     <string name="aps_only">Only apply in APS mode!</string>
@@ -392,18 +403,6 @@
     <string name="default_range">DEFAULT RANGE</string>
     <string name="target">target</string>
     <string name="rate_duration">Rate: %1$.2fU/h (%2$.2f%%) \nDuration %3$d min</string>
-
-    <string name="pump_battery_label">Pump Battery</string>
-    <string name="device_battery_label">Device Battery</string>
-    <string name="next_calibration_label">Next Calibration</string>
-    <string name="medlink_force_bolus_history_read_title">Dispatch a bolus history read after each bolus</string>
-    <string name="medlink_key_force_bolus_history_read_summary">If enabled AAPS will dispatch a read bolus history command after each bolus, or when the latest bolus date changes, otherwise it will try to get bolus info from the get status command.</string>
-    <string name="medlink_key_interval_between_bt_connections_title">Amount of seconds between two consecutive BT connections</string>
-    <string name="medlink_key_interval_between_bt_connections_summary">This is the amount of time, in seconds, that AAPS will wait between two sequential Bluetooth connections. Recommended values are between 5 and 30s.</string>
-    <string name="medlink_init_command_summary">Here you can choose which commands will be delivered when the aaps initialize.</string>
-    <string name="isig_label">ISIG</string>
-    <string name="next_command_label">Next command</string>
-
 
     <!--    AIMI-->
     <string name="disable_Libre_smb_restrictions">disable_Libre_smb_restrictions</string>

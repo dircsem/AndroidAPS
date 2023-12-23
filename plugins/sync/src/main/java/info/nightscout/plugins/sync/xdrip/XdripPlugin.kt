@@ -11,11 +11,11 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import dagger.android.HasAndroidInjector
-import info.nightscout.core.extensions.toJson
 import info.nightscout.core.extensions.toStringShort
 import info.nightscout.core.iob.generateCOBString
 import info.nightscout.core.iob.round
 import info.nightscout.core.ui.toast.ToastUtils
+import info.nightscout.core.utils.HtmlHelper
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.database.entities.GlucoseValue
 import info.nightscout.interfaces.Constants
@@ -33,7 +33,6 @@ import info.nightscout.interfaces.sync.DataSyncSelector
 import info.nightscout.interfaces.sync.Sync
 import info.nightscout.interfaces.ui.UiInteraction
 import info.nightscout.interfaces.utils.DecimalFormatter
-import info.nightscout.interfaces.utils.HtmlHelper
 import info.nightscout.plugins.sync.R
 import info.nightscout.plugins.sync.nsclient.extensions.toJson
 import info.nightscout.plugins.sync.xdrip.events.EventXdripUpdateGUI
@@ -50,6 +49,7 @@ import info.nightscout.rx.events.EventXdripNewLog
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.shared.extensions.safeQueryBroadcastReceivers
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -76,6 +76,7 @@ class XdripPlugin @Inject constructor(
     injector: HasAndroidInjector,
     private val sp: SP,
     private val profileFunction: ProfileFunction,
+    private val profileUtil: ProfileUtil,
     rh: ResourceHelper,
     private val aapsSchedulers: AapsSchedulers,
     private val context: Context,
@@ -86,6 +87,7 @@ class XdripPlugin @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val dateUtil: DateUtil,
     aapsLogger: AAPSLogger,
+    private val decimalFormatter: DecimalFormatter
 ) : XDripBroadcast, Sync, PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -244,26 +246,26 @@ class XdripPlugin @Inject constructor(
 
         //Temp basal
         iobCobCalculator.getTempBasalIncludingConvertedExtended(System.currentTimeMillis())?.let {
-            status.append(it.toStringShort()).append(" ")
+            status.append(it.toStringShort(decimalFormatter)).append(" ")
         }
         //IOB
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
-        status.append(DecimalFormatter.to2Decimal(bolusIob.iob + basalIob.basaliob)).append(rh.gs(info.nightscout.core.ui.R.string.insulin_unit_shortname))
+        status.append(decimalFormatter.to2Decimal(bolusIob.iob + basalIob.basaliob)).append(rh.gs(info.nightscout.core.ui.R.string.insulin_unit_shortname))
         if (sp.getBoolean(R.string.key_xdrip_status_detailed_iob, true))
             status.append("(")
-                .append(DecimalFormatter.to2Decimal(bolusIob.iob))
+                .append(decimalFormatter.to2Decimal(bolusIob.iob))
                 .append("|")
-                .append(DecimalFormatter.to2Decimal(basalIob.basaliob))
+                .append(decimalFormatter.to2Decimal(basalIob.basaliob))
                 .append(")")
         if (sp.getBoolean(R.string.key_xdrip_status_show_bgi, true)) {
-            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * Profile.fromMgdlToUnits(profile.getIsfMgdl(), profileFunction.getUnits())
+            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * profileUtil.fromMgdlToUnits(profile.getIsfMgdl())
             status.append(" ")
                 .append(if (bgi >= 0) "+" else "")
-                .append(DecimalFormatter.to2Decimal(bgi))
+                .append(decimalFormatter.to2Decimal(bgi))
         }
         // COB
-        status.append(" ").append(iobCobCalculator.getCobInfo("StatusLinePlugin").generateCOBString())
+        status.append(" ").append(iobCobCalculator.getCobInfo("StatusLinePlugin").generateCOBString(decimalFormatter))
         return status.toString()
     }
 
@@ -432,29 +434,11 @@ class XdripPlugin @Inject constructor(
         var action = Intents.ACTION_NEW_FOOD
         for (dataPair in dataPairs.toList()) {
             when (dataPair) {
-                is DataSyncSelector.PairBolus                  -> {
-                    action = Intents.ACTION_NEW_TREATMENT
-                    dataPair.value.toJson(true, dateUtil)
-                }
-
-                is DataSyncSelector.PairCarbs                  -> {
-                    action = Intents.ACTION_NEW_FOOD
-                    dataPair.value.toJson(true, dateUtil)
-                }
-
-                is DataSyncSelector.PairBolusCalculatorResult  -> {
-                    action = Intents.ACTION_NEW_TREATMENT
-                    dataPair.value.toJson(true, dateUtil, profileFunction)
-                }
-
-                is DataSyncSelector.PairTemporaryTarget        -> {
-                    action = Intents.ACTION_NEW_PROFILE
-                    dataPair.value.toJson(true, profileFunction.getUnits(), dateUtil)
-                }
-                is DataSyncSelector.PairTherapyEvent           -> {
-                    action = Intents.ACTION_NEW_TREATMENT
-                    dataPair.value.toJson(true, dateUtil)
-                }
+                is DataSyncSelector.PairBolus                  -> dataPair.value.toJson(true, dateUtil)
+                is DataSyncSelector.PairCarbs                  -> dataPair.value.toJson(true, dateUtil)
+                is DataSyncSelector.PairBolusCalculatorResult  -> dataPair.value.toJson(true, dateUtil, profileUtil)
+                is DataSyncSelector.PairTemporaryTarget        -> dataPair.value.toJson(true, dateUtil, profileUtil)
+                is DataSyncSelector.PairTherapyEvent           -> dataPair.value.toJson(true, dateUtil)
 
                 is DataSyncSelector.PairTemporaryBasal         -> {
                     action = Intents.ACTION_NEW_DEVICE_STATUS
@@ -468,18 +452,9 @@ class XdripPlugin @Inject constructor(
                     dataPair.value.toJson(true, profile, dateUtil)
                 }
 
-                is DataSyncSelector.PairProfileSwitch          -> {
-                    action = Intents.ACTION_NEW_PROFILE
-                    dataPair.value.toJson(true, dateUtil)
-                }
-                is DataSyncSelector.PairEffectiveProfileSwitch -> {
-                    action = Intents.ACTION_NEW_PROFILE
-                    dataPair.value.toJson(true, dateUtil)
-                }
-                is DataSyncSelector.PairOfflineEvent           -> {
-                    action = Intents.ACTION_NEW_DEVICE_STATUS
-                    dataPair.value.toJson(true, dateUtil)
-                }
+                is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toJson(true, dateUtil, decimalFormatter)
+                is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.toJson(true, dateUtil)
+                is DataSyncSelector.PairOfflineEvent           -> dataPair.value.toJson(true, dateUtil)
                 else                                           -> null
             }?.let {
                 array.put(it)

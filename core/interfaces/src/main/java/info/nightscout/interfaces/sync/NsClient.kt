@@ -1,6 +1,7 @@
 package info.nightscout.interfaces.sync
 
 import info.nightscout.interfaces.nsclient.NSAlarm
+import info.nightscout.interfaces.profile.Profile
 import info.nightscout.rx.events.EventNSClientNewLog
 
 /**
@@ -20,6 +21,8 @@ interface NsClient : Sync {
 
     /**
      * Initiate new round of upload/download
+     *
+     * @param reason identification of caller
      */
     fun resend(reason: String)
 
@@ -91,7 +94,7 @@ interface NsClient : Sync {
      * @param progress progress of sync in format "number/number". Only for display in fragment
      * @return true for successful upload
      */
-    suspend fun nsAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String): Boolean
+    suspend fun nsAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, profile: Profile? = null): Boolean
 
     /**
      * Upload updated record to NS
@@ -101,5 +104,5 @@ interface NsClient : Sync {
      * @param progress progress of sync in format "number/number". Only for display in fragment
      * @return true for successful upload
      */
-    suspend fun nsUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String): Boolean
+    suspend fun nsUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, profile: Profile? = null): Boolean
 }

@@ -376,6 +376,9 @@
     <string name="carbs_g">CHO %1$d g</string>
     <string name="extended_bolus_u_min">BOLO ESTESO %1$.2f U %2$d min</string>
     <string name="load_events">CARICA EVENTI</string>
+    <string name="clear_alarms">CANCELLA ALLARMI</string>
+    <string name="deactivate">DISATTIVA</string>
+    <string name="update_time">AGGIORNAMENTO TEMPO</string>
     <string name="load_history">CARICA STORICO %1$d</string>
     <string name="load_tdds">CARICA TDD</string>
     <string name="set_profile">IMPOSTA PROFILO</string>
@@ -421,6 +424,7 @@
     <string name="autotune_ic_warning">Il profilo selezionato ha %1$d valori IC. Autotune userà %2$.2f g/U</string>
     <string name="autotune_isf_warning">Il profilo selezionato ha %1$d valori ISF. Autotune userà %2$.1f %3$s/U</string>
     <string name="autotune_error">Errore nei dati di input, prova a eseguire di nuovo Autotune o ridurre il numero di giorni</string>
+    <string name="autotune_error_more_days">Errore nei dati di input, aumenta il numero di giorni</string>
     <string name="autotune_warning_during_run">Il calcolo di Autotune è iniziato, attendi</string>
     <string name="autotune_warning_after_run">Controlla attentamente i risultati prima di utilizzarli!</string>
     <string name="autotune_partial_result">Risultato parziale giorno %1$d / %2$d regolato</string>
@@ -453,6 +457,7 @@
     <string name="cobvsiob">COB vs IOB</string>
     <string name="slowabsorptiondetected"><![CDATA[<font color=\'%1$s\'>!!!!! Rilevato assorbimento lento dei carboidrati: %2$d%% del tempo. Ricontrolla il tuo calcolo. COB potrebbero essere sovrastimati e potrebbe essere somministrata più insulina !!!!!</font>]]></string>
     <string name="partialboluswizard">Eroga parte del risultato del calcolatore [%]</string>
+    <string name="partialboluswizard_reset_time">Soglia tempo glicemia \"vecchia\" [min]</string>
     <string name="bolus_constraint_applied_warn">Vincolo bolo applicato: %1$.2f U a %2$.2f U</string>
     <string name="bolus_recorded_only">Il bolo sarà solo registrato (non erogato dal micro)</string>
     <string name="advisoralarm">Esegui allarme quando è tempo di mangiare</string>
@@ -575,4 +580,7 @@
     <string name="cleanup_db_confirm">Vuoi pulire il database?\nIl processo rimuoverà i cambiamenti tracciati e i dati dello storico più vecchi di 3 mesi.</string>
     <string name="cleanup_db_confirm_sync">Vuoi pulire il database?\nIl processo rimuoverà i cambiamenti tracciati e i dati dello storico più vecchi di 3 mesi.\nFarlo velocizzerà considerevolmente la sincronizzazione completa.</string>
     <string name="cleared_entries">Elementi cancellati</string>
+    <!--    Weekday-->
+    <!-- WeekdayPicker -->
+    <!--    DecimalFormatterImpl -->
 </resources>

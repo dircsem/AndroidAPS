@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.annotations.OpenForTesting
 import info.nightscout.core.extensions.target
 import info.nightscout.core.utils.MidnightUtils
 import info.nightscout.database.ValueWrapper
@@ -25,6 +24,7 @@ import info.nightscout.interfaces.plugin.PluginType
 import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.profiling.Profiler
+import info.nightscout.interfaces.stats.TddCalculator
 import info.nightscout.interfaces.utils.HardLimits
 import info.nightscout.interfaces.utils.Round
 import info.nightscout.plugins.aps.R
@@ -39,9 +39,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.floor
 
-@OpenForTesting
 @Singleton
-class OpenAPSSMBPlugin @Inject constructor(
+open class OpenAPSSMBPlugin @Inject constructor(
     injector: HasAndroidInjector,
     aapsLogger: AAPSLogger,
     private val rxBus: RxBus,
@@ -57,7 +56,8 @@ class OpenAPSSMBPlugin @Inject constructor(
     private val dateUtil: DateUtil,
     private val repository: AppRepository,
     private val glucoseStatusProvider: GlucoseStatusProvider,
-    private val bgQualityCheck: BgQualityCheck
+    private val bgQualityCheck: BgQualityCheck,
+    private val tddCalculator: TddCalculator
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -70,6 +70,14 @@ class OpenAPSSMBPlugin @Inject constructor(
         .setDefault(),
     aapsLogger, rh, injector
 ), APS, Constraints {
+
+    // DynamicISF specific
+    var tdd1D: Double? = null
+    var tdd7D: Double? = null
+    var tddLast24H: Double? = null
+    var tddLast4H: Double? = null
+    var tddLast8to4H: Double? = null
+    var dynIsfEnabled: Constraint<Boolean> = Constraint(false)
 
     // last values
     override var lastAPSRun: Long = 0
@@ -132,10 +140,22 @@ class OpenAPSSMBPlugin @Inject constructor(
             inputConstraints.copyReasons(maxIOBAllowedConstraint)
         }.value()
 
-        var minBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetLowMgdl(), 0.1), info.nightscout.core.ui.R.string.profile_low_target, HardLimits.VERY_HARD_LIMIT_MIN_BG[0], HardLimits.VERY_HARD_LIMIT_MIN_BG[1])
+        var minBg =
+            hardLimits.verifyHardLimits(
+                Round.roundTo(profile.getTargetLowMgdl(), 0.1),
+                info.nightscout.core.ui.R.string.profile_low_target,
+                HardLimits.VERY_HARD_LIMIT_MIN_BG[0],
+                HardLimits.VERY_HARD_LIMIT_MIN_BG[1]
+            )
         var maxBg =
-            hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), info.nightscout.core.ui.R.string.profile_high_target, HardLimits.VERY_HARD_LIMIT_MAX_BG[0], HardLimits.VERY_HARD_LIMIT_MAX_BG[1])
-        var targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), info.nightscout.core.ui.R.string.temp_target_value, HardLimits.VERY_HARD_LIMIT_TARGET_BG[0], HardLimits.VERY_HARD_LIMIT_TARGET_BG[1])
+            hardLimits.verifyHardLimits(
+                Round.roundTo(profile.getTargetHighMgdl(), 0.1),
+                info.nightscout.core.ui.R.string.profile_high_target,
+                HardLimits.VERY_HARD_LIMIT_MAX_BG[0],
+                HardLimits.VERY_HARD_LIMIT_MAX_BG[1]
+            )
+        var targetBg =
+            hardLimits.verifyHardLimits(profile.getTargetMgdl(), info.nightscout.core.ui.R.string.temp_target_value, HardLimits.VERY_HARD_LIMIT_TARGET_BG[0], HardLimits.VERY_HARD_LIMIT_TARGET_BG[1])
         var isTempTarget = false
         val tempTarget = repository.getTemporaryTargetActiveAt(dateUtil.now()).blockingGet()
         if (tempTarget is ValueWrapper.Existing) {
@@ -163,7 +183,13 @@ class OpenAPSSMBPlugin @Inject constructor(
                 )
         }
         if (!hardLimits.checkHardLimits(profile.dia, info.nightscout.core.ui.R.string.profile_dia, hardLimits.minDia(), hardLimits.maxDia())) return
-        if (!hardLimits.checkHardLimits(profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight()), info.nightscout.core.ui.R.string.profile_carbs_ratio_value, hardLimits.minIC(), hardLimits.maxIC())) return
+        if (!hardLimits.checkHardLimits(
+                profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight()),
+                info.nightscout.core.ui.R.string.profile_carbs_ratio_value,
+                hardLimits.minIC(),
+                hardLimits.maxIC()
+            )
+        ) return
         if (!hardLimits.checkHardLimits(profile.getIsfMgdl(), info.nightscout.core.ui.R.string.profile_sensitivity_value, HardLimits.MIN_ISF, HardLimits.MAX_ISF)) return
         if (!hardLimits.checkHardLimits(profile.getMaxDailyBasal(), info.nightscout.core.ui.R.string.profile_max_daily_basal_value, 0.02, hardLimits.maxBasal())) return
         if (!hardLimits.checkHardLimits(pump.baseBasalRate, info.nightscout.core.ui.R.string.current_basal_value, 0.01, hardLimits.maxBasal())) return
@@ -193,10 +219,35 @@ class OpenAPSSMBPlugin @Inject constructor(
             constraintChecker.isUAMEnabled(it)
             inputConstraints.copyReasons(it)
         }
+        dynIsfEnabled = Constraint(true).also {
+            constraintChecker.isDynIsfModeEnabled(it)
+            inputConstraints.copyReasons(it)
+        }
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         profiler.log(LTag.APS, "detectSensitivityAndCarbAbsorption()", startPart)
         profiler.log(LTag.APS, "SMB data gathering", start)
         start = System.currentTimeMillis()
+
+        // DynamicISF specific
+        // without these values DynISF doesn't work properly
+        // Current implementation is fallback to SMB if TDD history is not available. Thus calculated here
+        tdd1D = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = false))?.totalAmount
+        tdd7D = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = false))?.totalAmount
+        tddLast24H = tddCalculator.calculateDaily(-24, 0)?.totalAmount
+        tddLast4H = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+        tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+
+        if (tdd1D == null || tdd7D == null || tddLast4H == null || tddLast8to4H == null || tddLast24H == null) {
+            inputConstraints.copyReasons(
+                Constraint(false).also {
+                    it.set(aapsLogger, false, rh.gs(R.string.fallback_smb_no_tdd), this)
+                }
+            )
+            inputConstraints.copyReasons(
+                Constraint(false).apply { set(aapsLogger, true, "tdd1D=$tdd1D tdd7D=$tdd7D tddLast4H=$tddLast4H tddLast8to4H=$tddLast8to4H tddLast24H=$tddLast24H", this) }
+            )
+        }
+
 
         provideDetermineBasalAdapter().also { determineBasalAdapterSMBJS ->
             determineBasalAdapterSMBJS.setData(
@@ -210,7 +261,12 @@ class OpenAPSSMBPlugin @Inject constructor(
                 smbAllowed.value(),
                 uam.value(),
                 advancedFiltering.value(),
-                flatBGsDetected
+                flatBGsDetected,
+                tdd1D = tdd1D,
+                tdd7D = tdd7D,
+                tddLast24H = tddLast24H,
+                tddLast4H = tddLast4H,
+                tddLast8to4H = tddLast8to4H
             )
             val now = System.currentTimeMillis()
             val determineBasalResultSMB = determineBasalAdapterSMBJS.invoke()
@@ -243,7 +299,7 @@ class OpenAPSSMBPlugin @Inject constructor(
 
     override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
         if (isEnabled()) {
-            val maxIobPref: Double = sp.getDouble(info.nightscout.plugins.aps.R.string.key_openapssmb_max_iob, 3.0)
+            val maxIobPref: Double = sp.getDouble(R.string.key_openapssmb_max_iob, 3.0)
             maxIob.setIfSmaller(aapsLogger, maxIobPref, rh.gs(R.string.limiting_iob, maxIobPref, rh.gs(R.string.maxvalueinpreferences)), this)
             maxIob.setIfSmaller(aapsLogger, hardLimits.maxIobSMB(), rh.gs(R.string.limiting_iob, hardLimits.maxIobSMB(), rh.gs(R.string.hardlimit)), this)
         }
@@ -262,7 +318,12 @@ class OpenAPSSMBPlugin @Inject constructor(
             // Check percentRate but absolute rate too, because we know real current basal in pump
             val maxBasalMultiplier = sp.getDouble(R.string.key_openapsama_current_basal_safety_multiplier, 4.0)
             val maxFromBasalMultiplier = floor(maxBasalMultiplier * profile.getBasal() * 100) / 100
-            absoluteRate.setIfSmaller(aapsLogger, maxFromBasalMultiplier, rh.gs(info.nightscout.core.ui.R.string.limitingbasalratio, maxFromBasalMultiplier, rh.gs(R.string.max_basal_multiplier)), this)
+            absoluteRate.setIfSmaller(
+                aapsLogger,
+                maxFromBasalMultiplier,
+                rh.gs(info.nightscout.core.ui.R.string.limitingbasalratio, maxFromBasalMultiplier, rh.gs(R.string.max_basal_multiplier)),
+                this
+            )
             val maxBasalFromDaily = sp.getDouble(R.string.key_openapsama_max_daily_safety_multiplier, 3.0)
             val maxFromDaily = floor(profile.getMaxDailyBasal() * maxBasalFromDaily * 100) / 100
             absoluteRate.setIfSmaller(aapsLogger, maxFromDaily, rh.gs(info.nightscout.core.ui.R.string.limitingbasalratio, maxFromDaily, rh.gs(R.string.max_daily_basal_multiplier)), this)
@@ -288,5 +349,5 @@ class OpenAPSSMBPlugin @Inject constructor(
         return value
     }
 
-    fun provideDetermineBasalAdapter(): DetermineBasalAdapter = DetermineBasalAdapterSMBJS(ScriptReader(context), injector)
+    open fun provideDetermineBasalAdapter(): DetermineBasalAdapter = DetermineBasalAdapterSMBJS(ScriptReader(context), injector)
 }

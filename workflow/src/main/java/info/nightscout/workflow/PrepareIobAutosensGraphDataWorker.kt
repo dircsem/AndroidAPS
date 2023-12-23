@@ -52,6 +52,7 @@ class PrepareIobAutosensGraphDataWorker(
     @Inject lateinit var overviewMenus: OverviewMenus
     @Inject lateinit var repository: AppRepository
     @Inject lateinit var rxBus: RxBus
+    @Inject lateinit var decimalFormatter: DecimalFormatter
     private var ctx: Context
 
     init {
@@ -158,6 +159,7 @@ class PrepareIobAutosensGraphDataWorker(
         val adsData = data.iobCobCalculator.ads.clone()
 
         while (time <= endTime) {
+            if (isStopped) return Result.failure(workDataOf("Error" to "stopped"))
             val progress = (time - fromTime).toDouble() / (endTime - fromTime) * 100.0
             rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, progress.toInt(), null))
             val profile = profileFunction.getProfile(time)
@@ -268,7 +270,7 @@ class PrepareIobAutosensGraphDataWorker(
                 data.overviewData.maxIobValueFound = max(data.overviewData.maxIobValueFound, abs(i.iob))
             }
             data.overviewData.iobPredictions1Series = PointsWithLabelGraphSeries(Array(iobPrediction.size) { i -> iobPrediction[i] })
-            aapsLogger.debug(LTag.AUTOSENS, "IOB prediction for AS=" + DecimalFormatter.to2Decimal(lastAutosensResult.ratio) + ": " + data.iobCobCalculator.iobArrayToString(iobPredictionArray))
+            aapsLogger.debug(LTag.AUTOSENS, "IOB prediction for AS=" + decimalFormatter.to2Decimal(lastAutosensResult.ratio) + ": " + data.iobCobCalculator.iobArrayToString(iobPredictionArray))
         } else {
             data.overviewData.iobPredictions1Series = PointsWithLabelGraphSeries()
         }

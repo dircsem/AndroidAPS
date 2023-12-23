@@ -24,6 +24,10 @@
     <string name="smscommunicator_otp_reset_header">Сбросить авторизацию</string>
     <string name="smscommunicator_otp_install_info">На каждом отслеживающем телефоне установите приложение Authenticator, поддерживающее маркеры TOTP RFC 6238. Популярные бесплатные приложения: \n Authy\n Google Authenticator\n LastPass Authenticator\n FreeOTP Authenticator</string>
     <string name="smscommunicator_otp_reset_warning">После сброса аутентификатора вы делаете все созданные идентификаторы недействительными. Вам нужно будет снова создать их!</string>
+    <string name="smscommunicator_otp_verification_ok">OK</string>
+    <string name="smscommunicator_otp_verification_ivalid_size">НЕВЕРНЫЙ РАЗМЕР!</string>
+    <string name="smscommunicator_otp_verification_wrong_pin">НЕВЕРНЫЙ PIN-КОД</string>
+    <string name="smscommunicator_otp_verification_wrong_otp">НЕВЕРНЫЙ РАЗОВЫЙ КОД</string>
     <string name="sms_wrong_code">Неверный код. Команда отменена.</string>
     <string name="sms_timeout_while_waiting">Время ожидания окончания предыдущего соединения с помпой истекло</string>
     <string name="smscommunicator_allowednumbers">разрешенные телефонные номера</string>
@@ -104,11 +108,7 @@
     <string name="sms_profile_switch_created">Переключатель профиля создан</string>
     <string name="sms_wrong_tbr_duration">Длительность временного базала TBR должна быть кратной %1$d минутам и больше 0.</string>
     <string name="a11y_otp_qr_code">QR код для создания одноразового пароля</string>
-    <string name="xdrip_status_detailed_iob_title">Показать IOB подробно</string>
-    <string name="xdrip_status_detailed_iob_summary">Показать разбивку IOB на болюсный и базальный IOB на часах</string>
     <string name="disabled_loop">Зцикл не работает</string>
-    <string name="xdrip_status_show_bgi_title">Показать BGI</string>
-    <string name="xdrip_status_show_bgi_summary">Добавить BGI в строку состояния</string>
     <!-- Food-->
     <string name="food_short">Еда</string>
     <string name="description_food">Показывает заданные в Nightscout настройки для приема пищи</string>
@@ -243,6 +243,7 @@
     <string name="short_tabtitles">Сокращенные наименования вкладок</string>
     <string name="overview_show_notes_field_in_dialogs_title">Показать поле примечаний в диалогах терапии</string>
     <string name="deliverpartofboluswizard">Мастер болюса выполняет расчет, но подается только эта часть рекомендуемого инсулина. Полезно с алгоритмом SMB.</string>
+    <string name="deliver_part_of_boluswizard_reset_time">Подать полный болюс (100%), если гликемия старше</string>
     <string name="enable_bolus_advisor">Вкл помощник болюса</string>
     <string name="enable_bolus_advisor_summary">Воспользуйтесь напоминанием, чтобы начать есть позже, вместо того, чтобы задействовать помощник болюса на высоких значениях ГК (\"пре-болюс\")</string>
     <string name="enablesuperbolus">Активировать суперболюс в помощнике болюса</string>
@@ -253,6 +254,7 @@
     <!--    OverviewMenu-->
     <string name="overview_show_predictions">Прогнозирование</string>
     <string name="overview_show_treatments">Терапия</string>
+    <string name="overview_show_heartRate">Частота сердечных сокращений</string>
     <string name="overview_show_deviation_slope">Линия отклонения</string>
     <string name="overview_show_activity">Активность</string>
     <string name="overview_show_bgi">Влияние ГК</string>
@@ -270,6 +272,7 @@
     <string name="abs_insulin_shortname">НАДО</string>
     <string name="devslope_shortname">ЛИНОТКЛН</string>
     <string name="treatments_shortname">НАЗНАЧ</string>
+    <string name="heartRate_shortname">ЧСС</string>
     <string name="sensitivity_shortname">ЧУВСТВ</string>
     <string name="graph_scale">Масштаб графика</string>
     <string name="graph_menu_divider_header">График</string>
@@ -305,16 +308,22 @@
     <string name="wearcontrol_title">Контроль с часов</string>
     <string name="wearcontrol_summary">Ставить временные цели и вводить терапию с часов.</string>
     <string name="wear_wizard_settings_summary">Расчеты включены в результат калькулятора: </string>
-    <string name="wear_display_settings">Параметры экрана</string>
     <string name="wear_general_settings">Общие настройки</string>
-    <string name="wear_detailed_delta_title">Показать подробно дельту</string>
-    <string name="wear_detailed_delta_summary">Показать дельту еще с одним десятичным знаком</string>
     <string name="wear_notifysmb_title">Сообщить о супер микро болюсе SMB</string>
     <string name="wear_notifysmb_summary">Показывать супер микро болюс SMB на часах как стандартный болюс.</string>
-    <string name="wear_predictions_summary">Показывать линию тренда на смарт-часах.</string>
-    <string name="wear_predictions_title">Прогнозирование</string>
+    <string name="wear_custom_watchface_settings">Настройка циферблатов</string>
+    <string name="wear_custom_watchface_authorization_title">Авторизация пользовательских циферблатов</string>
+    <string name="wear_custom_watchface_authorization_summary">Авторизовать загруженные пользовательские циферблаты для изменения и блокировки некоторых параметров отображения часов в соответствии с дизайном часов</string>
+    <string name="wear_custom_watchface">Пользовательский циферблат %1$s</string>
+    <string name="wear_load_watchface">Загрузить циферблат</string>
+    <string name="wear_infos_watchface">Циферблат Infos</string>
+    <string name="wear_export_watchface">Экспортировать шаблон</string>
+    <string name="wear_new_custom_watchface_exported">Пользовательский шаблон циферблата экспортирован</string>
     <string name="resend_all_data">повторить отправку всех данных</string>
     <string name="open_settings_on_wear">Открыть настройки на Wear</string>
+    <string name="cwf_infos_pref_locked">Список настроек, блокируемых циферблатом</string>
+    <string name="cwf_infos_pref_required">Список настроек, требующихся для циферблата</string>
+    <string name="cwf_infos_view_title">Список полей, входящих в циферблат</string>
     <!--    PersistentNotification-->
     <string name="description_persistent_notification">Показывает текущие уведомления и краткий обзор событий цикла</string>
     <string name="old_data">старые данные</string>
@@ -323,7 +332,7 @@
     <string name="grams_short">г</string>
     <string name="hour_short">ч</string>
     <string name="no_active_profile">Активный профиль не установлен!</string>
-    <string name="profile_message">Профиль:\n\nСдвиг по времени: %1$\nПроцент: %2$d%%\"</string>
+    <string name="profile_message">Профиль:\n\nСдвиг по времени: %1$d$\nПроцент: %2$d%%\"</string>
     <string name="tdd_line">%1$.2fед%1$.0f%%</string>
     <string name="no_profile">Профиль не загружен</string>
     <string name="aps_only">Применять только в режиме APS!</string>

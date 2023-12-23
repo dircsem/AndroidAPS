@@ -36,6 +36,7 @@ import info.nightscout.database.entities.ExtendedBolus
 import info.nightscout.database.entities.Food
 import info.nightscout.database.entities.GlucoseValue
 import info.nightscout.database.entities.HeartRate
+import info.nightscout.database.entities.StepsCount
 import info.nightscout.database.entities.MultiwaveBolusLink
 import info.nightscout.database.entities.OfflineEvent
 import info.nightscout.database.entities.PreferenceChange
@@ -47,19 +48,22 @@ import info.nightscout.database.entities.TotalDailyDose
 import info.nightscout.database.entities.UserEntry
 import info.nightscout.database.entities.VersionChange
 import info.nightscout.database.impl.daos.HeartRateDao
+import info.nightscout.database.impl.daos.stepsCountDao
 import java.io.Closeable
 
-const val DATABASE_VERSION = 24
+const val DATABASE_VERSION = 27
 
 @Database(version = DATABASE_VERSION,
           entities = [APSResult::class, Bolus::class, BolusCalculatorResult::class, Carbs::class,
         EffectiveProfileSwitch::class, ExtendedBolus::class, GlucoseValue::class, ProfileSwitch::class,
         TemporaryBasal::class, TemporaryTarget::class, TherapyEvent::class, TotalDailyDose::class, APSResultLink::class,
         MultiwaveBolusLink::class, PreferenceChange::class, VersionChange::class, UserEntry::class,
-        Food::class, DeviceStatus::class, OfflineEvent::class, MedLinkConfig::class, HeartRate::class],
+        Food::class, DeviceStatus::class, OfflineEvent::class, MedLinkConfig::class, HeartRate::class, StepsCount::class],
           exportSchema = true)
 @TypeConverters(Converters::class)
 internal abstract class AppDatabase : Closeable, RoomDatabase() {
+
+    abstract val stepsCountDao: stepsCountDao
 
     abstract val glucoseValueDao: GlucoseValueDao
 
@@ -104,4 +108,5 @@ internal abstract class AppDatabase : Closeable, RoomDatabase() {
     abstract val medLinkDao: MedLinkDao
 
     abstract val heartRateDao: HeartRateDao
+
 }

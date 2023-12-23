@@ -3,7 +3,6 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-kapt'
     id 'kotlin-allopen'
-    id 'com.hiya.jacoco-android'
 }
 
 apply from: "${project.rootDir}/core/main/android_dependencies.gradle"
@@ -37,5 +36,6 @@ dependencies {
     api "androidx.room:room-rxjava3:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
 
+    testImplementation project(':app-wear-shared:shared-tests')
     testImplementation project(':core:main') // create profile from json
 }

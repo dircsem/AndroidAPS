@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import dagger.android.support.DaggerFragment
 import info.nightscout.core.ui.dialogs.OKDialog
+import info.nightscout.core.utils.HtmlHelper
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.database.entities.UserEntry
 import info.nightscout.interfaces.Config
@@ -26,7 +27,6 @@ import info.nightscout.interfaces.logging.UserEntryLogger
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.plugin.PluginBase
 import info.nightscout.interfaces.plugin.PluginFragment
-import info.nightscout.interfaces.utils.HtmlHelper
 import info.nightscout.plugins.sync.R
 import info.nightscout.plugins.sync.databinding.NsClientFragmentBinding
 import info.nightscout.plugins.sync.databinding.NsClientLogItemBinding
@@ -123,7 +123,7 @@ class NSClientFragment : DaggerFragment(), MenuProvider, PluginFragment {
                 nsClientPlugin?.listLog?.let {
                     synchronized(it) {
                         it.clear()
-                        _binding?.recyclerview?.swapAdapter(RecyclerViewAdapter(it), true)
+                        updateLog()
                     }
                 }
                 true
@@ -211,6 +211,7 @@ class NSClientFragment : DaggerFragment(), MenuProvider, PluginFragment {
             .subscribe({ updateStatus() }, fabricPrivacy::logException)
         updateStatus()
         updateQueue()
+        updateLog()
     }
 
     @Synchronized
@@ -229,6 +230,10 @@ class NSClientFragment : DaggerFragment(), MenuProvider, PluginFragment {
         binding.paused.isChecked = sp.getBoolean(R.string.key_ns_paused, false)
         binding.url.text = nsClientPlugin?.address
         binding.status.text = nsClientPlugin?.status
+    }
+
+    private fun updateLog() {
+        _binding?.recyclerview?.swapAdapter(RecyclerViewAdapter(nsClientPlugin?.listLog ?: arrayListOf()), true)
     }
 
     private inner class RecyclerViewAdapter(private var logList: List<EventNSClientNewLog>) : RecyclerView.Adapter<RecyclerViewAdapter.NsClientLogViewHolder>() {

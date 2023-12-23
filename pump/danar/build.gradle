@@ -3,7 +3,6 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-kapt'
     id 'kotlin-allopen'
-    id 'com.hiya.jacoco-android'
 }
 
 apply from: "${project.rootDir}/core/main/android_dependencies.gradle"
@@ -16,6 +15,7 @@ android {
 }
 
 dependencies {
+    implementation 'androidx.media3:media3-common:1.1.1'
     implementation project(':app-wear-shared:shared')
     implementation project(':core:interfaces')
     implementation project(':core:utils')
@@ -23,5 +23,6 @@ dependencies {
     implementation project(':core:validators')
     implementation project(':pump:dana')
 
+    testImplementation project(':app-wear-shared:shared-tests')
     testImplementation project(':core:main')
 }

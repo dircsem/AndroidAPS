@@ -1,14 +1,12 @@
 package info.nightscout.androidaps.testing.mockers
 
 import info.nightscout.androidaps.data.RawDisplayData
-import info.nightscout.androidaps.interaction.utils.WearUtil
+import info.nightscout.androidaps.WearTestBase
 import info.nightscout.shared.SafeParse.stringToDouble
 import info.nightscout.rx.weardata.EventData
 import info.nightscout.rx.weardata.EventData.SingleBg
 
-class RawDataMocker(wearUtil: WearUtil) {
-
-    private val wearUtilMocker: WearUtilMocker = WearUtilMocker(wearUtil)
+class RawDataMocker() {
 
     fun rawSgv(sgv: String?, m: Int, deltaString: String): RawDisplayData {
         val raw = RawDisplayData()
@@ -25,11 +23,13 @@ class RawDataMocker(wearUtil: WearUtil) {
             }
 
         raw.singleBg = SingleBg(
-            wearUtilMocker.backInTime(0, 0, m, 0),
+            WearTestBase.backInTime(0, 0, m, 0),
             sgv!!,
             "",
             d,
             deltaString,
+            deltaString,
+            "",
             "",
             0,
             0.0,
@@ -43,11 +43,13 @@ class RawDataMocker(wearUtil: WearUtil) {
     fun rawDelta(m: Int, delta: String): RawDisplayData {
         val raw = RawDisplayData()
         raw.singleBg = SingleBg(
-            wearUtilMocker.backInTime(0, 0, m, 0),
+            WearTestBase.backInTime(0, 0, m, 0),
             "",
             "",
             "",
             delta,
+            delta,
+            "",
             "",
             0,
             0.0,
@@ -64,14 +66,12 @@ class RawDataMocker(wearUtil: WearUtil) {
             "",
             iob,
             "",
-            true,
             cob,
             br,
             "",
             "",
             0L,
             "",
-            true,
             0
         )
         return raw
@@ -83,14 +83,12 @@ class RawDataMocker(wearUtil: WearUtil) {
             "",
             iob,
             iob2,
-            true,
             "",
             "",
             "",
             "",
             0L,
             "",
-            true,
             0
         )
         return raw
@@ -102,14 +100,12 @@ class RawDataMocker(wearUtil: WearUtil) {
             "",
             "",
             "",
-            true,
             cob!!,
             "",
             "",
             "",
             0L,
             "",
-            true,
             0
         )
         return raw

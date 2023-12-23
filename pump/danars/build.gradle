@@ -3,7 +3,6 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-kapt'
     id 'kotlin-allopen'
-    id 'com.hiya.jacoco-android'
 }
 
 apply from: "${project.rootDir}/core/main/android_dependencies.gradle"
@@ -38,5 +37,6 @@ dependencies {
     implementation project(':pump:dana')
     implementation project(':app-wear-shared:shared')
 
+    testImplementation project(':app-wear-shared:shared-tests')
     testImplementation project(':core:main')
 }

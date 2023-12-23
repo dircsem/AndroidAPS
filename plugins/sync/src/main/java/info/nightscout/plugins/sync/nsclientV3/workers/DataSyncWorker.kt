@@ -2,10 +2,10 @@ package info.nightscout.plugins.sync.nsclientV3.workers
 
 import android.content.Context
 import androidx.work.WorkerParameters
-import info.nightscout.androidaps.annotations.OpenForTesting
+import info.nightscout.annotations.OpenForTesting
 import info.nightscout.core.utils.worker.LoggingWorker
 import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.sync.DataSyncSelectorV3
+import info.nightscout.plugins.sync.nsclientV3.DataSyncSelectorV3
 import info.nightscout.plugins.sync.nsclientV3.NSClientV3Plugin
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventNSClientNewLog

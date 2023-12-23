@@ -5,8 +5,6 @@ import android.os.Handler
 import android.os.PowerManager
 import dagger.android.AndroidInjector
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.TestBaseWithProfile
-import info.nightscout.androidaps.TestPumpPlugin
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.database.ValueWrapper
 import info.nightscout.database.entities.Bolus
@@ -30,12 +28,15 @@ import info.nightscout.interfaces.queue.Callback
 import info.nightscout.interfaces.queue.Command
 import info.nightscout.interfaces.queue.CustomCommand
 import info.nightscout.interfaces.ui.UiInteraction
+import info.nightscout.interfaces.utils.DecimalFormatter
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
+import info.nightscout.sharedtests.TestBaseWithProfile
+import info.nightscout.sharedtests.TestPumpPlugin
 import io.reactivex.rxjava3.core.Single
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
@@ -50,7 +51,6 @@ import java.util.Calendar
 class CommandQueueImplementationTest : TestBaseWithProfile() {
 
     @Mock lateinit var constraintChecker: Constraints
-    @Mock lateinit var activePlugin: ActivePlugin
     @Mock lateinit var powerManager: PowerManager
     @Mock lateinit var repository: AppRepository
     @Mock lateinit var uiInteraction: UiInteraction
@@ -74,14 +74,15 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         fabricPrivacy: FabricPrivacy,
         androidPermission: AndroidPermission,
         uiInteraction: UiInteraction,
-        persistenceLayer: PersistenceLayer
+        persistenceLayer: PersistenceLayer,
+        decimalFormatter: DecimalFormatter
     ) : CommandQueueImplementation(
         injector, aapsLogger, rxBus, aapsSchedulers, rh, constraintChecker, profileFunction,
         activePlugin, context, sp, config, dateUtil, repository, fabricPrivacy,
-        androidPermission, uiInteraction, persistenceLayer
+        androidPermission, uiInteraction, persistenceLayer, decimalFormatter
     ) {
 
-        override fun notifyAboutNewCommand() : Boolean = true
+        override fun notifyAboutNewCommand(): Boolean = true
 
     }
 
@@ -121,7 +122,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
             injector, aapsLogger, rxBus, aapsSchedulers, rh,
             constraintChecker, profileFunction, activePlugin, context, sp,
             config, dateUtil, repository,
-            fabricPrivacy, androidPermission, uiInteraction, persistenceLayer
+            fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter
         )
         testPumpPlugin = TestPumpPlugin(injector)
 
@@ -149,7 +150,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         val percentageConstraint = Constraint(0)
         `when`(constraintChecker.applyBasalPercentConstraints(anyObject(), anyObject())).thenReturn(percentageConstraint)
         `when`(rh.gs(info.nightscout.core.ui.R.string.connectiontimedout)).thenReturn("Connection timed out")
-        `when`(rh.gs(info.nightscout.interfaces.R.string.format_insulin_units)).thenReturn("%1\$.2f U")
+        `when`(rh.gs(info.nightscout.core.ui.R.string.format_insulin_units)).thenReturn("%1\$.2f U")
         `when`(rh.gs(info.nightscout.core.ui.R.string.goingtodeliver)).thenReturn("Going to deliver %1\$.2f U")
     }
 
@@ -158,7 +159,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         val commandQueue = CommandQueueImplementation(
             injector, aapsLogger, rxBus, aapsSchedulers, rh,
             constraintChecker, profileFunction, activePlugin, context, sp,
-            config, dateUtil, repository, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer
+            config, dateUtil, repository, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter
         )
         val handler = mock(Handler::class.java)
         `when`(handler.post(anyObject())).thenAnswer { invocation: InvocationOnMock ->
@@ -238,6 +239,19 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         // add loadEvents
         commandQueue.loadEvents(null)
         Assertions.assertEquals(4, commandQueue.size())
+
+        // add clearAlarms
+        commandQueue.clearAlarms(null)
+        Assertions.assertEquals(5, commandQueue.size())
+
+        // add deactivate
+        commandQueue.deactivate(null)
+        Assertions.assertEquals(6, commandQueue.size())
+
+        // add updateTime
+        commandQueue.updateTime(null)
+        Assertions.assertEquals(7, commandQueue.size())
+
         commandQueue.clear()
         commandQueue.tempBasalAbsolute(0.0, 30, true, validProfile, PumpSync.TemporaryBasalType.NORMAL, null)
         commandQueue.pickup()
@@ -351,6 +365,54 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         Assertions.assertEquals(1, commandQueue.size())
         // next should be ignored
         commandQueue.loadEvents(null)
+        Assertions.assertEquals(1, commandQueue.size())
+    }
+
+    @Test
+    fun isClearAlarmsCommandInQueue() {
+        // given
+        Assertions.assertEquals(0, commandQueue.size())
+
+        // when
+        commandQueue.clearAlarms(null)
+
+        // then
+        Assertions.assertTrue(commandQueue.isLastScheduled(Command.CommandType.CLEAR_ALARMS))
+        Assertions.assertEquals(1, commandQueue.size())
+        // next should be ignored
+        commandQueue.clearAlarms(null)
+        Assertions.assertEquals(1, commandQueue.size())
+    }
+
+    @Test
+    fun isDeactivateCommandInQueue() {
+        // given
+        Assertions.assertEquals(0, commandQueue.size())
+
+        // when
+        commandQueue.deactivate(null)
+
+        // then
+        Assertions.assertTrue(commandQueue.isLastScheduled(Command.CommandType.DEACTIVATE))
+        Assertions.assertEquals(1, commandQueue.size())
+        // next should be ignored
+        commandQueue.deactivate(null)
+        Assertions.assertEquals(1, commandQueue.size())
+    }
+
+    @Test
+    fun isUpdateTimeCommandInQueue() {
+        // given
+        Assertions.assertEquals(0, commandQueue.size())
+
+        // when
+        commandQueue.updateTime(null)
+
+        // then
+        Assertions.assertTrue(commandQueue.isLastScheduled(Command.CommandType.UPDATE_TIME))
+        Assertions.assertEquals(1, commandQueue.size())
+        // next should be ignored
+        commandQueue.updateTime(null)
         Assertions.assertEquals(1, commandQueue.size())
     }
 

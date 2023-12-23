@@ -14,7 +14,7 @@ import androidx.work.WorkManager
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.annotations.OpenForTesting
+import info.nightscout.annotations.OpenForTesting
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.database.ValueWrapper
 import info.nightscout.database.entities.interfaces.TraceableDBEntry
@@ -27,14 +27,15 @@ import info.nightscout.interfaces.nsclient.StoreDataForDb
 import info.nightscout.interfaces.plugin.PluginBase
 import info.nightscout.interfaces.plugin.PluginDescription
 import info.nightscout.interfaces.plugin.PluginType
-import info.nightscout.interfaces.profile.ProfileFunction
+import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.source.NSClientSource
 import info.nightscout.interfaces.sync.DataSyncSelector
-import info.nightscout.interfaces.sync.DataSyncSelectorV3
 import info.nightscout.interfaces.sync.NsClient
 import info.nightscout.interfaces.sync.Sync
 import info.nightscout.interfaces.ui.UiInteraction
+import info.nightscout.interfaces.utils.DecimalFormatter
 import info.nightscout.plugins.sync.R
+import info.nightscout.plugins.sync.nsShared.NSAlarmObject
 import info.nightscout.plugins.sync.nsShared.NSClientFragment
 import info.nightscout.plugins.sync.nsShared.NsIncomingDataProcessor
 import info.nightscout.plugins.sync.nsShared.events.EventConnectivityOptionChanged
@@ -66,11 +67,17 @@ import info.nightscout.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventAppExit
+import info.nightscout.rx.events.EventDeviceStatusChange
 import info.nightscout.rx.events.EventDismissNotification
 import info.nightscout.rx.events.EventNSClientNewLog
 import info.nightscout.rx.events.EventNewHistoryData
+import info.nightscout.rx.events.EventOfflineChange
 import info.nightscout.rx.events.EventPreferenceChange
+import info.nightscout.rx.events.EventProfileStoreChanged
+import info.nightscout.rx.events.EventProfileSwitchChanged
 import info.nightscout.rx.events.EventSWSyncStatus
+import info.nightscout.rx.events.EventTempTargetChange
+import info.nightscout.rx.events.EventTherapyEventChange
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.sdk.NSAndroidClientImpl
@@ -90,9 +97,9 @@ import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.net.URISyntaxException
 import java.security.InvalidParameterException
@@ -116,12 +123,12 @@ class NSClientV3Plugin @Inject constructor(
     private val dateUtil: DateUtil,
     private val uiInteraction: UiInteraction,
     private val dataSyncSelectorV3: DataSyncSelectorV3,
-    private val profileFunction: ProfileFunction,
     private val repository: AppRepository,
     private val nsDeviceStatusHandler: NSDeviceStatusHandler,
     private val nsClientSource: NSClientSource,
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
-    private val storeDataForDb: StoreDataForDb
+    private val storeDataForDb: StoreDataForDb,
+    private val decimalFormatter: DecimalFormatter
 ) : NsClient, Sync, PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -168,7 +175,7 @@ class NSClientV3Plugin @Inject constructor(
     private val isAllowed get() = receiverDelegate.allowed
     private val blockingReason get() = receiverDelegate.blockingReason
 
-    val maxAge = T.days(77).msecs()
+    val maxAge = T.days(100).msecs()
     internal var newestDataOnServer: LastModified? = null // timestamp of last modification for every collection provided by server
     internal var lastLoadedSrvModified = LastModified(LastModified.Collections()) // max srvLastModified timestamp of last fetched data for every collection
     internal var firstLoadContinueTimestamp = LastModified(LastModified.Collections()) // timestamp of last fetched data for every collection during initial load
@@ -226,6 +233,30 @@ class NSClientV3Plugin @Inject constructor(
             .toObservable(EventNewHistoryData::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ executeUpload("NEW_DATA", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventTempTargetChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventTempTargetChange", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventProfileSwitchChanged::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventProfileSwitchChanged", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventDeviceStatusChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventDeviceStatusChange", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventTherapyEventChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventTherapyEventChange", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventOfflineChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventOfflineChange", forceNew = false) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventProfileStoreChanged::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ executeUpload("EventProfileStoreChanged", forceNew = false) }, fabricPrivacy::logException)
 
         runLoop = Runnable {
             var refreshInterval = T.mins(5).msecs()
@@ -496,7 +527,7 @@ class NSClientV3Plugin @Inject constructor(
         rxBus.send(EventNSClientNewLog("◄ ANNOUNCEMENT", data.optString("message")))
         aapsLogger.debug(LTag.NSCLIENT, data.toString())
         if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_announcements, config.NSCLIENT))
-            uiInteraction.addNotificationWithAction(injector, NSAlarm(data))
+            uiInteraction.addNotificationWithAction(injector, NSAlarmObject(data))
     }
     private val onAlarm = Emitter.Listener { args ->
 
@@ -519,7 +550,7 @@ class NSClientV3Plugin @Inject constructor(
         if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_alarms, config.NSCLIENT)) {
             val snoozedTo = sp.getLong(rh.gs(info.nightscout.core.utils.R.string.key_snoozed_to) + data.optString("level"), 0L)
             if (snoozedTo == 0L || System.currentTimeMillis() > snoozedTo)
-                uiInteraction.addNotificationWithAction(injector, NSAlarm(data))
+                uiInteraction.addNotificationWithAction(injector, NSAlarmObject(data))
         }
     }
 
@@ -530,25 +561,36 @@ class NSClientV3Plugin @Inject constructor(
         if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_alarms, config.NSCLIENT)) {
             val snoozedTo = sp.getLong(rh.gs(info.nightscout.core.utils.R.string.key_snoozed_to) + data.optString("level"), 0L)
             if (snoozedTo == 0L || System.currentTimeMillis() > snoozedTo)
-                uiInteraction.addNotificationWithAction(injector, NSAlarm(data))
+                uiInteraction.addNotificationWithAction(injector, NSAlarmObject(data))
         }
     }
 
-    private val onClearAlarm = Emitter.Listener { args ->
+    /*private val onClearAlarm = Emitter.Listener { args ->
 
-        /*
+        *//*
         {
         "clear":true,
         "title":"All Clear",
         "message":"default - Urgent was ack'd",
         "group":"default"
         }
-         */
+         *//*
         val data = args[0] as JSONObject
         rxBus.send(EventNSClientNewLog("◄ CLEARALARM", data.optString("title")))
         aapsLogger.debug(LTag.NSCLIENT, data.toString())
         rxBus.send(EventDismissNotification(Notification.NS_ALARM))
         rxBus.send(EventDismissNotification(Notification.NS_URGENT_ALARM))
+    }*/
+    private val onClearAlarm = Emitter.Listener { args ->
+        try {
+            val data = JSONObject(args[0] as String)
+            rxBus.send(EventNSClientNewLog("◄ CLEARALARM", data.optString("title")))
+            aapsLogger.debug(LTag.NSCLIENT, data.toString())
+            rxBus.send(EventDismissNotification(Notification.NS_ALARM))
+            rxBus.send(EventDismissNotification(Notification.NS_URGENT_ALARM))
+        } catch (e: JSONException) {
+            aapsLogger.error("Failed to parse JSON", e)
+        }
     }
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
@@ -566,7 +608,10 @@ class NSClientV3Plugin @Inject constructor(
      **********************/
 
     override fun resend(reason: String) {
-        if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_use_ws, true))
+        // If WS is enabled, download is triggered by changes in NS. Thus uploadOnly
+        // Exception is after reset to full sync (initialLoadFinished == false), where
+        // older data must be loaded directly and then continue over WS
+        if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_use_ws, true) && initialLoadFinished)
             executeUpload("START $reason", forceNew = true)
         else
             executeLoop("START $reason", forceNew = true)
@@ -605,11 +650,11 @@ class NSClientV3Plugin @Inject constructor(
         dataSyncSelectorV3.resetToNextFullSync()
     }
 
-    override suspend fun nsAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String): Boolean =
-        dbOperation(collection, dataPair, progress, Operation.CREATE)
+    override suspend fun nsAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, profile: Profile?): Boolean =
+        dbOperation(collection, dataPair, progress, Operation.CREATE, profile)
 
-    override suspend fun nsUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String): Boolean =
-        dbOperation(collection, dataPair, progress, Operation.UPDATE)
+    override suspend fun nsUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, profile: Profile?): Boolean =
+        dbOperation(collection, dataPair, progress, Operation.UPDATE, profile)
 
     enum class Operation { CREATE, UPDATE }
 
@@ -761,7 +806,7 @@ class NSClientV3Plugin @Inject constructor(
         return true
     }
 
-    private suspend fun dbOperationTreatments(collection: String = "treatments", dataPair: DataSyncSelector.DataPair, progress: String, operation: Operation): Boolean {
+    private suspend fun dbOperationTreatments(collection: String = "treatments", dataPair: DataSyncSelector.DataPair, progress: String, operation: Operation, profile: Profile?): Boolean {
         val call = when (operation) {
             Operation.CREATE -> nsAndroidClient?.let { return@let it::createTreatment }
             Operation.UPDATE -> nsAndroidClient?.let { return@let it::updateTreatment }
@@ -774,16 +819,16 @@ class NSClientV3Plugin @Inject constructor(
             is DataSyncSelector.PairTherapyEvent           -> dataPair.value.toNSTherapyEvent()
 
             is DataSyncSelector.PairTemporaryBasal         -> {
-                val profile = profileFunction.getProfile(dataPair.value.timestamp) ?: return true
+                profile ?: return true
                 dataPair.value.toNSTemporaryBasal(profile)
             }
 
             is DataSyncSelector.PairExtendedBolus          -> {
-                val profile = profileFunction.getProfile(dataPair.value.timestamp) ?: return true
+                profile ?: return true
                 dataPair.value.toNSExtendedBolus(profile)
             }
 
-            is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toNSProfileSwitch(dateUtil)
+            is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toNSProfileSwitch(dateUtil, decimalFormatter)
             is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.toNSEffectiveProfileSwitch(dateUtil)
             is DataSyncSelector.PairOfflineEvent           -> dataPair.value.toNSOfflineEvent()
             else                                           -> null
@@ -882,13 +927,13 @@ class NSClientV3Plugin @Inject constructor(
         return true
     }
 
-    private suspend fun dbOperation(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, operation: Operation): Boolean =
+    private suspend fun dbOperation(collection: String, dataPair: DataSyncSelector.DataPair, progress: String, operation: Operation, profile: Profile?): Boolean =
         when (collection) {
             "profile"      -> dbOperationProfileStore(dataPair = dataPair, progress = progress)
             "devicestatus" -> dbOperationDeviceStatus(dataPair = dataPair as DataSyncSelector.PairDeviceStatus, progress = progress)
             "entries"      -> dbOperationEntries(dataPair = dataPair as DataSyncSelector.PairGlucoseValue, progress = progress, operation = operation)
             "food"         -> dbOperationFood(dataPair = dataPair as DataSyncSelector.PairFood, progress = progress, operation = operation)
-            "treatments"   -> dbOperationTreatments(dataPair = dataPair, progress = progress, operation = operation)
+            "treatments"   -> dbOperationTreatments(dataPair = dataPair, progress = progress, operation = operation, profile = profile)
 
             else           -> false
         }

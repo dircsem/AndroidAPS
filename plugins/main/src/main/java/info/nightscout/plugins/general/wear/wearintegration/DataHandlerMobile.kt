@@ -6,7 +6,6 @@ import dagger.android.HasAndroidInjector
 import info.nightscout.core.extensions.convertedToAbsolute
 import info.nightscout.core.extensions.toStringShort
 import info.nightscout.core.extensions.valueToUnits
-import info.nightscout.core.extensions.valueToUnitsString
 import info.nightscout.core.graph.data.GlucoseValueDataPoint
 import info.nightscout.core.iob.generateCOBString
 import info.nightscout.core.iob.round
@@ -19,6 +18,8 @@ import info.nightscout.database.ValueWrapper
 import info.nightscout.database.entities.Bolus
 import info.nightscout.database.entities.BolusCalculatorResult
 import info.nightscout.database.entities.GlucoseValue
+import info.nightscout.database.entities.HeartRate
+import info.nightscout.database.entities.StepsCount
 import info.nightscout.database.entities.TemporaryBasal
 import info.nightscout.database.entities.TemporaryTarget
 import info.nightscout.database.entities.TotalDailyDose
@@ -28,6 +29,8 @@ import info.nightscout.database.entities.interfaces.end
 import info.nightscout.database.impl.AppRepository
 import info.nightscout.database.impl.transactions.CancelCurrentTemporaryTargetIfAnyTransaction
 import info.nightscout.database.impl.transactions.InsertAndCancelCurrentTemporaryTargetTransaction
+import info.nightscout.database.impl.transactions.InsertOrUpdateHeartRateTransaction
+import info.nightscout.database.impl.transactions.InsertOrUpdateStepsCountTransaction
 import info.nightscout.interfaces.Config
 import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.GlucoseUnit
@@ -39,6 +42,7 @@ import info.nightscout.interfaces.iob.GlucoseStatusProvider
 import info.nightscout.interfaces.iob.InMemoryGlucoseValue
 import info.nightscout.interfaces.iob.IobCobCalculator
 import info.nightscout.interfaces.logging.UserEntryLogger
+import info.nightscout.interfaces.maintenance.ImportExportPrefs
 import info.nightscout.interfaces.nsclient.ProcessedDeviceStatusData
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.plugin.PluginBase
@@ -57,9 +61,11 @@ import info.nightscout.plugins.R
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventMobileToWear
+import info.nightscout.rx.events.EventWearUpdateGui
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.rx.weardata.EventData
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -92,6 +98,7 @@ class DataHandlerMobile @Inject constructor(
     private val repository: AppRepository,
     private val glucoseStatusProvider: GlucoseStatusProvider,
     private val profileFunction: ProfileFunction,
+    private val profileUtil: ProfileUtil,
     private val loop: Loop,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
     private val receiverStatusStore: ReceiverStatusStore,
@@ -105,7 +112,9 @@ class DataHandlerMobile @Inject constructor(
     private val commandQueue: CommandQueue,
     private val fabricPrivacy: FabricPrivacy,
     private val uiInteraction: UiInteraction,
-    private val persistenceLayer: PersistenceLayer
+    private val persistenceLayer: PersistenceLayer,
+    private val importExportPrefs: ImportExportPrefs,
+    private val decimalFormatter: DecimalFormatter
 ) {
 
     private val disposable = CompositeDisposable()
@@ -307,6 +316,25 @@ class DataHandlerMobile @Inject constructor(
             .subscribe({
                            aapsLogger.debug(LTag.WEAR, "WearException received $it from ${it.sourceNodeId}")
                            fabricPrivacy.logWearException(it)
+                       }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventData.ActionHeartRate::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ handleHeartRate(it) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventData.ActionStepsRate::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({
+                           aapsLogger.debug(LTag.WEAR, "Received ActionStepsRate event")
+                           handleStepsCount(it)
+                       }, fabricPrivacy::logException)
+
+        disposable += rxBus
+            .toObservable(EventData.ActionGetCustomWatchface::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({
+                           aapsLogger.debug(LTag.WEAR, "Custom Watch face ${it.customWatchface} received from ${it.sourceNodeId}")
+                           handleGetCustomWatchface(it)
                        }, fabricPrivacy::logException)
     }
 
@@ -857,9 +885,9 @@ class DataHandlerMobile @Inject constructor(
         repository.getCarbsDataFromTimeExpanded(startTimeWindow, true).blockingGet()
             .forEach { (_, _, _, isValid, _, _, timestamp, _, _, amount) -> boluses.add(EventData.TreatmentData.Treatment(timestamp, 0.0, amount, false, isValid)) }
         val finalLastRun = loop.lastRun
-        if (sp.getBoolean(rh.gs(R.string.key_wear_predictions), true) && finalLastRun?.request?.hasPredictions == true && finalLastRun.constraintsProcessed != null) {
+        if (finalLastRun?.request?.hasPredictions == true && finalLastRun.constraintsProcessed != null) {
             val predArray = finalLastRun.constraintsProcessed!!.predictions
-                .stream().map { bg: GlucoseValue -> GlucoseValueDataPoint(bg, profileFunction, rh) }
+                .stream().map { bg: GlucoseValue -> GlucoseValueDataPoint(bg, profileUtil, rh) }
                 .collect(Collectors.toList())
             if (predArray.isNotEmpty())
                 for (bg in predArray) if (bg.data.value > 39)
@@ -885,19 +913,22 @@ class DataHandlerMobile @Inject constructor(
         var cobString = ""
         var currentBasal = ""
         var bgiString = ""
-        if (profile != null) {
+        if (config.appInitialized && profile != null) {
             val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
             val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
-            iobSum = DecimalFormatter.to2Decimal(bolusIob.iob + basalIob.basaliob)
-            iobDetail = "(${DecimalFormatter.to2Decimal(bolusIob.iob)}|${DecimalFormatter.to2Decimal(basalIob.basaliob)})"
-            cobString = iobCobCalculator.getCobInfo("WatcherUpdaterService").generateCOBString()
+            iobSum = decimalFormatter.to2Decimal(bolusIob.iob + basalIob.basaliob)
+            iobDetail = "(${decimalFormatter.to2Decimal(bolusIob.iob)}|${decimalFormatter.to2Decimal(basalIob.basaliob)})"
+            cobString = iobCobCalculator.getCobInfo("WatcherUpdaterService").generateCOBString(decimalFormatter)
             currentBasal =
-                iobCobCalculator.getTempBasalIncludingConvertedExtended(System.currentTimeMillis())?.toStringShort() ?: rh.gs(info.nightscout.core.ui.R.string.pump_base_basal_rate, profile.getBasal())
+                iobCobCalculator.getTempBasalIncludingConvertedExtended(System.currentTimeMillis())?.toStringShort(decimalFormatter) ?: rh.gs(
+                    info.nightscout.core.ui.R.string.pump_base_basal_rate, profile
+                        .getBasal()
+                )
 
             //bgi
-            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * Profile.fromMgdlToUnits(profile.getIsfMgdl(), profileFunction.getUnits())
-            bgiString = "" + (if (bgi >= 0) "+" else "") + DecimalFormatter.to1Decimal(bgi)
-            status = generateStatusString(profile, currentBasal, iobSum, iobDetail, bgiString)
+            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * profileUtil.fromMgdlToUnits(profile.getIsfMgdl())
+            bgiString = "" + (if (bgi >= 0) "+" else "") + decimalFormatter.to1Decimal(bgi)
+            status = generateStatusString(profile)
         }
 
         //batteries
@@ -914,14 +945,12 @@ class DataHandlerMobile @Inject constructor(
                     externalStatus = status,
                     iobSum = iobSum,
                     iobDetail = iobDetail,
-                    detailedIob = sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_detailediob, false),
                     cob = cobString,
                     currentBasal = currentBasal,
                     battery = phoneBattery.toString(),
                     rigBattery = rigBattery,
                     openApsStatus = openApsStatus,
                     bgi = bgiString,
-                    showBgi = sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_showbgi, false),
                     batteryLevel = if (phoneBattery >= 30) 1 else 0
                 )
             )
@@ -929,29 +958,40 @@ class DataHandlerMobile @Inject constructor(
     }
 
     private fun deltaString(deltaMGDL: Double, deltaMMOL: Double, units: GlucoseUnit): String {
-        val detailed = sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_detailed_delta, false)
         var deltaString = if (deltaMGDL >= 0) "+" else "-"
         deltaString += if (units == GlucoseUnit.MGDL) {
-            if (detailed) DecimalFormatter.to1Decimal(abs(deltaMGDL)) else DecimalFormatter.to0Decimal(abs(deltaMGDL))
+            decimalFormatter.to0Decimal(abs(deltaMGDL))
         } else {
-            if (detailed) DecimalFormatter.to2Decimal(abs(deltaMMOL)) else DecimalFormatter.to1Decimal(abs(deltaMMOL))
+            decimalFormatter.to1Decimal(abs(deltaMMOL))
         }
         return deltaString
+    }
+
+    private fun deltaStringDetailed(deltaMGDL: Double, deltaMMOL: Double, units: GlucoseUnit): String {
+        var deltaStringDetailed = if (deltaMGDL >= 0) "+" else "-"
+        deltaStringDetailed += if (units == GlucoseUnit.MGDL) {
+            decimalFormatter.to1Decimal(abs(deltaMGDL))
+        } else {
+            decimalFormatter.to2Decimal(abs(deltaMMOL))
+        }
+        return deltaStringDetailed
     }
 
     private fun getSingleBG(glucoseValue: InMemoryGlucoseValue): EventData.SingleBg {
         val glucoseStatus = glucoseStatusProvider.getGlucoseStatusData(true)
         val units = profileFunction.getUnits()
-        val lowLine = Profile.toMgdl(defaultValueHelper.determineLowLine(), units)
-        val highLine = Profile.toMgdl(defaultValueHelper.determineHighLine(), units)
+        val lowLine = profileUtil.convertToMgdl(defaultValueHelper.determineLowLine(), units)
+        val highLine = profileUtil.convertToMgdl(defaultValueHelper.determineHighLine(), units)
 
         return EventData.SingleBg(
             timeStamp = glucoseValue.timestamp,
-            sgvString = glucoseValue.valueToUnitsString(units),
+            sgvString = profileUtil.stringInCurrentUnitsDetect(glucoseValue.value),
             glucoseUnits = units.asText,
             slopeArrow = trendCalculator.getTrendArrow(glucoseValue).symbol,
             delta = glucoseStatus?.let { deltaString(it.delta, it.delta * Constants.MGDL_TO_MMOLL, units) } ?: "--",
+            deltaDetailed = glucoseStatus?.let { deltaStringDetailed(it.delta, it.delta * Constants.MGDL_TO_MMOLL, units) } ?: "--",
             avgDelta = glucoseStatus?.let { deltaString(it.shortAvgDelta, it.shortAvgDelta * Constants.MGDL_TO_MMOLL, units) } ?: "--",
+            avgDeltaDetailed = glucoseStatus?.let { deltaStringDetailed(it.shortAvgDelta, it.shortAvgDelta * Constants.MGDL_TO_MMOLL, units) } ?: "--",
             sgvLevel = if (glucoseValue.recalculated > highLine) 1L else if (glucoseValue.recalculated < lowLine) -1L else 0L,
             sgv = glucoseValue.recalculated,
             high = highLine,
@@ -972,17 +1012,14 @@ class DataHandlerMobile @Inject constructor(
             //Check for Temp-Target:
             val tempTarget = repository.getTemporaryTargetActiveAt(dateUtil.now()).blockingGet()
             if (tempTarget is ValueWrapper.Existing) {
-                val target = Profile.toTargetRangeString(tempTarget.value.lowTarget, tempTarget.value.lowTarget, GlucoseUnit.MGDL, profileFunction.getUnits())
+                val target = profileUtil.toTargetRangeString(tempTarget.value.lowTarget, tempTarget.value.lowTarget, GlucoseUnit.MGDL)
                 ret += rh.gs(R.string.temp_target) + ": " + target
-                ret += "\n"+ rh.gs(R.string.until) + ": " + dateUtil.timeString(tempTarget.value.end)
+                ret += "\n" + rh.gs(R.string.until) + ": " + dateUtil.timeString(tempTarget.value.end)
                 ret += "\n\n"
             }
             ret += rh.gs(R.string.default_range) + ": "
-            ret += Profile.fromMgdlToUnits(profile.getTargetLowMgdl(), profileFunction.getUnits()).toString() + " - " + Profile.fromMgdlToUnits(
-                profile.getTargetHighMgdl(),
-                profileFunction.getUnits()
-            )
-            ret += " " + rh.gs(R.string.target) + ": " + Profile.fromMgdlToUnits(profile.getTargetMgdl(), profileFunction.getUnits())
+            ret += profileUtil.toTargetRangeString(profile.getTargetLowMgdl(), profile.getTargetHighMgdl(), GlucoseUnit.MGDL)
+            ret += " " + rh.gs(R.string.target) + ": " + profileUtil.fromMgdlToStringInUnits(profile.getTargetMgdl())
             return ret
         }
 
@@ -1107,19 +1144,10 @@ class DataHandlerMobile @Inject constructor(
         return message
     }
 
-    private fun generateStatusString(profile: Profile?, currentBasal: String, iobSum: String, iobDetail: String, bgiString: String): String {
+    private fun generateStatusString(profile: Profile?): String {
         var status = ""
         profile ?: return rh.gs(info.nightscout.core.ui.R.string.noprofile)
         if (!(loop as PluginBase).isEnabled()) status += rh.gs(R.string.disabled_loop) + "\n"
-
-        val iobString =
-            if (sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_detailediob, false)) "$iobSum $iobDetail"
-            else iobSum + rh.gs(R.string.units_short)
-
-        status += "$currentBasal $iobString"
-
-        // add BGI if shown, otherwise return
-        if (sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_showbgi, false)) status += " $bgiString"
         return status
     }
 
@@ -1130,8 +1158,8 @@ class DataHandlerMobile @Inject constructor(
                     timestamp = System.currentTimeMillis(),
                     duration = TimeUnit.MINUTES.toMillis(command.duration.toLong()),
                     reason = TemporaryTarget.Reason.WEAR,
-                    lowTarget = Profile.toMgdl(command.low, profileFunction.getUnits()),
-                    highTarget = Profile.toMgdl(command.high, profileFunction.getUnits())
+                    lowTarget = profileUtil.convertToMgdl(command.low, profileFunction.getUnits()),
+                    highTarget = profileUtil.convertToMgdl(command.high, profileFunction.getUnits())
                 )
             ).subscribe({ result ->
                             result.inserted.forEach { aapsLogger.debug(LTag.DATABASE, "Inserted temp target $it") }
@@ -1230,4 +1258,43 @@ class DataHandlerMobile @Inject constructor(
     @Synchronized private fun sendError(errorMessage: String) {
         rxBus.send(EventMobileToWear(EventData.ConfirmAction(rh.gs(info.nightscout.core.ui.R.string.error), errorMessage, returnCommand = EventData.Error(dateUtil.now())))) // ignore return path
     }
+
+    /** Stores heart rate events coming from the Wear device. */
+    private fun handleHeartRate(actionHeartRate: EventData.ActionHeartRate) {
+        aapsLogger.debug(LTag.WEAR, "Heart rate received $actionHeartRate from ${actionHeartRate.sourceNodeId}")
+        val hr = HeartRate(
+            duration = actionHeartRate.duration,
+            timestamp = actionHeartRate.timestamp,
+            beatsPerMinute = actionHeartRate.beatsPerMinute,
+            device = actionHeartRate.device
+        )
+        repository.runTransaction(InsertOrUpdateHeartRateTransaction(hr)).blockingAwait()
+    }
+
+    private fun handleStepsCount(actionStepsRate: EventData.ActionStepsRate) {
+        aapsLogger.debug(LTag.WEAR, "Steps count received $actionStepsRate from ${actionStepsRate.sourceNodeId}")
+        val stepsCount = StepsCount(
+            duration = actionStepsRate.duration,
+            timestamp = actionStepsRate.timestamp,
+            steps5min = actionStepsRate.steps5min,
+            steps10min = actionStepsRate.steps10min,
+            steps15min = actionStepsRate.steps15min,
+            steps30min = actionStepsRate.steps30min,
+            steps60min = actionStepsRate.steps60min,
+            steps180min = actionStepsRate.steps180min,
+            device = actionStepsRate.device)
+        repository.runTransaction(InsertOrUpdateStepsCountTransaction(stepsCount)).blockingAwait()
+    }
+
+
+
+
+    private fun handleGetCustomWatchface(command: EventData.ActionGetCustomWatchface) {
+        val customWatchface = command.customWatchface
+        aapsLogger.debug(LTag.WEAR, "Custom Watchface received from ${command.sourceNodeId}: ${customWatchface.customWatchfaceData.json}")
+        rxBus.send(EventWearUpdateGui(customWatchface.customWatchfaceData, command.exportFile))
+        if (command.exportFile)
+            importExportPrefs.exportCustomWatchface(customWatchface.customWatchfaceData, command.withDate)
+    }
+
 }

@@ -8,8 +8,8 @@
         android:title="@string/openapssmb"
         app:initialExpandedChildrenCount="0">
 
-        <info.nightscout.androidaps.plugins.aps.loop.LoopVariantPreference
-            android:title="@string/DynISF_variant"
+        <info.nightscout.plugins.aps.loop.LoopVariantPreference
+            android:title="@string/DynISF_variant_title"
             android:defaultValue="default"
             android:selectable="true"
             app:pluginFolder="OpenAPSSMBDynamicISF"

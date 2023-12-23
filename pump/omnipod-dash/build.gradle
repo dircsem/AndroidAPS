@@ -3,7 +3,6 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-kapt'
     id 'kotlin-allopen'
-    id 'com.hiya.jacoco-android'
 }
 
 apply from: "${project.rootDir}/core/main/android_dependencies.gradle"
@@ -42,6 +41,8 @@ dependencies {
     api "androidx.room:room-rxjava3:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
 
+    testImplementation project(':app-wear-shared:shared-tests')
     testImplementation "commons-codec:commons-codec:$commonscodec_version"
+
     api 'com.github.guepardoapps:kulid:2.0.0.0'
 }

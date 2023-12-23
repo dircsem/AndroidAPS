@@ -15,8 +15,7 @@ import info.nightscout.interfaces.plugin.PluginDescription
 import info.nightscout.interfaces.plugin.PluginType
 import info.nightscout.interfaces.receivers.Intents
 import info.nightscout.interfaces.source.BgSource
-import info.nightscout.interfaces.source.DoingOwnUploadSource
-import info.nightscout.interfaces.source.XDrip
+import info.nightscout.interfaces.source.XDripSource
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.shared.interfaces.ResourceHelper
@@ -31,18 +30,18 @@ class XdripSourcePlugin @Inject constructor(
     aapsLogger: AAPSLogger
 ) : PluginBase(
     PluginDescription()
-    .mainType(PluginType.BGSOURCE)
-    .fragmentClass(BGSourceFragment::class.java.name)
-    .pluginIcon((info.nightscout.core.main.R.drawable.ic_blooddrop_48))
-    .pluginName(R.string.source_xdrip)
-    .description(R.string.description_source_xdrip),
+        .mainType(PluginType.BGSOURCE)
+        .fragmentClass(BGSourceFragment::class.java.name)
+        .pluginIcon((info.nightscout.core.main.R.drawable.ic_blooddrop_48))
+        .preferencesId(R.xml.pref_bgsource)
+        .pluginName(R.string.source_xdrip)
+        .description(R.string.description_source_xdrip),
     aapsLogger, rh, injector
-), BgSource, DoingOwnUploadSource, XDrip {
+), BgSource, XDripSource {
 
     private var advancedFiltering = false
     override var sensorBatteryLevel = -1
 
-    override fun shouldUploadToNs(glucoseValue: GlucoseValue): Boolean  = false
 
     override fun advancedFilteringSupported(): Boolean = advancedFiltering
 
@@ -67,13 +66,23 @@ class XdripSourcePlugin @Inject constructor(
         @Inject lateinit var repository: AppRepository
         @Inject lateinit var dataWorkerStorage: DataWorkerStorage
 
+        companion object {
+            var lastDataTimestamp: Long = 0
+        }
+
         override suspend fun doWorkAndLog(): Result {
             var ret = Result.success()
 
             if (!xdripSourcePlugin.isEnabled()) return Result.success(workDataOf("Result" to "Plugin not enabled"))
             val bundle = dataWorkerStorage.pickupBundle(inputData.getLong(DataWorkerStorage.STORE_KEY, -1))
                 ?: return Result.failure(workDataOf("Error" to "missing input data"))
+            val currentTimestamp = bundle.getLong(Intents.EXTRA_TIMESTAMP, 0)
+            if (currentTimestamp - lastDataTimestamp < 240000) {
+                // Less than 5 minutes has passed since last data processing, ignore this data
+                return Result.success(workDataOf("Result" to "Ignoring data, not enough time passed since last processing"))
+            }
 
+            lastDataTimestamp = currentTimestamp
             aapsLogger.debug(LTag.BGSOURCE, "Received xDrip data: $bundle")
             val glucoseValues = mutableListOf<TransactionGlucoseValue>()
             glucoseValues += TransactionGlucoseValue(
@@ -82,8 +91,10 @@ class XdripSourcePlugin @Inject constructor(
                 raw = bundle.getDouble(Intents.EXTRA_RAW, 0.0),
                 noise = null,
                 trendArrow = GlucoseValue.TrendArrow.fromString(bundle.getString(Intents.EXTRA_BG_SLOPE_NAME)),
-                sourceSensor = GlucoseValue.SourceSensor.fromString(bundle.getString(Intents.XDRIP_DATA_SOURCE_DESCRIPTION)
-                    ?: "")
+                sourceSensor = GlucoseValue.SourceSensor.fromString(
+                    bundle.getString(Intents.XDRIP_DATA_SOURCE_DESCRIPTION)
+                        ?: ""
+                )
             )
             repository.runTransactionForResult(CgmSourceTransaction(glucoseValues, emptyList(), null))
                 .doOnError {

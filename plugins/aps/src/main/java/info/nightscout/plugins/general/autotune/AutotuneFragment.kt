@@ -21,6 +21,7 @@ import dagger.android.HasAndroidInjector
 import dagger.android.support.DaggerFragment
 import info.nightscout.core.profile.ProfileSealed
 import info.nightscout.core.ui.dialogs.OKDialog
+import info.nightscout.core.ui.elements.WeekDay
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.database.entities.UserEntry
 import info.nightscout.database.entities.ValueWithUnit
@@ -29,7 +30,6 @@ import info.nightscout.interfaces.GlucoseUnit
 import info.nightscout.interfaces.logging.UserEntryLogger
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.profile.Instantiator
-import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.profile.ProfileStore
 import info.nightscout.interfaces.ui.UiInteraction
@@ -46,6 +46,7 @@ import info.nightscout.rx.events.EventLocalProfileChanged
 import info.nightscout.shared.SafeParse
 import info.nightscout.shared.extensions.runOnUiThread
 import info.nightscout.shared.extensions.toVisibility
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -58,6 +59,7 @@ import javax.inject.Inject
 class AutotuneFragment : DaggerFragment() {
 
     @Inject lateinit var profileFunction: ProfileFunction
+    @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var autotunePlugin: AutotunePlugin
     @Inject lateinit var autotuneFS: AutotuneFS
     @Inject lateinit var sp: SP
@@ -79,6 +81,9 @@ class AutotuneFragment : DaggerFragment() {
     private lateinit var profileStore: ProfileStore
     private var profileName = ""
     private var profile: ATProfile? = null
+    private val days get() = autotunePlugin.days
+    private val daysBack get() = SafeParse.stringToInt(binding.tuneDays.text)
+    private val calcDays get() = autotunePlugin.calcDays(daysBack)
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -102,18 +107,34 @@ class AutotuneFragment : DaggerFragment() {
         profileFunction.getProfile()?.let { currentProfile ->
             profile = ATProfile(profileStore.getSpecificProfile(profileName)?.let { ProfileSealed.Pure(it) } ?: currentProfile, LocalInsulin(""), injector)
         }
+        days.addToLayout(binding.selectWeekDays)
+        days.view?.setOnWeekdaysChangeListener { i: Int, selected: Boolean ->
+            if (autotunePlugin.calculationRunning)
+                days.view?.setSelectedDays(days.getSelectedDays())
+            else {
+                days.set(WeekDay.DayOfWeek.fromCalendarInt(i), selected)
+                resetParam(false)
+                updateGui()
+            }
+        }
 
         binding.tuneDays.setParams(
             savedInstanceState?.getDouble("tunedays")
                 ?: defaultValue, 1.0, 30.0, 1.0, DecimalFormat("0"), false, null, textWatcher
         )
         binding.autotuneRun.setOnClickListener {
-            val daysBack = SafeParse.stringToInt(binding.tuneDays.text)
             autotunePlugin.lastNbDays = daysBack.toString()
             log("Run Autotune $profileName, $daysBack days")
             handler.post { autotunePlugin.aapsAutotune(daysBack, false, profileName) }
             updateGui()
         }
+
+        binding.showWeekDaysCheckbox.setOnCheckedChangeListener { _, isChecked ->
+            run {
+                binding.selectWeekDays.visibility = isChecked.toVisibility()
+            }
+        }
+
         binding.profileList.onItemClickListener = AdapterView.OnItemClickListener { _, _, _, _ ->
             if (!autotunePlugin.calculationRunning) {
                 profileName = if (binding.profileList.text.toString() == rh.gs(info.nightscout.core.ui.R.string.active)) "" else binding.profileList.text.toString()
@@ -121,7 +142,7 @@ class AutotuneFragment : DaggerFragment() {
                     profile = ATProfile(profileStore.getSpecificProfile(profileName)?.let { ProfileSealed.Pure(it) } ?: currentProfile, LocalInsulin(""), injector)
                 }
                 autotunePlugin.selectedProfile = profileName
-                resetParam()
+                resetParam(true)
                 binding.tuneDays.value = autotunePlugin.lastNbDays.toDouble()
             }
             updateGui()
@@ -282,6 +303,7 @@ class AutotuneFragment : DaggerFragment() {
             .subscribe({ updateGui() }, fabricPrivacy::logException)
         checkNewDay()
         binding.tuneDays.value = autotunePlugin.lastNbDays.toDouble()
+        binding.selectWeekDays.visibility = binding.showWeekDaysCheckbox.isChecked.toVisibility()
         updateGui()
     }
 
@@ -311,6 +333,7 @@ class AutotuneFragment : DaggerFragment() {
         else {
             binding.profileList.setText(profileList[0], false)
         }
+        days.view?.setSelectedDays(days.getSelectedDays())
         binding.autotuneRun.visibility = View.GONE
         binding.autotuneCheckInputProfile.visibility = View.GONE
         binding.autotuneCopyLocal.visibility = View.GONE
@@ -333,10 +356,13 @@ class AutotuneFragment : DaggerFragment() {
             }
 
             else                              -> {
-                binding.autotuneRun.visibility = (profile?.isValid == true).toVisibility()
+                if (profile?.isValid == true && calcDays > 0)
+                    binding.autotuneRun.visibility = View.VISIBLE
                 binding.autotuneCheckInputProfile.visibility = View.VISIBLE
             }
         }
+        binding.calcDays.text = calcDays.toString()
+        binding.calcDays.visibility = if (daysBack == calcDays) View.INVISIBLE else View.VISIBLE
         binding.tuneLastRun.text = dateUtil.dateAndTimeString(autotunePlugin.lastRun)
         showResults()
     }
@@ -345,9 +371,8 @@ class AutotuneFragment : DaggerFragment() {
         val runToday = autotunePlugin.lastRun > MidnightTime.calc(dateUtil.now() - autotunePlugin.autotuneStartHour * 3600 * 1000L) + autotunePlugin.autotuneStartHour * 3600 * 1000L
         if (runToday && autotunePlugin.result != "") {
             binding.tuneWarning.text = rh.gs(info.nightscout.core.ui.R.string.autotune_warning_after_run)
-        } else if (!runToday || autotunePlugin.result.isEmpty()) { //if new day re-init result, default days, warning and button's visibility
+        } else if (!runToday || autotunePlugin.result.isEmpty()) //if new day re-init result, default days, warning and button's visibility
             resetParam(!runToday)
-        }
     }
 
     private fun addWarnings(): String {
@@ -365,17 +390,19 @@ class AutotuneFragment : DaggerFragment() {
                     nl = "\n"
                 }
                 if (profile.isfSize > 1) {
-                    warning += nl + rh.gs(info.nightscout.core.ui.R.string.autotune_isf_warning, profile.isfSize, Profile.fromMgdlToUnits(profile.isf, profileFunction.getUnits()), profileFunction.getUnits().asText)
+                    warning += nl + rh.gs(info.nightscout.core.ui.R.string.autotune_isf_warning, profile.isfSize, profileUtil.fromMgdlToUnits(profile.isf), profileFunction.getUnits().asText)
                 }
             }
         }
         return warning
     }
 
-    private fun resetParam(resetDay: Boolean = true) {
+    private fun resetParam(resetDay: Boolean) {
         binding.tuneWarning.text = addWarnings()
-        if (resetDay)
+        if (resetDay) {
             autotunePlugin.lastNbDays = sp.getInt(info.nightscout.core.utils.R.string.key_autotune_default_tune_days, 5).toString()
+            days.setAll(true)
+        }
         autotunePlugin.result = ""
         binding.autotuneResults.removeAllViews()
         autotunePlugin.tunedProfile = null

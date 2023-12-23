@@ -8,11 +8,15 @@ import android.graphics.Color
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
+import androidx.core.view.MenuProvider
 import com.google.common.primitives.Ints.min
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import dagger.android.support.DaggerAppCompatActivity
+import info.nightscout.core.ui.activities.TranslatedDaggerAppCompatActivity
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.ui.toast.ToastUtils
 import info.nightscout.core.utils.fabric.FabricPrivacy
@@ -28,7 +32,7 @@ import info.nightscout.shared.interfaces.ResourceHelper
 import net.glxn.qrgen.android.QRCode
 import javax.inject.Inject
 
-class SmsCommunicatorOtpActivity : DaggerAppCompatActivity() {
+class SmsCommunicatorOtpActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var smsCommunicator: SmsCommunicator
@@ -45,15 +49,19 @@ class SmsCommunicatorOtpActivity : DaggerAppCompatActivity() {
         binding = SmscommunicatorActivityOtpBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        title = rh.gs(R.string.smscommunicator_tab_otp_label)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
+
         binding.otpVerifyEdit.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable) {
                 val checkResult = otp.checkOTP(s.toString())
 
                 binding.otpVerifyLabel.text = when (checkResult) {
-                    OneTimePasswordValidationResult.OK                 -> "OK"
-                    OneTimePasswordValidationResult.ERROR_WRONG_LENGTH -> "INVALID SIZE!"
-                    OneTimePasswordValidationResult.ERROR_WRONG_PIN    -> "WRONG PIN"
-                    OneTimePasswordValidationResult.ERROR_WRONG_OTP    -> "WRONG OTP"
+                    OneTimePasswordValidationResult.OK                 -> rh.gs(R.string.smscommunicator_otp_verification_ok)
+                    OneTimePasswordValidationResult.ERROR_WRONG_LENGTH -> rh.gs(R.string.smscommunicator_otp_verification_ivalid_size)
+                    OneTimePasswordValidationResult.ERROR_WRONG_PIN    -> rh.gs(R.string.smscommunicator_otp_verification_wrong_pin)
+                    OneTimePasswordValidationResult.ERROR_WRONG_OTP    -> rh.gs(R.string.smscommunicator_otp_verification_wrong_otp)
                 }
 
                 binding.otpVerifyLabel.setTextColor(
@@ -66,9 +74,13 @@ class SmsCommunicatorOtpActivity : DaggerAppCompatActivity() {
                 )
             }
 
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+                /* left blank because we only need afterTextChanged */
+            }
 
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                /* left blank because we only need afterTextChanged */
+            }
         })
 
         binding.otpReset.setOnClickListener {
@@ -99,6 +111,20 @@ class SmsCommunicatorOtpActivity : DaggerAppCompatActivity() {
 
             true
         }
+        // Add menu items without overriding methods in the Activity
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {}
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    android.R.id.home -> {
+                        onBackPressedDispatcher.onBackPressed()
+                        true
+                    }
+
+                    else              -> false
+                }
+        })
     }
 
     @Synchronized

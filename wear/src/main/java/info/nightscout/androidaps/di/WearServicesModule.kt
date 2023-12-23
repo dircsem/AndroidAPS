@@ -4,16 +4,19 @@ import dagger.Module
 import dagger.android.ContributesAndroidInjector
 import info.nightscout.androidaps.comm.DataLayerListenerServiceWear
 import info.nightscout.androidaps.complications.*
+import info.nightscout.androidaps.heartrate.HeartRateListener
 import info.nightscout.androidaps.tile.*
 import info.nightscout.androidaps.watchfaces.*
 import info.nightscout.androidaps.watchfaces.utils.BaseWatchFace
+import info.nightscout.androidaps.wearStepCount.stepCountListener
 
 @Module
 @Suppress("unused")
 abstract class WearServicesModule {
 
     @ContributesAndroidInjector abstract fun contributesDataLayerListenerService(): DataLayerListenerServiceWear
-
+    @ContributesAndroidInjector abstract fun contributesHeartRateListenerService(): HeartRateListener
+    @ContributesAndroidInjector abstract fun contributesStepsCountListenerService(): stepCountListener
     @ContributesAndroidInjector abstract fun contributesBaseComplicationProviderService(): BaseComplicationProviderService
     @ContributesAndroidInjector abstract fun contributesBrCobIobComplication(): BrCobIobComplication
     @ContributesAndroidInjector abstract fun contributesCobDetailedComplication(): CobDetailedComplication
@@ -39,6 +42,7 @@ abstract class WearServicesModule {
     @ContributesAndroidInjector abstract fun contributesBIGChart(): BigChartWatchface
     @ContributesAndroidInjector abstract fun contributesNOChart(): NoChartWatchface
     @ContributesAndroidInjector abstract fun contributesCircleWatchface(): CircleWatchface
+    @ContributesAndroidInjector abstract fun contributesCustomWatchface(): CustomWatchface
 
     @ContributesAndroidInjector abstract fun contributesTileBase(): TileBase
     @ContributesAndroidInjector abstract fun contributesQuickWizardTileService(): QuickWizardTileService
