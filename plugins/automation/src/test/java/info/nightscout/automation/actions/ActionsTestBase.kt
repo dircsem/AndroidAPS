@@ -1,21 +1,17 @@
 package info.nightscout.automation.actions
 
-import android.content.Context
 import dagger.android.AndroidInjector
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.TestBaseWithProfile
-import info.nightscout.androidaps.TestPumpPlugin
 import info.nightscout.automation.triggers.Trigger
 import info.nightscout.database.entities.DeviceStatus
 import info.nightscout.database.entities.OfflineEvent
+import info.nightscout.database.impl.AppRepository
 import info.nightscout.interfaces.ConfigBuilder
 import info.nightscout.interfaces.GlucoseUnit
 import info.nightscout.interfaces.aps.Loop
-import info.nightscout.interfaces.configBuilder.RunningConfiguration
 import info.nightscout.interfaces.constraints.Constraint
 import info.nightscout.interfaces.iob.IobCobCalculator
 import info.nightscout.interfaces.logging.UserEntryLogger
-import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.plugin.PluginBase
 import info.nightscout.interfaces.plugin.PluginDescription
 import info.nightscout.interfaces.plugin.PluginType
@@ -29,8 +25,8 @@ import info.nightscout.interfaces.receivers.ReceiverStatusStore
 import info.nightscout.interfaces.smsCommunicator.SmsCommunicator
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
+import info.nightscout.sharedtests.TestBaseWithProfile
 import org.junit.jupiter.api.BeforeEach
 import org.mockito.Mock
 import org.mockito.Mockito.`when`
@@ -65,32 +61,18 @@ ActionsTestBase : TestBaseWithProfile() {
         override fun goToZeroTemp(durationInMinutes: Int, profile: Profile, reason: OfflineEvent.Reason) {}
         override fun suspendLoop(durationInMinutes: Int) {}
         override fun disableCarbSuggestions(durationMinutes: Int) {}
-        override fun buildDeviceStatus(
-            dateUtil: DateUtil,
-            loop: Loop,
-            iobCobCalculatorPlugin: IobCobCalculator,
-            profileFunction: ProfileFunction,
-            pump: Pump,
-            receiverStatusStore: ReceiverStatusStore,
-            runningConfiguration: RunningConfiguration,
-            version: String
-        ): DeviceStatus? = null
+        override fun buildAndStoreDeviceStatus() {}
 
         override fun setPluginEnabled(type: PluginType, newState: Boolean) {}
     }
 
-    @Mock lateinit var sp: SP
     @Mock lateinit var commandQueue: CommandQueue
     @Mock lateinit var configBuilder: ConfigBuilder
-    @Mock lateinit var activePlugin: ActivePlugin
     @Mock lateinit var profilePlugin: ProfileSource
     @Mock lateinit var smsCommunicator: SmsCommunicator
     @Mock lateinit var loopPlugin: TestLoopPlugin
     @Mock lateinit var uel: UserEntryLogger
-    @Mock lateinit var context: Context
-
-    private val pluginDescription = PluginDescription()
-    lateinit var testPumpPlugin: TestPumpPlugin
+    @Mock lateinit var repository: AppRepository
 
     var injector: HasAndroidInjector = HasAndroidInjector {
         AndroidInjector {
@@ -109,6 +91,7 @@ ActionsTestBase : TestBaseWithProfile() {
                 it.profileFunction = profileFunction
                 it.uel = uel
                 it.dateUtil = dateUtil
+                it.profileUtil = profileUtil
             }
             if (it is ActionSendSMS) {
                 it.aapsLogger = aapsLogger
@@ -196,8 +179,6 @@ ActionsTestBase : TestBaseWithProfile() {
 
     @BeforeEach
     fun mock() {
-        testPumpPlugin = TestPumpPlugin(pluginDescription, aapsLogger, rh, injector)
-        `when`(activePlugin.activePump).thenReturn(testPumpPlugin)
         `when`(profileFunction.getUnits()).thenReturn(GlucoseUnit.MGDL)
         `when`(activePlugin.activeProfileSource).thenReturn(profilePlugin)
         `when`(profilePlugin.profile).thenReturn(getValidProfileStore())

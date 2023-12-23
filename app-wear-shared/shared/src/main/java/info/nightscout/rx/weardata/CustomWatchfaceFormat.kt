@@ -2,10 +2,12 @@ package info.nightscout.rx.weardata
 
 import android.content.res.Resources
 import android.graphics.BitmapFactory
+import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import androidx.annotation.DrawableRes
+import android.graphics.drawable.PictureDrawable
 import androidx.annotation.StringRes
+import com.caverock.androidsvg.SVG
 import info.nightscout.shared.R
 import kotlinx.serialization.Serializable
 import org.json.JSONObject
@@ -17,69 +19,112 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-val CUSTOM_VERSION = "0.10"
+val CUSTOM_VERSION = "1.0"
 
-enum class CwfDrawableFileMap(val key: String, @DrawableRes val icon: Int?, val fileName: String) {
-    UNKNOWN("unknown", null, "Unknown"),
-    CUSTOM_WATCHFACE("customWatchface", R.drawable.watchface_custom, "CustomWatchface"),
-    BACKGROUND(ViewKeys.BACKGROUND.key, R.drawable.background, "Background"),
-    BACKGROUND_HIGH(ViewKeys.BACKGROUND.key, R.drawable.background, "BackgroundHigh"),
-    BACKGROUND_LOW(ViewKeys.BACKGROUND.key, R.drawable.background, "BackgroundLow"),
-    COVER_CHART(ViewKeys.COVER_CHART.key, null, "CoverChart"),
-    COVER_PLATE(ViewKeys.COVER_PLATE.key, R.drawable.simplified_dial, "CoverPlate"),
-    HOUR_HAND(ViewKeys.HOUR_HAND.key, R.drawable.hour_hand, "HourHand"),
-    MINUTE_HAND(ViewKeys.MINUTE_HAND.key, R.drawable.minute_hand, "MinuteHand"),
-    SECOND_HAND(ViewKeys.SECOND_HAND.key, R.drawable.second_hand, "SecondHand");
+enum class ResFileMap(val fileName: String) {
+    UNKNOWN("Unknown"),
+    CUSTOM_WATCHFACE("CustomWatchface"),
+    BACKGROUND("Background"),
+    BACKGROUND_HIGH("BackgroundHigh"),
+    BACKGROUND_LOW("BackgroundLow"),
+    COVER_CHART("CoverChart"),
+    COVER_CHART_HIGH("CoverChartHigh"),
+    COVER_CHART_LOW("CoverChartLow"),
+    COVER_PLATE("CoverPlate"),
+    COVER_PLATE_HIGH("CoverPlateHigh"),
+    COVER_PLATE_LOW("CoverPlateLow"),
+    HOUR_HAND("HourHand"),
+    HOUR_HAND_HIGH("HourHandHigh"),
+    HOUR_HAND_LOW("HourHandLow"),
+    MINUTE_HAND("MinuteHand"),
+    MINUTE_HAND_HIGH("MinuteHandHigh"),
+    MINUTE_HAND_LOW("MinuteHandLow"),
+    SECOND_HAND("SecondHand"),
+    SECOND_HAND_HIGH("SecondHandHigh"),
+    SECOND_HAND_LOW("SecondHandLow"),
+    ARROW_NONE("ArrowNone"),
+    ARROW_DOUBLE_UP("ArrowDoubleUp"),
+    ARROW_SINGLE_UP("ArrowSingleUp"),
+    ARROW_FORTY_FIVE_UP("Arrow45Up"),
+    ARROW_FLAT("ArrowFlat"),
+    ARROW_FORTY_FIVE_DOWN("Arrow45Down"),
+    ARROW_SINGLE_DOWN("ArrowSingleDown"),
+    ARROW_DOUBLE_DOWN("ArrowDoubleDown");
 
     companion object {
 
-        fun fromKey(key: String): CwfDrawableFileMap =
-            values().firstOrNull { it.key == key } ?: UNKNOWN
-
-        fun fromFileName(file: String): CwfDrawableFileMap = values().firstOrNull { it.fileName == file.substringBeforeLast(".") } ?: UNKNOWN
+        fun fromFileName(file: String): ResFileMap = values().firstOrNull { it.fileName == file.substringBeforeLast(".") } ?: UNKNOWN
     }
 }
 
-enum class DrawableFormat(val extension: String) {
+enum class ResFormat(val extension: String) {
     UNKNOWN(""),
-
-    //XML("xml"),
-    //SVG("svg"),
+    SVG("svg"),
     JPG("jpg"),
-    PNG("png");
+    PNG("png"),
+    TTF("ttf"),
+    OTF("otf");
 
     companion object {
 
-        fun fromFileName(fileName: String): DrawableFormat =
-            values().firstOrNull { it.extension == fileName.substringAfterLast(".") } ?: UNKNOWN
+        fun fromFileName(fileName: String): ResFormat =
+            values().firstOrNull { it.extension == fileName.substringAfterLast(".").lowercase() } ?: UNKNOWN
 
     }
 }
 
 @Serializable
-data class DrawableData(val value: ByteArray, val format: DrawableFormat) {
+data class ResData(val value: ByteArray, val format: ResFormat) {
 
-    fun toDrawable(resources: Resources): Drawable? {
+    fun toDrawable(resources: Resources, width: Int? = null, height: Int? = null): Drawable? {
         try {
             return when (format) {
-                DrawableFormat.PNG, DrawableFormat.JPG -> {
+                ResFormat.PNG, ResFormat.JPG -> {
                     val bitmap = BitmapFactory.decodeByteArray(value, 0, value.size)
                     BitmapDrawable(resources, bitmap)
                 }
-                /*
-                                DrawableFormat.SVG -> {
-                                    //TODO: include svg to Drawable convertor here
-                                    null
-                                }
-                                DrawableFormat.XML -> {
-                                    // Always return a null Drawable, even if xml file is a valid xml vector file
-                                    val xmlInputStream = ByteArrayInputStream(value)
-                                    val xmlPullParser = Xml.newPullParser()
-                                    xmlPullParser.setInput(xmlInputStream, null)
-                                    Drawable.createFromXml(resources, xmlPullParser)
-                                }
-                */
-                else                                   -> null
+
+                ResFormat.SVG                -> {
+                    val svg = SVG.getFromString(String(value))
+                    svg.documentWidth = width?.toFloat() ?: svg.documentWidth
+                    svg.documentHeight = height?.toFloat() ?: svg.documentHeight
+                    val picture = svg.renderToPicture()
+                    PictureDrawable(picture).apply {
+                        setBounds(0, 0, svg.documentWidth.toInt(), svg.documentHeight.toInt())
+                    }
+                }
+
+                else                         -> null
+            }
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    fun toTypeface(): Typeface? {
+        try {
+            return when (format) {
+                ResFormat.TTF, ResFormat.OTF -> {
+                    // Workaround with temporary File, Typeface.createFromFileDescriptor(null, value, 0, value.size) more simple not available
+                    File.createTempFile("temp", format.extension).let { tempFile ->
+                        FileOutputStream(tempFile).let { fileOutputStream ->
+                            fileOutputStream.write(value)
+                            fileOutputStream.close()
+                        }
+
+                        Typeface.createFromFile(tempFile).let {
+                            if (!tempFile.delete()) {
+                                // delete tempfile after usage
+                            }
+                            it
+                        }
+                    }
+                }
+
+                else          -> {
+                    null
+
+                }
             }
         } catch (e: Exception) {
             return null
@@ -87,11 +132,11 @@ data class DrawableData(val value: ByteArray, val format: DrawableFormat) {
     }
 }
 
-typealias CwfDrawableDataMap = MutableMap<CwfDrawableFileMap, DrawableData>
+typealias CwfResDataMap = MutableMap<String, ResData>
 typealias CwfMetadataMap = MutableMap<CwfMetadataKey, String>
 
 @Serializable
-data class CwfData(val json: String, var metadata: CwfMetadataMap, val drawableDatas: CwfDrawableDataMap)
+data class CwfData(val json: String, var metadata: CwfMetadataMap, val resDatas: CwfResDataMap)
 
 enum class CwfMetadataKey(val key: String, @StringRes val label: Int, val isPref: Boolean) {
 
@@ -101,7 +146,7 @@ enum class CwfMetadataKey(val key: String, @StringRes val label: Int, val isPref
     CWF_CREATED_AT("created_at", R.string.metadata_label_watchface_created_at, false),
     CWF_VERSION("cwf_version", R.string.metadata_label_plugin_version, false),
     CWF_AUTHOR_VERSION("author_version", R.string.metadata_label_watchface_name_version, false),
-    CWF_COMMENT("comment", R.string.metadata_label_watchface_comment, false), // label not planed to be used for CWF_COMMENT
+    CWF_COMMENT("comment", R.string.metadata_label_watchface_infos, false),
     CWF_AUTHORIZATION("cwf_authorization", R.string.metadata_label_watchface_authorization, false),
     CWF_PREF_WATCH_SHOW_DETAILED_IOB("key_show_detailed_iob", R.string.pref_show_detailed_iob, true),
     CWF_PREF_WATCH_SHOW_DETAILED_DELTA("key_show_detailed_delta", R.string.pref_show_detailed_delta, true),
@@ -117,7 +162,7 @@ enum class CwfMetadataKey(val key: String, @StringRes val label: Int, val isPref
     CWF_PREF_WATCH_SHOW_AGO("key_show_ago", R.string.pref_show_ago, true),
     CWF_PREF_WATCH_SHOW_BG("key_show_bg", R.string.pref_show_bg, true),
     CWF_PREF_WATCH_SHOW_LOOP_STATUS("key_show_loop_status", R.string.pref_show_loop_status, true),
-    CWF_PREF_WATCH_SHOW_DATE("key_show_date", R.string.pref_show_date, true);
+    CWF_PREF_WATCH_SHOW_WEEK_NUMBER("key_show_week_number", R.string.pref_show_week_number, true);
 
     companion object {
 
@@ -126,99 +171,96 @@ enum class CwfMetadataKey(val key: String, @StringRes val label: Int, val isPref
     }
 }
 
-enum class ViewKeys(val key: String, @StringRes val comment: Int?) {
+enum class ViewKeys(val key: String, @StringRes val comment: Int) {
 
-    BACKGROUND("background", null),
-    CHART("chart", null),
-    COVER_CHART("cover_chart", null),
-    FREETEXT1("freetext1", null),
-    FREETEXT2("freetext2", null),
-    FREETEXT3("freetext3", null),
-    FREETEXT4("freetext4", null),
-    IOB1("iob1", null),
-    IOB2("iob2", null),
-    COB1("cob1", null),
-    COB2("cob2", null),
-    DELTA("delta", null),
-    AVG_DELTA("avg_delta", null),
-    UPLOADER_BATTERY("uploader_battery", null),
-    RIG_BATTERY("rig_battery", null),
-    BASALRATE("basalRate", null),
-    BGI("bgi", null),
-    TIME("time", null),
-    HOUR("hour", null),
-    MINUTE("minute", null),
-    SECOND("second", null),
-    TIMEPERIOD("timePeriod", null),
-    DAY_NAME("day_name", null),
-    DAY("day", null),
-    MONTH("month", null),
-    LOOP("loop", null),
-    DIRECTION("direction", null),
-    TIMESTAMP("timestamp", null),
-    SGV("sgv", null),
-    COVER_PLATE("cover_plate", null),
-    HOUR_HAND("hour_hand", null),
-    MINUTE_HAND("minute_hand", null),
-    SECOND_HAND("second_hand", null)
+    BACKGROUND("background", R.string.cwf_comment_background),
+    CHART("chart", R.string.cwf_comment_chart),
+    COVER_CHART("cover_chart", R.string.cwf_comment_cover_chart),
+    FREETEXT1("freetext1", R.string.cwf_comment_freetext1),
+    FREETEXT2("freetext2", R.string.cwf_comment_freetext2),
+    FREETEXT3("freetext3", R.string.cwf_comment_freetext3),
+    FREETEXT4("freetext4", R.string.cwf_comment_freetext4),
+    IOB1("iob1", R.string.cwf_comment_iob1),
+    IOB2("iob2", R.string.cwf_comment_iob2),
+    COB1("cob1", R.string.cwf_comment_cob1),
+    COB2("cob2", R.string.cwf_comment_cob2),
+    DELTA("delta", R.string.cwf_comment_delta),
+    AVG_DELTA("avg_delta", R.string.cwf_comment_avg_delta),
+    UPLOADER_BATTERY("uploader_battery", R.string.cwf_comment_uploader_battery),
+    RIG_BATTERY("rig_battery", R.string.cwf_comment_rig_battery),
+    BASALRATE("basalRate", R.string.cwf_comment_basalRate),
+    BGI("bgi", R.string.cwf_comment_bgi),
+    TIME("time", R.string.cwf_comment_time),
+    HOUR("hour", R.string.cwf_comment_hour),
+    MINUTE("minute", R.string.cwf_comment_minute),
+    SECOND("second", R.string.cwf_comment_second),
+    TIMEPERIOD("timePeriod", R.string.cwf_comment_timePeriod),
+    DAY_NAME("day_name", R.string.cwf_comment_day_name),
+    DAY("day", R.string.cwf_comment_day),
+    WEEKNUMBER("week_number",R.string.cwf_comment_week_number),
+    MONTH("month", R.string.cwf_comment_month),
+    LOOP("loop", R.string.cwf_comment_loop),
+    DIRECTION("direction", R.string.cwf_comment_direction),
+    TIMESTAMP("timestamp", R.string.cwf_comment_timestamp),
+    SGV("sgv", R.string.cwf_comment_sgv),
+    COVER_PLATE("cover_plate", R.string.cwf_comment_cover_plate),
+    HOUR_HAND("hour_hand", R.string.cwf_comment_hour_hand),
+    MINUTE_HAND("minute_hand", R.string.cwf_comment_minute_hand),
+    SECOND_HAND("second_hand", R.string.cwf_comment_second_hand)
 }
 
-enum class JsonKeys(val key: String, val viewType: ViewType, @StringRes val comment: Int?) {
-    METADATA("metadata", ViewType.NONE, null),
-    ENABLESECOND("enableSecond", ViewType.NONE, null),
-    HIGHCOLOR("highColor", ViewType.NONE, null),
-    MIDCOLOR("midColor", ViewType.NONE, null),
-    LOWCOLOR("lowColor", ViewType.NONE, null),
-    LOWBATCOLOR("lowBatColor", ViewType.NONE, null),
-    CARBCOLOR("carbColor", ViewType.NONE, null),
-    BASALBACKGROUNDCOLOR("basalBackgroundColor", ViewType.NONE, null),
-    BASALCENTERCOLOR("basalCenterColor", ViewType.NONE, null),
-    GRIDCOLOR("gridColor", ViewType.NONE, null),
-    POINTSIZE("pointSize", ViewType.NONE, null),
-    WIDTH("width", ViewType.ALLVIEWS, null),
-    HEIGHT("height", ViewType.ALLVIEWS, null),
-    TOPMARGIN("topmargin", ViewType.ALLVIEWS, null),
-    LEFTMARGIN("leftmargin", ViewType.ALLVIEWS, null),
-    ROTATION("rotation", ViewType.TEXTVIEW, null),
-    VISIBILITY("visibility", ViewType.ALLVIEWS, null),
-    TEXTSIZE("textsize", ViewType.TEXTVIEW, null),
-    TEXTVALUE("textvalue", ViewType.TEXTVIEW, null),
-    GRAVITY("gravity", ViewType.TEXTVIEW, null),
-    FONT("font", ViewType.TEXTVIEW, null),
-    FONTSTYLE("fontStyle", ViewType.TEXTVIEW, null),
-    FONTCOLOR("fontColor", ViewType.TEXTVIEW, null),
-    COLOR("color", ViewType.IMAGEVIEW, null)
+enum class JsonKeys(val key: String) {
+    METADATA("metadata"),
+    ENABLESECOND("enableSecond"),
+    HIGHCOLOR("highColor"),
+    MIDCOLOR("midColor"),
+    LOWCOLOR("lowColor"),
+    LOWBATCOLOR("lowBatColor"),
+    CARBCOLOR("carbColor"),
+    BASALBACKGROUNDCOLOR("basalBackgroundColor"),
+    BASALCENTERCOLOR("basalCenterColor"),
+    GRIDCOLOR("gridColor"),
+    POINTSIZE("pointSize"),
+    WIDTH("width"),
+    HEIGHT("height"),
+    TOPMARGIN("topmargin"),
+    LEFTMARGIN("leftmargin"),
+    ROTATION("rotation"),
+    VISIBILITY("visibility"),
+    TEXTSIZE("textsize"),
+    TEXTVALUE("textvalue"),
+    GRAVITY("gravity"),
+    FONT("font"),
+    FONTSTYLE("fontStyle"),
+    FONTCOLOR("fontColor"),
+    COLOR("color"),
+    ALLCAPS("allCaps"),
+    DAYNAMEFORMAT("dayNameFormat"),
+    MONTHFORMAT("monthFormat"),
+    BACKGROUND("background")
 }
 
-enum class JsonKeyValues(val key: String, val jsonKey: JsonKeys) {
-    GONE("gone", JsonKeys.VISIBILITY),
-    VISIBLE("visible", JsonKeys.VISIBILITY),
-    INVISIBLE("invisible", JsonKeys.VISIBILITY),
-    CENTER("center", JsonKeys.GRAVITY),
-    LEFT("left", JsonKeys.GRAVITY),
-    RIGHT("right", JsonKeys.GRAVITY),
-    SANS_SERIF("sans_serif", JsonKeys.FONT),
-    DEFAULT("default", JsonKeys.FONT),
-    DEFAULT_BOLD("default_bold", JsonKeys.FONT),
-    MONOSPACE("monospace", JsonKeys.FONT),
-    SERIF("serif", JsonKeys.FONT),
-    ROBOTO_CONDENSED_BOLD("roboto_condensed_bold", JsonKeys.FONT),
-    ROBOTO_CONDENSED_LIGHT("roboto_condensed_light", JsonKeys.FONT),
-    ROBOTO_CONDENSED_REGULAR("roboto_condensed_regular", JsonKeys.FONT),
-    ROBOTO_SLAB_LIGHT("roboto_slab_light", JsonKeys.FONT),
-    NORMAL("normal", JsonKeys.FONTSTYLE),
-    BOLD("bold", JsonKeys.FONTSTYLE),
-    BOLD_ITALIC("bold_italic", JsonKeys.FONTSTYLE),
-    ITALIC("italic", JsonKeys.FONTSTYLE),
-    BGCOLOR("bgColor", JsonKeys.COLOR),
-    BGCOLOR1("bgColor", JsonKeys.FONTCOLOR)
-}
-
-enum class ViewType(@StringRes val comment: Int?) {
-    NONE(null),
-    TEXTVIEW(null),
-    IMAGEVIEW(null),
-    ALLVIEWS(null)
+enum class JsonKeyValues(val key: String) {
+    GONE("gone"),
+    VISIBLE("visible"),
+    INVISIBLE("invisible"),
+    CENTER("center"),
+    LEFT("left"),
+    RIGHT("right"),
+    SANS_SERIF("sans_serif"),
+    DEFAULT("default"),
+    DEFAULT_BOLD("default_bold"),
+    MONOSPACE("monospace"),
+    SERIF("serif"),
+    ROBOTO_CONDENSED_BOLD("roboto_condensed_bold"),
+    ROBOTO_CONDENSED_LIGHT("roboto_condensed_light"),
+    ROBOTO_CONDENSED_REGULAR("roboto_condensed_regular"),
+    ROBOTO_SLAB_LIGHT("roboto_slab_light"),
+    NORMAL("normal"),
+    BOLD("bold"),
+    BOLD_ITALIC("bold_italic"),
+    ITALIC("italic"),
+    BGCOLOR("bgColor")
 }
 
 class ZipWatchfaceFormat {
@@ -227,13 +269,12 @@ class ZipWatchfaceFormat {
         const val CWF_EXTENTION = ".zip"
         const val CWF_JSON_FILE = "CustomWatchface.json"
 
-        fun loadCustomWatchface(cwfFile: File, authorization: Boolean): CwfData? {
+        fun loadCustomWatchface(zipInputStream: ZipInputStream, zipName: String, authorization: Boolean): CwfData? {
             var json = JSONObject()
             var metadata: CwfMetadataMap = mutableMapOf()
-            val drawableDatas: CwfDrawableDataMap = mutableMapOf()
+            val resDatas: CwfResDataMap = mutableMapOf()
 
             try {
-                val zipInputStream = ZipInputStream(cwfFile.inputStream())
                 var zipEntry: ZipEntry? = zipInputStream.nextEntry
                 while (zipEntry != null) {
                     val entryName = zipEntry.name
@@ -251,26 +292,27 @@ class ZipWatchfaceFormat {
                         val jsonString = byteArrayOutputStream.toByteArray().toString(Charsets.UTF_8)
                         json = JSONObject(jsonString)
                         metadata = loadMetadata(json)
-                        metadata[CwfMetadataKey.CWF_FILENAME] = cwfFile.name
+                        metadata[CwfMetadataKey.CWF_FILENAME] = zipName.substringBeforeLast(".")
                         metadata[CwfMetadataKey.CWF_AUTHORIZATION] = authorization.toString()
                     } else {
-                        val cwfDrawableFileMap = CwfDrawableFileMap.fromFileName(entryName)
-                        val drawableFormat = DrawableFormat.fromFileName(entryName)
-                        if (cwfDrawableFileMap != CwfDrawableFileMap.UNKNOWN && drawableFormat != DrawableFormat.UNKNOWN) {
-                            drawableDatas[cwfDrawableFileMap] = DrawableData(byteArrayOutputStream.toByteArray(), drawableFormat)
-                        }
+                        val cwfResFileMap = ResFileMap.fromFileName(entryName)
+                        val drawableFormat = ResFormat.fromFileName(entryName)
+                        if (cwfResFileMap != ResFileMap.UNKNOWN && drawableFormat != ResFormat.UNKNOWN) {
+                            resDatas[cwfResFileMap.fileName] = ResData(byteArrayOutputStream.toByteArray(), drawableFormat)
+                        } else if (drawableFormat != ResFormat.UNKNOWN)
+                            resDatas[entryName.substringBeforeLast(".")] = ResData(byteArrayOutputStream.toByteArray(), drawableFormat)
                     }
                     zipEntry = zipInputStream.nextEntry
                 }
 
                 // Valid CWF file must contains a valid json file with a name within metadata and a custom watchface image
-                if (metadata.containsKey(CwfMetadataKey.CWF_NAME) && drawableDatas.containsKey(CwfDrawableFileMap.CUSTOM_WATCHFACE))
-                    return CwfData(json.toString(4), metadata, drawableDatas)
+                return if (metadata.containsKey(CwfMetadataKey.CWF_NAME) && resDatas.containsKey(ResFileMap.CUSTOM_WATCHFACE.fileName))
+                    CwfData(json.toString(4), metadata, resDatas)
                 else
-                    return null
+                    null
 
             } catch (e: Exception) {
-                return null
+                return null     // mainly IOException
             }
         }
 
@@ -280,22 +322,21 @@ class ZipWatchfaceFormat {
                 val outputStream = FileOutputStream(file)
                 val zipOutputStream = ZipOutputStream(BufferedOutputStream(outputStream))
 
-                // Ajouter le fichier JSON au ZIP
                 val jsonEntry = ZipEntry(CWF_JSON_FILE)
                 zipOutputStream.putNextEntry(jsonEntry)
                 zipOutputStream.write(customWatchface.json.toByteArray())
                 zipOutputStream.closeEntry()
 
-                // Ajouter les fichiers divers au ZIP
-                for (drawableData in customWatchface.drawableDatas) {
-                    val fileEntry = ZipEntry("${drawableData.key.fileName}.${drawableData.value.format.extension}")
+                for (resData in customWatchface.resDatas) {
+                    val fileEntry = ZipEntry("${resData.key}.${resData.value.format.extension}")
                     zipOutputStream.putNextEntry(fileEntry)
-                    zipOutputStream.write(drawableData.value.value)
+                    zipOutputStream.write(resData.value.value)
                     zipOutputStream.closeEntry()
                 }
                 zipOutputStream.close()
                 outputStream.close()
             } catch (_: Exception) {
+                // Ignore file
             }
 
         }
@@ -303,17 +344,12 @@ class ZipWatchfaceFormat {
         fun loadMetadata(contents: JSONObject): CwfMetadataMap {
             val metadata: CwfMetadataMap = mutableMapOf()
 
-            if (contents.has(JsonKeys.METADATA.key)) {
-                val meta = contents.getJSONObject(JsonKeys.METADATA.key)
-                for (key in meta.keys()) {
-                    val metaKey = CwfMetadataKey.fromKey(key)
-                    if (metaKey != null) {
-                        metadata[metaKey] = meta.getString(key)
-                    }
+            contents.optJSONObject(JsonKeys.METADATA.key)?.also { jsonObject ->                     // optJSONObject doesn't throw Exception
+                for (key in jsonObject.keys()) {
+                    CwfMetadataKey.fromKey(key)?.let { metadata[it] = jsonObject.optString(key) }   // optString doesn't throw Exception
                 }
             }
             return metadata
         }
     }
-
 }

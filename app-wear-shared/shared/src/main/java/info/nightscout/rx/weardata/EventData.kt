@@ -17,12 +17,15 @@ sealed class EventData : Event() {
 
     @ExperimentalSerializationApi
     fun serializeByte() = ProtoBuf.encodeToByteArray(serializer(), this)
+
     companion object {
+
         fun deserialize(json: String) = try {
             Json.decodeFromString(serializer(), json)
         } catch (ignored: Exception) {
             Error(System.currentTimeMillis())
         }
+
         @ExperimentalSerializationApi
         fun deserializeByte(byteArray: ByteArray) = try {
             ProtoBuf.decodeFromByteArray(serializer(), byteArray)
@@ -105,7 +108,9 @@ sealed class EventData : Event() {
         val duration: Long,
         val timestamp: Long,
         val beatsPerMinute: Double,
-        val device: String): EventData() {
+        val device: String
+    ) : EventData() {
+
         override fun toString() =
             "HR ${beatsPerMinute.toInt()} at ${DateTime(timestamp)} for ${duration / 1000.0}sec $device"
     }
@@ -119,10 +124,11 @@ sealed class EventData : Event() {
         val steps15min: Int,
         val steps30min: Int,
         val steps60min: Int,
+        val steps180min: Int,
         val device: String): EventData() {
 
         override fun toString() =
-            "STEPS 5min: $steps5min, 10min: $steps10min, 15min: $steps15min, 30min: $steps30min, 60min: $steps60min at ${DateTime(timestamp)} for ${duration / 1000.0}sec $device"
+            "STEPS 5min: $steps5min, 10min: $steps10min, 15min: $steps15min, 30min: $steps30min, 60min: $steps60min, 180min: $steps180min at ${DateTime(timestamp)} for ${duration / 1000.0}sec $device"
 
     }
 
@@ -170,7 +176,8 @@ sealed class EventData : Event() {
     @Serializable
     data class ActionGetCustomWatchface(
         val customWatchface: ActionSetCustomWatchface,
-        val exportFile: Boolean = false
+        val exportFile: Boolean = false,
+        val withDate: Boolean = true
     ) : EventData()
 
     @Serializable
@@ -183,7 +190,7 @@ sealed class EventData : Event() {
     data class BolusProgress(val percent: Int, val status: String) : EventData()
 
     @Serializable
-    data class SingleBg @JvmOverloads constructor(
+    data class SingleBg(
         var timeStamp: Long,
         val sgvString: String = "---",
         val glucoseUnits: String = "-",
@@ -298,6 +305,7 @@ sealed class EventData : Event() {
             val validTo: Int
         ) : EventData()
     }
+
     @Serializable
     data class ActionSetCustomWatchface(
         val customWatchfaceData: CwfData

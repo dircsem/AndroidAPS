@@ -131,6 +131,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
     private var recentSteps15Minutes: Int = 0
     private var recentSteps30Minutes: Int = 0
     private var recentSteps60Minutes: Int = 0
+    private var recentSteps180Minutes: Int = 0
     private val path = File(Environment.getExternalStorageDirectory().toString())
     private val modelFile = File(path, "AAPS/ml/model.tflite")
     private val modelHBFile = File(path, "AAPS/ml/modelHB.tflite")
@@ -215,12 +216,17 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
             smbToGive = maxSMB
         }
         // don't give insulin if below target too aggressive
-        /*val belowTargetAndDropping = bg < targetBg && delta < -2
-       val belowTargetAndStableButNoCob = bg < targetBg - 15 && shortAvgDelta <= 2 && cob <= 5
+       val belowTargetAndDropping = bg < targetBg && delta < -2
+       val belowTargetAndStable = bg < targetBg - 15 && shortAvgDelta <= 2
        val belowMinThreshold = bg < 70
-       if (belowTargetAndDropping || belowMinThreshold || belowTargetAndStableButNoCob) {
+       if (belowTargetAndDropping || belowMinThreshold || belowTargetAndStable) {
            smbToGive = 0.0f
-       }*/
+       }
+       val safetysmb = bg < (targetBg + 40) && delta < 10 || recentSteps180Minutes > 1500 && bg < 140
+       if (safetysmb){
+           smbToGive /= 2
+       }
+
 
         // don't give insulin if dropping fast
         val droppingFast = bg < 140 && delta < -5
@@ -413,7 +419,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
     }
 
 
-    @SuppressLint("SuspiciousIndentation")
+    @SuppressLint("SuspiciousIndentation", "CheckResult")
     @Suppress("SpellCheckingInspection")
     override fun setData(
         profile: Profile,
@@ -621,7 +627,9 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
         this.profile.put("key_tdd7", SafeParse.stringToDouble(sp.getString(R.string.key_tdd7, "50")))
         this.profile.put("key_aimiweight", SafeParse.stringToDouble(sp.getString(R.string.key_aimiweight, "50")))
         this.profile.put("key_UAMpredBG", SafeParse.stringToDouble(sp.getString(R.string.key_UAMpredBG, "120")))
+        this.profile.put("key_fcl_smb", SafeParse.stringToDouble(sp.getString(R.string.key_fcl_smb, "0.5")))
         this.profile.put("aimipregnancy", sp.getBoolean(R.string.key_use_AimiPregnancy, false))
+        this.profile.put("key_use_fcl_smb", sp.getBoolean(R.string.key_use_fcl_smb, false))
 //**********************************************************************************************************************************************
         if (profileFunction.getUnits() == GlucoseUnit.MMOL) {
             this.profile.put("out_units", "mmol/L")
@@ -667,13 +675,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
         val extendedsmb = repository.getBolusesDataFromTime(now - millsToThePast2, false).blockingGet()
         extendedsmb.forEach { bolus ->
             if ((bolus.type == Bolus.Type.SMB) && bolus.isValid && bolus.amount.toLong() !== lastBolusNormalUnits.toLong()) SMBcount += 1
-            if (bolus.type == Bolus.Type.SMB && bolus.isValid && bolus.amount >= (0.8 * (profile.getBasal() * SafeParse.stringToDouble(
-                    sp.getString(
-                        R.string.key_use_AIMI_CAP,
-                        "150"
-                    )
-                ) / 100)) && sp.getBoolean(R.string.key_use_newSMB, false) === true
-            ) MaxSMBcount += 1
+            if (bolus.type == Bolus.Type.SMB && bolus.isValid && bolus.amount >= (0.8 * (profile.getBasal() * SafeParse.stringToDouble(sp.getString(R.string.key_use_AIMI_CAP, "150")) / 100)) && sp.getBoolean(R.string.key_use_newSMB, false) === true) MaxSMBcount += 1
         }
         val lastprebolus = repository.getBolusesDataFromTime(now - millsToThePast3, false).blockingGet()
         lastprebolus.forEach { bolus ->
@@ -715,18 +717,25 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
         val stepsCountList60 = repository.getLastStepsCountFromTimeToTime(timeMillis60, timeMillisNow)
         val stepsCount60 = stepsCountList60?.steps60min ?: 0
 
+        val stepsCountList180 = repository.getLastStepsCountFromTimeToTime(timeMillis180, timeMillisNow)
+        val stepsCount180 = stepsCountList180?.steps180min ?: 0
+
+
+
         if (sp.getBoolean(R.string.count_steps_watch, false)===true) {
             this.recentSteps5Minutes = stepsCount5
             this.recentSteps10Minutes = stepsCount10
             this.recentSteps15Minutes = stepsCount15
             this.recentSteps30Minutes = stepsCount30
             this.recentSteps60Minutes = stepsCount60
+            this.recentSteps180Minutes = stepsCount180
         }else{
             this.recentSteps5Minutes = StepService.getRecentStepCount5Min()
             this.recentSteps10Minutes = StepService.getRecentStepCount10Min()
             this.recentSteps15Minutes = StepService.getRecentStepCount15Min()
             this.recentSteps30Minutes = StepService.getRecentStepCount30Min()
             this.recentSteps60Minutes = StepService.getRecentStepCount60Min()
+            this.recentSteps180Minutes = StepService.getRecentStepCount180Min()
         }
 
 
@@ -734,7 +743,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
         var beatsPerMinuteValues180: List<Int>
 
         try {
-            val heartRates = repository.getHeartRatesFromTime(timeMillis15)
+            val heartRates = repository.getHeartRatesFromTimeToTime(timeMillis5,timeMillisNow)
             beatsPerMinuteValues = heartRates.map { it.beatsPerMinute.toInt() } // Extract beatsPerMinute values from heartRates
             this.averageBeatsPerMinute = if (beatsPerMinuteValues.isNotEmpty()) {
                 beatsPerMinuteValues.average()
@@ -751,7 +760,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
         }
         try {
 
-            val heartRates180 = repository.getHeartRatesFromTime(timeMillis180)
+            val heartRates180 = repository.getHeartRatesFromTimeToTime(timeMillis180,timeMillisNow)
             beatsPerMinuteValues180 = heartRates180.map { it.beatsPerMinute.toInt() } // Extract beatsPerMinute values from heartRates
             this.averageBeatsPerMinute180 = if (beatsPerMinuteValues180.isNotEmpty()) {
                 beatsPerMinuteValues180.average()
@@ -871,8 +880,8 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
             // Ajout d'un log pour vérifier la valeur de variableSensitivity après le calcul
             val variableSensitivityDouble = variableSensitivity.toDoubleSafely()
             if (variableSensitivityDouble != null) {
-                if (recentSteps5Minutes > 100 && recentSteps10Minutes > 200) variableSensitivity *= 1.5f
-                if (recentSteps30Minutes > 500 && recentSteps5Minutes >= 0 && recentSteps5Minutes < 100) variableSensitivity *= 1.3f
+                if (recentSteps5Minutes > 100 && recentSteps10Minutes > 200 && bg < 130 && delta < 10|| recentSteps180Minutes > 1500 && bg < 130 && delta < 10) variableSensitivity *= 1.5f
+                if (recentSteps30Minutes > 500 && recentSteps5Minutes >= 0 && recentSteps5Minutes < 100 && bg < 130 && delta < 10) variableSensitivity *= 1.3f
             }
         } else {
             variableSensitivity = profile.getIsfMgdl().toFloat()
@@ -896,8 +905,8 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
             }
         }
 
-        var clusterinsulin = 0.0f
-        if (bg > targetBg && variableSensitivity != null && variableSensitivity.isInfinite()) {
+        var clusterinsulin = 1.0f
+        if (bg > targetBg && variableSensitivity != null) {
             clusterinsulin = ((bg - targetBg) / variableSensitivity).toFloat()
         }
 
@@ -932,6 +941,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
             this.profile.put("insulinDivisor", insulinDivisor)
             //this.profile.put("tddlastHaverage", tddlastHaverage)
             this.profile.put("key_use_AimiIgnoreCOB", sp.getBoolean(R.string.key_use_AimiIgnoreCOB, false))
+            this.profile.put("key_use_AIMI_factor", sp.getBoolean(R.string.key_use_AIMI_factor, false))
 
         modelai = modelFile.exists() || modelHBFile.exists()
             this.profile.put("modelai", modelai)
@@ -946,6 +956,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
             this.profile.put("recentSteps15Minutes", recentSteps15Minutes)
             this.profile.put("recentSteps30Minutes", recentSteps30Minutes)
             this.profile.put("recentSteps60Minutes", recentSteps60Minutes)
+            this.profile.put("recentSteps180Minutes", recentSteps180Minutes)
 
             this.profile.put("insulinR", insulinR)
 
@@ -972,7 +983,7 @@ class DetermineBasalAdapterAIMIJS internal constructor(private val scriptReader:
                 autosensData.put("ratio", autosensDataRatio)
             } else {
                 autosensData.put("ratio", 1.0)
-        }
+            }
 
             this.microBolusAllowed = microBolusAllowed
             smbAlwaysAllowed = advancedFiltering

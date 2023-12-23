@@ -3,6 +3,7 @@ package info.nightscout.implementation.userEntry
 import android.text.Spanned
 import dagger.Reusable
 import info.nightscout.core.main.R
+import info.nightscout.core.utils.HtmlHelper
 import info.nightscout.database.entities.UserEntry
 import info.nightscout.database.entities.UserEntry.Action
 import info.nightscout.database.entities.UserEntry.ColorGroup
@@ -11,11 +12,9 @@ import info.nightscout.database.entities.ValueWithUnit
 import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.GlucoseUnit
 import info.nightscout.interfaces.Translator
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.userEntry.UserEntryPresentationHelper
 import info.nightscout.interfaces.utils.DecimalFormatter
-import info.nightscout.interfaces.utils.HtmlHelper
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.utils.DateUtil
 import javax.inject.Inject
@@ -23,9 +22,10 @@ import javax.inject.Inject
 @Reusable
 class UserEntryPresentationHelperImpl @Inject constructor(
     private val translator: Translator,
-    private val profileFunction: ProfileFunction,
+    private val profileUtil: ProfileUtil,
     private val rh: ResourceHelper,
     private val dateUtil: DateUtil,
+    private val decimalFormatter: DecimalFormatter
 ) : UserEntryPresentationHelper {
 
     override fun colorId(colorGroup: ColorGroup): Int = when (colorGroup) {
@@ -49,7 +49,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         Sources.QuickWizard         -> R.drawable.ic_quick_wizard
         Sources.ExtendedBolusDialog -> R.drawable.ic_actions_start_extended_bolus
         Sources.TTDialog            -> R.drawable.ic_temptarget_high
-        Sources.ProfileSwitchDialog -> info.nightscout.interfaces.R.drawable.ic_actions_profileswitch
+        Sources.ProfileSwitchDialog -> info.nightscout.core.ui.R.drawable.ic_actions_profileswitch
         Sources.LoopDialog          -> R.drawable.ic_loop_closed
         Sources.TempBasalDialog     -> R.drawable.ic_actions_start_temp_basal
         Sources.CalibrationDialog   -> R.drawable.ic_calibration
@@ -97,6 +97,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         Sources.OmnipodEros         -> R.drawable.ic_patch_pump_outline
         Sources.OmnipodDash         -> R.drawable.ic_patch_pump_outline
         Sources.EOPatch2            -> info.nightscout.core.ui.R.drawable.ic_eopatch2_128
+        Sources.Medtrum             -> info.nightscout.core.ui.R.drawable.ic_medtrum_128
         Sources.MDI                 -> R.drawable.ic_ict
         Sources.VirtualPump         -> R.drawable.ic_virtual_pump
         Sources.SMS                 -> R.drawable.ic_sms
@@ -109,7 +110,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         Sources.Aaps                -> R.drawable.ic_aaps
         Sources.Unknown             -> info.nightscout.core.ui.R.drawable.ic_generic_icon
         Sources.MedLinkMedtronic    -> info.nightscout.core.ui.R.drawable.ic_veo_medlink
-        Sources.Enlite              -> info.nightscout.core.ui.R.drawable.ic_minilink
+        Sources.Enlite              -> R.drawable.ic_minilink
     }
 
     override fun actionToColoredString(action: Action): Spanned = when (action) {
@@ -127,8 +128,8 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         is ValueWithUnit.Hour                  -> "${valueWithUnit.value}${translator.translate(valueWithUnit)}"
         is ValueWithUnit.Minute                -> "${valueWithUnit.value}${translator.translate(valueWithUnit)}"
         is ValueWithUnit.Percent               -> "${valueWithUnit.value}${translator.translate(valueWithUnit)}"
-        is ValueWithUnit.Insulin               -> DecimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
-        is ValueWithUnit.UnitPerHour           -> DecimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
+        is ValueWithUnit.Insulin               -> decimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
+        is ValueWithUnit.UnitPerHour           -> decimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
         is ValueWithUnit.SimpleInt             -> valueWithUnit.value.toString()
         is ValueWithUnit.SimpleString          -> valueWithUnit.value
         is ValueWithUnit.TherapyEventMeterType -> translator.translate(valueWithUnit.value)
@@ -138,13 +139,13 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         is ValueWithUnit.Timestamp             -> dateUtil.dateAndTimeAndSecondsString(valueWithUnit.value)
 
         is ValueWithUnit.Mgdl                  -> {
-            if (profileFunction.getUnits() == GlucoseUnit.MGDL) DecimalFormatter.to0Decimal(valueWithUnit.value) + rh.gs(info.nightscout.core.ui.R.string.mgdl)
-            else DecimalFormatter.to1Decimal(valueWithUnit.value * Constants.MGDL_TO_MMOLL) + rh.gs(info.nightscout.core.ui.R.string.mmol)
+            if (profileUtil.units == GlucoseUnit.MGDL) decimalFormatter.to0Decimal(valueWithUnit.value) + rh.gs(info.nightscout.core.ui.R.string.mgdl)
+            else decimalFormatter.to1Decimal(valueWithUnit.value * Constants.MGDL_TO_MMOLL) + rh.gs(info.nightscout.core.ui.R.string.mmol)
         }
 
         is ValueWithUnit.Mmoll                 -> {
-            if (profileFunction.getUnits() == GlucoseUnit.MMOL) DecimalFormatter.to1Decimal(valueWithUnit.value) + rh.gs(info.nightscout.core.ui.R.string.mmol)
-            else DecimalFormatter.to0Decimal(valueWithUnit.value * Constants.MMOLL_TO_MGDL) + rh.gs(info.nightscout.core.ui.R.string.mgdl)
+            if (profileUtil.units == GlucoseUnit.MMOL) decimalFormatter.to1Decimal(valueWithUnit.value) + rh.gs(info.nightscout.core.ui.R.string.mmol)
+            else decimalFormatter.to0Decimal(valueWithUnit.value * Constants.MMOLL_TO_MGDL) + rh.gs(info.nightscout.core.ui.R.string.mgdl)
         }
 
         ValueWithUnit.UNKNOWN                  -> ""
@@ -166,7 +167,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         csvString(info.nightscout.core.ui.R.string.careportal_note),
         csvString(info.nightscout.core.ui.R.string.ue_string),
         csvString(info.nightscout.core.ui.R.string.event_time_label),
-        csvString(if (profileFunction.getUnits() == GlucoseUnit.MGDL) info.nightscout.core.ui.R.string.mgdl else info.nightscout.core.ui.R.string.mmol),
+        csvString(if (profileUtil.units == GlucoseUnit.MGDL) info.nightscout.core.ui.R.string.mgdl else info.nightscout.core.ui.R.string.mmol),
         csvString(info.nightscout.core.ui.R.string.shortgram),
         csvString(info.nightscout.core.ui.R.string.insulin_unit_shortname),
         csvString(info.nightscout.core.ui.R.string.profile_ins_units_per_hour),
@@ -202,8 +203,8 @@ class UserEntryPresentationHelperImpl @Inject constructor(
                 is ValueWithUnit.Hour                  -> hour = valueWithUnit.value.toString()
                 is ValueWithUnit.Minute                -> minute = valueWithUnit.value.toString()
                 is ValueWithUnit.Percent               -> percent = valueWithUnit.value.toString()
-                is ValueWithUnit.Insulin               -> insulin = DecimalFormatter.to2Decimal(valueWithUnit.value)
-                is ValueWithUnit.UnitPerHour           -> unitPerHour = DecimalFormatter.to2Decimal(valueWithUnit.value)
+                is ValueWithUnit.Insulin               -> insulin = decimalFormatter.to2Decimal(valueWithUnit.value)
+                is ValueWithUnit.UnitPerHour           -> unitPerHour = decimalFormatter.to2Decimal(valueWithUnit.value)
                 is ValueWithUnit.SimpleInt             -> noUnit = noUnit.addWithSeparator(valueWithUnit.value)
                 is ValueWithUnit.SimpleString          -> simpleString = simpleString.addWithSeparator(valueWithUnit.value)
                 is ValueWithUnit.TherapyEventMeterType -> therapyEvent = therapyEvent.addWithSeparator(translator.translate(valueWithUnit.value))
@@ -213,10 +214,10 @@ class UserEntryPresentationHelperImpl @Inject constructor(
                 is ValueWithUnit.Timestamp             -> timestamp = dateUtil.dateAndTimeAndSecondsString(valueWithUnit.value)
 
                 is ValueWithUnit.Mgdl                  ->
-                    bg = Profile.toUnitsString(valueWithUnit.value, valueWithUnit.value * Constants.MGDL_TO_MMOLL, profileFunction.getUnits())
+                    bg = profileUtil.fromMgdlToStringInUnits(valueWithUnit.value)
 
                 is ValueWithUnit.Mmoll                 ->
-                    bg = Profile.toUnitsString(valueWithUnit.value * Constants.MMOLL_TO_MGDL, valueWithUnit.value, profileFunction.getUnits())
+                    bg = profileUtil.fromMgdlToStringInUnits(valueWithUnit.value * Constants.MMOLL_TO_MGDL)
 
                 ValueWithUnit.UNKNOWN                  -> Unit
             }

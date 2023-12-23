@@ -27,6 +27,7 @@ import info.nightscout.interfaces.sync.DataSyncSelector
 import info.nightscout.interfaces.utils.TrendCalculator
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
+import info.nightscout.shared.interfaces.ProfileUtil
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -70,9 +71,9 @@ class MedLinkPlugin @Inject constructor(
         return true
     }
 
-    override fun shouldUploadToNs(glucoseValue: GlucoseValue): Boolean =
-        (glucoseValue.sourceSensor == GlucoseValue.SourceSensor.MM_ENLITE)
-            && sp.getBoolean(R.string.key_medlink_nsupload, false)
+    // override fun shouldUploadToNs(glucoseValue: GlucoseValue): Boolean =
+    //     (glucoseValue.sourceSensor == GlucoseValue.SourceSensor.MM_ENLITE)
+    //         && sp.getBoolean(R.string.key_medlink_nsupload, false)
     //
     // override fun onStart() {
     //     super.onStart()
@@ -95,7 +96,7 @@ class MedLinkPlugin @Inject constructor(
         @Inject lateinit var repository: AppRepository
         @Inject lateinit var uel: UserEntryLogger
         @Inject lateinit var trendCalculator: TrendCalculator
-
+        @Inject lateinit var profileUtil: ProfileUtil
         init {
             (context.applicationContext as HasAndroidInjector).androidInjector().inject(this)
         }
@@ -134,7 +135,7 @@ class MedLinkPlugin @Inject constructor(
                                 CgmSourceTransaction.Calibration(
                                     timestamp = it.getLong("timestamp"),
                                     value = value,
-                                    glucoseUnit = TherapyEvent.GlucoseUnit.fromConstant(Profile.unit(value))
+                                    glucoseUnit = TherapyEvent.GlucoseUnit.fromConstant(profileUtil.unitsDetect(value))
                                 )
                             )
                         }

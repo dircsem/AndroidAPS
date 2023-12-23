@@ -2,6 +2,7 @@ package info.nightscout.implementation.queue.commands
 
 import dagger.android.HasAndroidInjector
 import info.nightscout.database.impl.AppRepository
+import info.nightscout.implementation.R
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.pump.DetailedBolusInfo
 import info.nightscout.interfaces.pump.MedLinkPumpPluginBase
@@ -48,7 +49,7 @@ class MedLinkCommandSMBBolus(
         }
     }
 
-    override fun status(): String = "SMB BOLUS ${rh.gs(info.nightscout.interfaces.R.string.format_insulin_units, detailedBolusInfo.insulin)}"
+    override fun status(): String = "SMB BOLUS ${rh.gs(info.nightscout.core.ui.R.string.format_insulin_units, detailedBolusInfo.insulin)}"
     override fun log(): String ="SMB BOLUS"
 
     override fun cancel() {

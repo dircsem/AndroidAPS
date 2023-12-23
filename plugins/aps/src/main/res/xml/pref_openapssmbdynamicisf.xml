@@ -9,7 +9,7 @@
         app:initialExpandedChildrenCount="0">
 
         <info.nightscout.plugins.aps.loop.LoopVariantPreference
-            android:title="@string/DynISF_variant"
+            android:title="@string/DynISF_variant_title"
             android:defaultValue="default"
             android:selectable="true"
             app:pluginFolder="OpenAPSSMBDynamicISF"

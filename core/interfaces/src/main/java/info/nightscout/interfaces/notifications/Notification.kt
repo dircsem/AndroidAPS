@@ -140,7 +140,6 @@ open class Notification {
         const val BLUETOOTH_NOT_SUPPORTED = 86
 
         const val CALIBRATION_ALARM = 79
-
         const val USER_MESSAGE = 1000
 
         const val IMPORTANCE_HIGH = 2

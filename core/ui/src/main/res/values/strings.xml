@@ -49,6 +49,7 @@
     <string name="key_aimi_aggressive_settings" translatable="false">key_aimi_aggressive_settings</string>
     <string name="key_aimi_conservative_settings" translatable="false">key_aimi_conservative_settings</string>
     <string name="key_aimi_activity_settings" translatable="false">key_aimi_activity_settings</string>
+    <string name="key_aimi_FCL" translatable="false">Settings_variant_FCL</string>
     <string name="extendedbolusdeliveryerror">Extended bolus delivery error</string>
     <string name="aps_mode_title">APS Mode</string>
     <string name="extended_bolus">Extended bolus</string>
@@ -541,7 +542,6 @@
     <string name="connecting">Connecting</string>
     <string name="clicked_connect_to_pump" comment="26 characters max for translation">Clicked connect to pump</string>
     <string name="reservoir_value">%1$.0f / %2$d U</string>
-    <string name="low_reservoir_value">%1$.2f / %2$d U</string>
     <string name="daily_units">Daily units</string>
     <string name="pump_icon">Pump icon</string>
     <string name="view_profile">View profile</string>
@@ -633,5 +633,27 @@
     <string name="cleanup_db_confirm">Do you want to cleanup the database?\nIt will remove tracked changes and historic data older than 3 months.</string>
     <string name="cleanup_db_confirm_sync">Do you want to cleanup the database?\nIt will remove tracked changes and historic data older than 3 months.\nDoing it will speedup full synchronization dramatically.</string>
     <string name="cleared_entries">Cleared entries</string>
+
+    <!--    Weekday-->
+    <string name="weekday_sunday_short">Sun</string>
+    <string name="weekday_saturday_short">Sat</string>
+    <string name="weekday_friday_short">Fri</string>
+    <string name="weekday_thursday_short">Thu</string>
+    <string name="weekday_wednesday_short">Wed</string>
+    <string name="weekday_tuesday_short">Tue</string>
+    <string name="weekday_monday_short">Mon</string>
+
+    <!-- WeekdayPicker -->
+    <string name="monday_short">M</string>
+    <string name="tuesday_short">T</string>
+    <string name="wednesday_short">W</string>
+    <string name="thursday_short">T</string>
+    <string name="friday_short">F</string>
+    <string name="saturday_short">S</string>
+    <string name="sunday_short">S</string>
+
+    <!--    DecimalFormatterImpl -->
+    <string name="format_insulin_units1">%1$.1f U</string>
+    <string name="format_insulin_units">%1$.2f U</string>
 
 </resources>

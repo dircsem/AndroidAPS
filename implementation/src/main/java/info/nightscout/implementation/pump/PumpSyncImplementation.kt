@@ -552,7 +552,7 @@ class PumpSyncImplementation @Inject constructor(
     override fun lastTherapyEvent(type: DetailedBolusInfo.EventType): Optional<Double> {
         val event = repository.getLastTherapyRecordUpToNow(type.toDBbEventType()).blockingGet()
         return if (event is ValueWrapper.Existing) {
-            Optional.of(event.value.getHoursFromStart())
+            Optional.of(event.value.getHoursFromStart(dateUtil))
         } else {
             Optional.empty()
         }

@@ -347,7 +347,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
         // reservoir
         if (medtronicPumpStatus.reservoirRemainingUnits < 10.0) {
-            binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.low_reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
+            binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
         } else {
             binding.medtronicReservoir.text = rh.gs(info.nightscout.core.ui.R.string.reservoir_value, medtronicPumpStatus.reservoirRemainingUnits, medtronicPumpStatus.reservoirFullUnits)
         }

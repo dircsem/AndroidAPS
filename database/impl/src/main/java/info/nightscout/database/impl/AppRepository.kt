@@ -10,6 +10,7 @@ import info.nightscout.database.entities.EffectiveProfileSwitch
 import info.nightscout.database.entities.ExtendedBolus
 import info.nightscout.database.entities.Food
 import info.nightscout.database.entities.GlucoseValue
+import info.nightscout.database.entities.HeartRate
 import info.nightscout.database.entities.OfflineEvent
 import info.nightscout.database.entities.ProfileSwitch
 import info.nightscout.database.entities.TemporaryBasal
@@ -67,7 +68,7 @@ import kotlin.math.roundToInt
     fun <T : Any> runTransactionForResult(transaction: Transaction<T>): Single<T> {
         val changes = mutableListOf<DBEntry>()
         return Single.fromCallable {
-            database.runInTransaction(Callable<T> {
+            database.runInTransaction(Callable {
                 transaction.database = DelegatedAppDatabase(changes, database)
                 transaction.run()
             })
@@ -87,7 +88,7 @@ import kotlin.math.roundToInt
         removed.add(Pair("ExtendedBolus", database.extendedBolusDao.deleteOlderThan(than)))
         removed.add(Pair("Bolus", database.bolusDao.deleteOlderThan(than)))
         removed.add(Pair("MultiWaveBolus", database.multiwaveBolusLinkDao.deleteOlderThan(than)))
-        //removed.add(Pair("TotalDailyDose", database.totalDailyDoseDao.deleteOlderThan(than)))
+        // keep TDD removed.add(Pair("TotalDailyDose", database.totalDailyDoseDao.deleteOlderThan(than)))
         removed.add(Pair("Carbs", database.carbsDao.deleteOlderThan(than)))
         removed.add(Pair("TemporaryTarget", database.temporaryTargetDao.deleteOlderThan(than)))
         removed.add(Pair("ApsResultLink", database.apsResultLinkDao.deleteOlderThan(than)))
@@ -97,10 +98,10 @@ import kotlin.math.roundToInt
             removed.add(Pair("EffectiveProfileSwitch", database.effectiveProfileSwitchDao.deleteOlderThan(than)))
         removed.add(Pair("ProfileSwitch", database.profileSwitchDao.deleteOlderThan(than)))
         removed.add(Pair("ApsResult", database.apsResultDao.deleteOlderThan(than)))
-        //database.versionChangeDao.deleteOlderThan(than)
+        // keep version history database.versionChangeDao.deleteOlderThan(than)
         removed.add(Pair("UserEntry", database.userEntryDao.deleteOlderThan(than)))
         removed.add(Pair("PreferenceChange", database.preferenceChangeDao.deleteOlderThan(than)))
-        //database.foodDao.deleteOlderThan(than)
+        // keep foods database.foodDao.deleteOlderThan(than)
         removed.add(Pair("DeviceStatus", database.deviceStatusDao.deleteOlderThan(than)))
         removed.add(Pair("OfflineEvent", database.offlineEventDao.deleteOlderThan(than)))
         removed.add(Pair("MedLinkConfig", database.medLinkDao.deleteOlderThan(than)))
@@ -114,7 +115,7 @@ import kotlin.math.roundToInt
             removed.add(Pair("Bolus", database.bolusDao.deleteTrackedChanges()))
             removed.add(Pair("ExtendedBolus", database.extendedBolusDao.deleteTrackedChanges()))
             removed.add(Pair("MultiWaveBolus", database.multiwaveBolusLinkDao.deleteTrackedChanges()))
-            //removed.add(Pair("TotalDailyDose", database.totalDailyDoseDao.deleteTrackedChanges()))
+            // keep TDD removed.add(Pair("TotalDailyDose", database.totalDailyDoseDao.deleteTrackedChanges()))
             removed.add(Pair("Carbs", database.carbsDao.deleteTrackedChanges()))
             removed.add(Pair("TemporaryTarget", database.temporaryTargetDao.deleteTrackedChanges()))
             removed.add(Pair("ApsResultLink", database.apsResultLinkDao.deleteTrackedChanges()))
@@ -122,7 +123,7 @@ import kotlin.math.roundToInt
             removed.add(Pair("EffectiveProfileSwitch", database.effectiveProfileSwitchDao.deleteTrackedChanges()))
             removed.add(Pair("ProfileSwitch", database.profileSwitchDao.deleteTrackedChanges()))
             removed.add(Pair("ApsResult", database.apsResultDao.deleteTrackedChanges()))
-            //database.foodDao.deleteHistory()
+            // keep food database.foodDao.deleteHistory()
             removed.add(Pair("OfflineEvent", database.offlineEventDao.deleteTrackedChanges()))
             removed.add(Pair("HeartRate", database.heartRateDao.deleteTrackedChanges()))
             removed.add(Pair("StepsCount", database.stepsCountDao.deleteTrackedChanges()))
@@ -153,6 +154,7 @@ import kotlin.math.roundToInt
     fun findBgReadingByNSId(nsId: String): GlucoseValue? =
         database.glucoseValueDao.findByNSId(nsId)
 
+    @Suppress("unused")
     fun getModifiedBgReadingsDataFromId(lastId: Long): Single<List<GlucoseValue>> =
         database.glucoseValueDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -184,14 +186,6 @@ import kotlin.math.roundToInt
                 }
             }
 
-    fun getBgReadingsCorrespondingLastHistoryRecord(lastId: Long): GlucoseValue? =
-        database.glucoseValueDao.getLastHistoryRecord(lastId)
-
-    @Suppress("unused") // debug purpose only
-    fun getAllBgReadingsStartingFrom(lastId: Long): Single<List<GlucoseValue>> =
-        database.glucoseValueDao.getAllStartingFrom(lastId)
-            .subscribeOn(Schedulers.io())
-
     // TEMP TARGETS
     fun findTemporaryTargetByNSId(nsId: String): TemporaryTarget? =
         database.temporaryTargetDao.findByNSId(nsId)
@@ -215,10 +209,6 @@ import kotlin.math.roundToInt
                 }
             }
 
-    fun compatGetTemporaryTargetData(): Single<List<TemporaryTarget>> =
-        database.temporaryTargetDao.getTemporaryTargetData()
-            .subscribeOn(Schedulers.io())
-
     fun getTemporaryTargetDataFromTime(timestamp: Long, ascending: Boolean): Single<List<TemporaryTarget>> =
         database.temporaryTargetDao.getTemporaryTargetDataFromTime(timestamp)
             .map { if (!ascending) it.reversed() else it }
@@ -229,6 +219,7 @@ import kotlin.math.roundToInt
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
+    @Suppress("unused")
     fun getModifiedTemporaryTargetsDataFromId(lastId: Long): Single<List<TemporaryTarget>> =
         database.temporaryTargetDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -245,10 +236,6 @@ import kotlin.math.roundToInt
         database.temporaryTargetDao.getLastId()
 
     // USER ENTRY
-    fun getAllUserEntries(): Single<List<UserEntry>> =
-        database.userEntryDao.getAll()
-            .subscribeOn(Schedulers.io())
-
     fun getUserEntryDataFromTime(timestamp: Long): Single<List<UserEntry>> =
         database.userEntryDao.getUserEntryDataFromTime(timestamp)
             .subscribeOn(Schedulers.io())
@@ -279,6 +266,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedProfileSwitchDataFromId(lastId: Long): Single<List<ProfileSwitch>> =
         database.profileSwitchDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -293,8 +281,7 @@ import kotlin.math.roundToInt
         if (tps != null && ps != null)
             return if (ps.timestamp > tps.timestamp) ps else tps
         if (ps == null) return tps
-        if (tps == null) return ps
-        return null
+        return ps // if (tps == null)
     }
 
     fun getPermanentProfileSwitch(timestamp: Long): ProfileSwitch? =
@@ -345,6 +332,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedEffectiveProfileSwitchDataFromId(lastId: Long): Single<List<EffectiveProfileSwitch>> =
         database.effectiveProfileSwitchDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -405,6 +393,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedTherapyEventDataFromId(lastId: Long): Single<List<TherapyEvent>> =
         database.therapyEventDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -435,14 +424,6 @@ import kotlin.math.roundToInt
         database.therapyEventDao.getLastTherapyRecord(type, System.currentTimeMillis()).toWrappedSingle()
             .subscribeOn(Schedulers.io())
 
-    fun getTherapyEventByTimestamp(type: TherapyEvent.Type, timestamp: Long): TherapyEvent? =
-        database.therapyEventDao.findByTimestamp(type, timestamp)
-
-    fun compatGetTherapyEventDataFromTime(timestamp: Long, ascending: Boolean): Single<List<TherapyEvent>> =
-        database.therapyEventDao.compatGetTherapyEventDataFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
     fun compatGetTherapyEventDataFromToTime(from: Long, to: Long): Single<List<TherapyEvent>> =
         database.therapyEventDao.compatGetTherapyEventDataFromToTime(from, to)
             .subscribeOn(Schedulers.io())
@@ -451,9 +432,6 @@ import kotlin.math.roundToInt
         database.therapyEventDao.getLastId()
 
     // FOOD
-    fun findFoodByNSId(nsId: String): Food? =
-        database.foodDao.findByNSId(nsId)
-
     /*
        * returns a Pair of the next entity to sync and the ID of the "update".
        * The update id might either be the entry id itself if it is a new entry - or the id
@@ -473,6 +451,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedFoodDataFromId(lastId: Long): Single<List<Food>> =
         database.foodDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -481,6 +460,7 @@ import kotlin.math.roundToInt
         database.foodDao.getFoodData()
             .subscribeOn(Schedulers.io())
 
+    @Suppress("unused")
     fun deleteAllFoods() =
         database.foodDao.deleteAllEntries()
 
@@ -510,6 +490,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedBolusesDataFromId(lastId: Long): Single<List<Bolus>> =
         database.bolusDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -545,11 +526,6 @@ import kotlin.math.roundToInt
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
-    fun getBolusesIncludingInvalidFromTimeToTime(from: Long, to: Long, ascending: Boolean): Single<List<Bolus>> =
-        database.bolusDao.getBolusesIncludingInvalidFromTimeToTime(from, to)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
     fun deleteAllBoluses() =
         database.bolusDao.deleteAllEntries()
 
@@ -575,9 +551,7 @@ import kotlin.math.roundToInt
         }
 
     private fun Single<List<Carbs>>.expand() = this.map { it.map(::expandCarbs).flatten() }
-    private fun Single<List<Carbs>>.filterOutExtended() = this.map { it.filter { c -> c.duration == 0L } }
     private fun Single<List<Carbs>>.fromTo(from: Long, to: Long) = this.map { it.filter { c -> c.timestamp in from..to } }
-    private infix fun Single<List<Carbs>>.until(to: Long) = this.map { it.filter { c -> c.timestamp <= to } }
     private fun Single<List<Carbs>>.from(start: Long) = this.map { it.filter { c -> c.timestamp >= start } }
     private fun Single<List<Carbs>>.sort() = this.map { it.sortedBy { c -> c.timestamp } }
 
@@ -600,12 +574,10 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedCarbsDataFromId(lastId: Long): Single<List<Carbs>> =
         database.carbsDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
-
-    fun getCarbsByTimestamp(timestamp: Long): Carbs? =
-        database.carbsDao.findByTimestamp(timestamp)
 
     fun getLastCarbsRecord(): Carbs? =
         database.carbsDao.getLastCarbsRecord()
@@ -641,11 +613,6 @@ import kotlin.math.roundToInt
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
-    fun getCarbsDataFromTimeToTime(from: Long, to: Long, ascending: Boolean): Single<List<Carbs>> =
-        database.carbsDao.getCarbsFromTimeToTime(from, to)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
     fun getCarbsDataFromTimeToTimeExpanded(from: Long, to: Long, ascending: Boolean): Single<List<Carbs>> =
         database.carbsDao.getCarbsFromTimeToTimeExpandable(from, to)
             .expand()
@@ -656,21 +623,6 @@ import kotlin.math.roundToInt
 
     fun getCarbsIncludingInvalidFromTime(timestamp: Long, ascending: Boolean): Single<List<Carbs>> =
         database.carbsDao.getCarbsIncludingInvalidFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
-    fun getCarbsIncludingInvalidFromTimeExpanded(timestamp: Long, ascending: Boolean): Single<List<Carbs>> =
-        database.carbsDao.getCarbsIncludingInvalidFromTimeExpandable(timestamp)
-            .expand()
-            .from(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
-    fun getCarbsIncludingInvalidFromTimeToTimeExpanded(from: Long, to: Long, ascending: Boolean): Single<List<Carbs>> =
-        database.carbsDao.getCarbsIncludingInvalidFromTimeToTimeExpandable(from, to)
-            .expand()
-            .fromTo(from, to)
-            .sort()
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
@@ -703,6 +655,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedBolusCalculatorResultsDataFromId(lastId: Long): Single<List<BolusCalculatorResult>> =
         database.bolusCalculatorResultDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -768,12 +721,9 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedTemporaryBasalDataFromId(lastId: Long): Single<List<TemporaryBasal>> =
         database.temporaryBasalDao.getModifiedFrom(lastId)
-            .subscribeOn(Schedulers.io())
-
-    fun getTemporaryBasalsData(): Single<List<TemporaryBasal>> =
-        database.temporaryBasalDao.getTemporaryBasalData()
             .subscribeOn(Schedulers.io())
 
     fun getTemporaryBasalActiveAt(timestamp: Long): Single<ValueWrapper<TemporaryBasal>> =
@@ -797,11 +747,6 @@ import kotlin.math.roundToInt
 
     fun getTemporaryBasalsDataIncludingInvalidFromTime(timestamp: Long, ascending: Boolean): Single<List<TemporaryBasal>> =
         database.temporaryBasalDao.getTemporaryBasalDataIncludingInvalidFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
-    fun getTemporaryBasalsDataIncludingInvalidFromTimeToTime(from: Long, to: Long, ascending: Boolean): Single<List<TemporaryBasal>> =
-        database.temporaryBasalDao.getTemporaryBasalDataIncludingInvalidFromTimeToTime(from, to)
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
@@ -835,6 +780,7 @@ import kotlin.math.roundToInt
                 }
             }
 
+    @Suppress("unused")
     fun getModifiedExtendedBolusDataFromId(lastId: Long): Single<List<ExtendedBolus>> =
         database.extendedBolusDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -856,11 +802,6 @@ import kotlin.math.roundToInt
 
     fun getExtendedBolusDataIncludingInvalidFromTime(timestamp: Long, ascending: Boolean): Single<List<ExtendedBolus>> =
         database.extendedBolusDao.getExtendedBolusDataIncludingInvalidFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
-    fun getExtendedBolusDataIncludingInvalidFromTimeToTime(start: Long, end: Long, ascending: Boolean): Single<List<ExtendedBolus>> =
-        database.extendedBolusDao.getExtendedBolusDataIncludingInvalidFromTimeToTime(start, end)
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
@@ -908,25 +849,12 @@ import kotlin.math.roundToInt
                 }
             }
 
-    fun compatGetOfflineEventData(): Single<List<OfflineEvent>> =
-        database.offlineEventDao.getOfflineEventData()
-            .subscribeOn(Schedulers.io())
-
-    fun getOfflineEventDataFromTime(timestamp: Long, ascending: Boolean): Single<List<OfflineEvent>> =
-        database.offlineEventDao.getOfflineEventDataFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
-    fun getOfflineEventDataIncludingInvalidFromTime(timestamp: Long, ascending: Boolean): Single<List<OfflineEvent>> =
-        database.offlineEventDao.getOfflineEventDataIncludingInvalidFromTime(timestamp)
-            .map { if (!ascending) it.reversed() else it }
-            .subscribeOn(Schedulers.io())
-
     fun getOfflineEventDataFromTimeToTime(start: Long, end: Long, ascending: Boolean): Single<List<OfflineEvent>> =
         database.offlineEventDao.getOfflineEventDataFromTimeToTime(start, end)
             .map { if (!ascending) it.reversed() else it }
             .subscribeOn(Schedulers.io())
 
+    @Suppress("unused")
     fun getModifiedOfflineEventsDataFromId(lastId: Long): Single<List<OfflineEvent>> =
         database.offlineEventDao.getModifiedFrom(lastId)
             .subscribeOn(Schedulers.io())
@@ -936,13 +864,16 @@ import kotlin.math.roundToInt
             .subscribeOn(Schedulers.io())
             .toWrappedSingle()
 
+    @Suppress("unused")
     fun deleteAllOfflineEventEntries() =
         database.offlineEventDao.deleteAllEntries()
 
     fun getLastOfflineEventId(): Long? =
         database.offlineEventDao.getLastId()
 
-    fun getHeartRatesFromTime(timeMillis: Long) = database.heartRateDao.getFromTime(timeMillis)
+    fun getHeartRatesFromTime(timeMillis: Long): Single<List<HeartRate>> =
+        database.heartRateDao.getFromTime(timeMillis)
+            .subscribeOn(Schedulers.io())
 
     fun getHeartRatesFromTimeToTime(startMillis: Long, endMillis: Long) =
         database.heartRateDao.getFromTimeToTime(startMillis, endMillis)

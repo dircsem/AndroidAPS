@@ -13,7 +13,7 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.annotations.OpenForTesting
+import info.nightscout.annotations.OpenForTesting
 import info.nightscout.core.events.EventNewNotification
 import info.nightscout.core.extensions.convertedToAbsolute
 import info.nightscout.core.extensions.convertedToPercent
@@ -29,12 +29,12 @@ import info.nightscout.database.entities.ValueWithUnit
 import info.nightscout.database.impl.AppRepository
 import info.nightscout.database.impl.transactions.InsertAndCancelCurrentOfflineEventTransaction
 import info.nightscout.database.impl.transactions.InsertTherapyEventAnnouncementTransaction
+import info.nightscout.interfaces.ApsMode
 import info.nightscout.interfaces.Config
 import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.aps.APSResult
 import info.nightscout.interfaces.aps.Loop
 import info.nightscout.interfaces.aps.Loop.LastRun
-import info.nightscout.interfaces.configBuilder.RunningConfiguration
 import info.nightscout.interfaces.constraints.Constraint
 import info.nightscout.interfaces.constraints.Constraints
 import info.nightscout.interfaces.iob.IobCobCalculator
@@ -47,6 +47,10 @@ import info.nightscout.interfaces.plugin.PluginType
 import info.nightscout.interfaces.profile.Profile
 import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.pump.*
+import info.nightscout.interfaces.pump.DetailedBolusInfo
+import info.nightscout.interfaces.pump.PumpEnactResult
+import info.nightscout.interfaces.pump.PumpSync
+import info.nightscout.interfaces.pump.VirtualPump
 import info.nightscout.interfaces.pump.defs.PumpDescription
 import info.nightscout.interfaces.queue.Callback
 import info.nightscout.interfaces.queue.CommandQueue
@@ -69,6 +73,7 @@ import info.nightscout.rx.events.EventTempTargetChange
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.rx.weardata.EventData
+import info.nightscout.sdk.interfaces.RunningConfiguration
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -103,7 +108,7 @@ class LoopPlugin @Inject constructor(
     private val uel: UserEntryLogger,
     private val repository: AppRepository,
     private val runningConfiguration: RunningConfiguration,
-    private val uiInteraction: UiInteraction
+    private val uiInteraction: UiInteraction,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.LOOP)
@@ -298,13 +303,7 @@ class LoopPlugin @Inject constructor(
                 lastRun.lastTBRRequest = 0
                 lastRun.lastSMBEnact = 0
                 lastRun.lastSMBRequest = 0
-                buildDeviceStatus(
-                    dateUtil, this, iobCobCalculator, profileFunction,
-                    activePlugin.activePump, receiverStatusStore, runningConfiguration,
-                    config.VERSION_NAME + "-" + config.BUILD_VERSION
-                )?.also {
-                    repository.insert(it)
-                }
+                buildAndStoreDeviceStatus()
 
                 if (isSuspended) {
                     aapsLogger.debug(LTag.APS, rh.gs(info.nightscout.core.ui.R.string.loopsuspended))
@@ -325,14 +324,22 @@ class LoopPlugin @Inject constructor(
                                 0
                             ) && carbsSuggestionsSuspendedUntil < System.currentTimeMillis() && !treatmentTimeThreshold(-15)
                         ) {
-                            if (sp.getBoolean(info.nightscout.core.utils.R.string.key_enable_carbs_required_alert_local, true) && !sp.getBoolean(info.nightscout.core.ui.R.string.key_raise_notifications_as_android_notifications, true)) {
+                            if (sp.getBoolean(
+                                    info.nightscout.core.utils.R.string.key_enable_carbs_required_alert_local,
+                                    true
+                                ) && !sp.getBoolean(info.nightscout.core.ui.R.string.key_raise_notifications_as_android_notifications, true)
+                            ) {
                                 val carbReqLocal = Notification(Notification.CARBS_REQUIRED, resultAfterConstraints.carbsRequiredText, Notification.NORMAL)
                                 rxBus.send(EventNewNotification(carbReqLocal))
                             }
                             if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_create_announcements_from_carbs_req, false)) {
                                 disposable += repository.runTransaction(InsertTherapyEventAnnouncementTransaction(resultAfterConstraints.carbsRequiredText)).subscribe()
                             }
-                            if (sp.getBoolean(info.nightscout.core.utils.R.string.key_enable_carbs_required_alert_local, true) && sp.getBoolean(info.nightscout.core.ui.R.string.key_raise_notifications_as_android_notifications, true)) {
+                            if (sp.getBoolean(
+                                    info.nightscout.core.utils.R.string.key_enable_carbs_required_alert_local,
+                                    true
+                                ) && sp.getBoolean(info.nightscout.core.ui.R.string.key_raise_notifications_as_android_notifications, true)
+                            ) {
                                 val intentAction5m = Intent(context, CarbSuggestionReceiver::class.java)
                                 intentAction5m.putExtra("ignoreDuration", 5)
                                 val pendingIntent5m = PendingIntent.getBroadcast(context, 1, intentAction5m, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -548,13 +555,7 @@ class LoopPlugin @Inject constructor(
                             lastRun.lastTBRRequest = lastRun.lastAPSRun
                             lastRun.lastTBREnact = dateUtil.now()
                             lastRun.lastOpenModeAccept = dateUtil.now()
-                            buildDeviceStatus(
-                                dateUtil, this@LoopPlugin, iobCobCalculator, profileFunction,
-                                activePlugin.activePump, receiverStatusStore, runningConfiguration,
-                                config.VERSION_NAME + "-" + config.BUILD_VERSION
-                            )?.also {
-                                repository.insert(it)
-                            }
+                            buildAndStoreDeviceStatus()
                             sp.incInt(info.nightscout.core.utils.R.string.key_ObjectivesmanualEnacts)
                         }
                         rxBus.send(EventAcceptOpenLoopChange())
@@ -799,20 +800,12 @@ class LoopPlugin @Inject constructor(
         })
     }
 
-    override fun buildDeviceStatus(
-        dateUtil: DateUtil,
-        loop: Loop,
-        iobCobCalculatorPlugin: IobCobCalculator,
-        profileFunction: ProfileFunction,
-        pump: Pump,
-        receiverStatusStore: ReceiverStatusStore,
-        runningConfiguration: RunningConfiguration,
-        version: String
-    ): DeviceStatus? {
-        val profile = profileFunction.getProfile() ?: return null
+    override fun buildAndStoreDeviceStatus() {
+        val version = config.VERSION_NAME + "-" + config.BUILD_VERSION
+        val profile = profileFunction.getProfile() ?: return
         val profileName = profileFunction.getProfileName()
 
-        val lastRun = loop.lastRun
+        val lastRun = lastRun
         var apsResult: JSONObject? = null
         var iob: JSONObject? = null
         var enacted: JSONObject? = null
@@ -839,22 +832,24 @@ class LoopPlugin @Inject constructor(
                 enacted?.put("smb", lastRun.tbrSetByPump?.bolusDelivered)
             }
         } else {
-            val calcIob = iobCobCalculatorPlugin.calculateIobArrayInDia(profile)
+            val calcIob = iobCobCalculator.calculateIobArrayInDia(profile)
             if (calcIob.isNotEmpty()) {
                 iob = calcIob[0].json(dateUtil)
                 iob.put("time", dateUtil.toISOString(dateUtil.now()))
             }
         }
-        return DeviceStatus(
-            timestamp = dateUtil.now(),
-            suggested = apsResult?.toString(),
-            iob = iob?.toString(),
-            enacted = enacted?.toString(),
-            device = "openaps://" + Build.MANUFACTURER + " " + Build.MODEL,
-            pump = pump.getJSONStatus(profile, profileName, version).toString(),
-            uploaderBattery = receiverStatusStore.batteryLevel,
-            isCharging = receiverStatusStore.isCharging,
-            configuration = runningConfiguration.configuration().toString()
+        repository.insert(
+            DeviceStatus(
+                timestamp = dateUtil.now(),
+                suggested = apsResult?.toString(),
+                iob = iob?.toString(),
+                enacted = enacted?.toString(),
+                device = "openaps://" + Build.MANUFACTURER + " " + Build.MODEL,
+                pump = activePlugin.activePump.getJSONStatus(profile, profileName, version).toString(),
+                uploaderBattery = receiverStatusStore.batteryLevel,
+                isCharging = receiverStatusStore.isCharging,
+                configuration = runningConfiguration.configuration().toString()
+            )
         )
     }
 
