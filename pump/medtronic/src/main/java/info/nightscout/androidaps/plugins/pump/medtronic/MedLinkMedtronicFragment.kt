@@ -27,6 +27,7 @@ import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUt
 import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.interfaces.plugin.ActivePlugin
+import info.nightscout.interfaces.pump.Pump
 import info.nightscout.interfaces.pump.WarnColors
 import info.nightscout.interfaces.queue.Callback
 import info.nightscout.interfaces.queue.CommandQueue
@@ -201,7 +202,8 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             } ?: "-"
 
         when (medtronicPumpStatus.pumpDeviceState) {
-            null,
+            null -> binding.medtronicPumpStatus.text = PumpDeviceState.ErrorWhenCommunicating.name
+
             PumpDeviceState.Sleeping,
             -> binding.medtronicPumpStatus.text = "{fa-bed}   " // + pumpStatus.pumpDeviceState.name());
             PumpDeviceState.NeverContacted,

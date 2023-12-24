@@ -32,7 +32,7 @@ class BolusDataPoint(
 
     override fun color(context: Context?): Int =
         if (data.type == Bolus.Type.SMB) rh.gac(context, info.nightscout.core.ui.R.attr.smbColor)
-    else if (data.type == Bolus.Type.TBR) rh.gac(context, info.nightscout.core.ui.R.attr.bolusDataPointColor)
+    else if (data.type == Bolus.Type.TBR) rh.gac(context, info.nightscout.core.ui.R.attr.tempBasalColor)
         else if (data.isValid) rh.gac(context, info.nightscout.core.ui.R.attr.bolusDataPointColor)
         else rh.gac(context, info.nightscout.core.ui.R.attr.alarmColor)
 
