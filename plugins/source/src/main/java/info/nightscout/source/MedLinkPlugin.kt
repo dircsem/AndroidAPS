@@ -71,9 +71,7 @@ class MedLinkPlugin @Inject constructor(
         return true
     }
 
-    // override fun shouldUploadToNs(glucoseValue: GlucoseValue): Boolean =
-    //     (glucoseValue.sourceSensor == GlucoseValue.SourceSensor.MM_ENLITE)
-    //         && sp.getBoolean(R.string.key_medlink_nsupload, false)
+
     //
     // override fun onStart() {
     //     super.onStart()

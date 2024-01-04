@@ -8,6 +8,7 @@ import info.nightscout.interfaces.pump.DetailedBolusInfo
 import java.util.function.Function
 import java.util.function.Supplier
 import java.util.stream.Stream
+import kotlin.math.roundToInt
 
 /**
  * Created by Dirceu on 21/12/20.
@@ -39,7 +40,7 @@ class BolusMedLinkMessage(
             bleBolusCommand: BleBolusCommand,
             shouldBeSuspended: Boolean
         ): BolusMedLinkMessage {
-            bolusArgument.insulinAmount = detailedBolusInfo.insulin
+            bolusArgument.insulinAmount = (detailedBolusInfo.insulin * 100.0).roundToInt()/100.0
             return BolusMedLinkMessage(command, bolusArgument, bolusCallback, bolusProgressMessage, btSleepTime, bleBolusCommand, shouldBeSuspended,
             detailedBolusInfo.insulin)
         }
