@@ -2007,7 +2007,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 )
             )
             TempBasalMicrobolusOperations(
-                1, totalAmount,
+                1, roundedTotalAmount,
                 durationInMinutes,
                 tempBasalList
             )
