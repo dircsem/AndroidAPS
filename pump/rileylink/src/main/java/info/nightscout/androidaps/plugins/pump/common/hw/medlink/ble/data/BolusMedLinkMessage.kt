@@ -23,7 +23,7 @@ class BolusMedLinkMessage(
     shouldBeSuspended: Boolean,
     bolusAmount: Double
 ) : StartStopMessage<String,String>(command, bolusArgument, bolusCallback, null, btSleepTime, bleBolusCommand, shouldBeSuspended,
-                             if(bolusAmount>=10) " $bolusAmount" else "  $bolusAmount") {
+                             if(bolusAmount>=10) " $bolusAmount" else "  ${(bolusAmount * 100.0).roundToInt()/100.0}") {
 
     init {
         bolusProgressMessage?.let { supplementalCommands.addAll(it.commands) }
