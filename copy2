@@ -1,0 +1,6 @@
+cp app/src/main/java/info/nightscout/androidaps/plugins/aps/loop/LoopPlugin.kt ../../AndroidAPS/app/src/main/java/info/nightscout/androidaps/plugins/aps/loop/LoopPlugin.kt
+cp app/src/main/java/info/nightscout/androidaps/plugins/pump/PumpSyncImplementation.kt ../../AndroidAPS/app/src/main/java/info/nightscout/androidaps/plugins/pump/PumpSyncImplementation.kt
+cp app/src/main/java/info/nightscout/androidaps/queue/commands/MedLinkCommandBasalPercent.kt ../../AndroidAPS/app/src/main/java/info/nightscout/androidaps/queue/commands/MedLinkCommandBasalPercent.kt
+cp medtronic/src/main/java/info/nightscout/androidaps/plugins/pump/medtronic/MedLinkMedtronicPumpPlugin.kt ../../AndroidAPS/medtronic/src/main/java/info/nightscout/androidaps/plugins/pump/medtronic/MedLinkMedtronicPumpPlugin.kt
+cp medtronic/src/main/java/info/nightscout/androidaps/plugins/pump/medtronic/MedtronicPumpPlugin.kt ../../AndroidAPS/medtronic/src/main/java/info/nightscout/androidaps/plugins/pump/medtronic/MedtronicPumpPlugin.kt
+cp rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/MedLinkBLE.kt ../../AndroidAPS/rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/MedLinkBLE.kt

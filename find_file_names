@@ -1,0 +1,22 @@
+#/bin/bash
+folder_name="../../AndroidAPS"
+list=$(git diff --name-only --diff-filter=M | xargs -L 1) #while IFS= read -r -d '' filename
+for x in $list; do
+	    fspec=$(grep -iHl medlink $x)
+        fspec2=$(grep -Hl TBR $x)
+        if  [ ! -z "$fspec" ] ; then
+		echo $fspec
+		filename="${fspec%/}"  # get filename
+		dirname="${fspec%/*}"
+                mkdir -p "$folder_name/$dirname"
+		cp "$fspec" "$folder_name/$fspec"
+
+	fi
+        
+#    if grep -q 'PATTERN' "$	filename"
+#    then
+#        printf "%s found in %s\n" 'PATTERN' "$filename"
+        # Here we can insert another command or function
+        # to perform other operations on the filename
+#    fi
+done
