@@ -57,13 +57,13 @@ class VersionCheckerUtilsImpl @Inject constructor(
 
                     // App expiration
                     var endDate = sp.getLong(rh.gs(info.nightscout.core.utils.R.string.key_app_expiration) + "_" + config.get().VERSION_NAME, 0)
-                    AllowedVersions().findByVersion(definition, config.get().VERSION_NAME)?.let { expirationJson ->
-                        AllowedVersions().endDateToMilliseconds(expirationJson.getString("endDate"))?.let { ed ->
-                            endDate = ed + T.days(1).msecs()
-                            sp.putLong(rh.gs(info.nightscout.core.utils.R.string.key_app_expiration) + "_" + config.get().VERSION_NAME, endDate)
-                        }
-                    }
-                    if (endDate != 0L) onExpireDateDetected(config.get().VERSION_NAME, dateUtil.dateString(endDate))
+                    //AllowedVersions().findByVersion(definition, config.get().VERSION_NAME)?.let { expirationJson ->
+                    //    AllowedVersions().endDateToMilliseconds(expirationJson.getString("endDate"))?.let { ed ->
+                    //        endDate = ed + T.days(1).msecs()
+                    //        sp.putLong(rh.gs(info.nightscout.core.utils.R.string.key_app_expiration) + "_" + config.get().VERSION_NAME, endDate)
+                    //    }
+                    //}
+                    //if (endDate != 0L) onExpireDateDetected(config.get().VERSION_NAME, dateUtil.dateString(endDate))
 
                 } catch (e: IOException) {
                     aapsLogger.error(LTag.CORE, "Github master version check error: $e")
@@ -90,18 +90,18 @@ class VersionCheckerUtilsImpl @Inject constructor(
             return
         }
 
-        newVersionElements.take(3).forEachIndexed { i, newElem ->
-            val currElem: Int = currentVersionElements.getOrNull(i)
-                ?: return onNewVersionDetected(currentVersion, newVersion)
+        //newVersionElements.take(3).forEachIndexed { i, newElem ->
+        //    val currElem: Int = currentVersionElements.getOrNull(i)
+        //        ?: return onNewVersionDetected(currentVersion, newVersion)
 
-            (newElem - currElem).let {
-                when {
-                    it > 0 -> return onNewVersionDetected(currentVersion, newVersion)
-                    it < 0 -> return onOlderVersionDetected()
-                    else   -> Unit
-                }
-            }
-        }
+       //     (newElem - currElem).let {
+       ///         when {
+       //             it > 0 -> return onNewVersionDetected(currentVersion, newVersion)
+       //             it < 0 -> return onOlderVersionDetected()
+       //             else   -> Unit
+       //         }
+       //     }
+        //}
         onSameVersionDetected()
     }
 
@@ -122,7 +122,7 @@ class VersionCheckerUtilsImpl @Inject constructor(
         val now = dateUtil.now()
         if (now > sp.getLong(R.string.key_last_versionchecker_warning, 0) + WARN_EVERY) {
             aapsLogger.debug(LTag.CORE, "Version $currentVersion outdated. Found $newVersion")
-            uiInteraction.addNotification(Notification.NEW_VERSION_DETECTED, rh.gs(R.string.versionavailable, newVersion.toString()), Notification.LOW)
+            //uiInteraction.addNotification(Notification.NEW_VERSION_DETECTED, rh.gs(R.string.versionavailable, newVersion.toString()), Notification.LOW)
             sp.putLong(R.string.key_last_versionchecker_warning, now)
         }
     }
@@ -131,7 +131,7 @@ class VersionCheckerUtilsImpl @Inject constructor(
         val now = dateUtil.now()
         if (now > sp.getLong(R.string.key_last_expired_versionchecker_warning, 0) + WARN_EVERY) {
             aapsLogger.debug(LTag.CORE, rh.gs(R.string.version_expire, currentVersion, endDate))
-            uiInteraction.addNotification(Notification.VERSION_EXPIRE, rh.gs(R.string.version_expire, currentVersion, endDate), Notification.LOW)
+            //uiInteraction.addNotification(Notification.VERSION_EXPIRE, rh.gs(R.string.version_expire, currentVersion, endDate), Notification.LOW)
             sp.putLong(R.string.key_last_expired_versionchecker_warning, now)
         }
     }
