@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-
+    <string name="key_units" translatable="false">units</string>
     <string name="med_link_calibration_success">Pump calibration process has been completed,
     please check pump status at next cycle</string>
     <string name="med_link_calibration_failed">Pump calibration Failed! Please check pump
@@ -30,12 +30,12 @@
     <!--    <string name="key_medlink_init_commands_profile" translatable="false">medlink_init_commands_profile</string>-->
     <bool name="key_medlink_change_cannula">true</bool>
 
-    <bool name="key_medlink_handle_cannula_change_event">false</bool>
-    <bool name="key_medlink_handle_sensor_change_event">false</bool>
+    <string name="key_medlink_handle_cannula_change_event">false</string>
+    <string name="key_medlink_handle_sensor_change_event">false</string>
 
-    <bool name="key_medlink_init_commands_last_bg_history">false</bool>
-    <bool name="key_medlink_init_commands_previous_bg_history">false</bool>
-    <bool name="key_medlink_init_commands_last_bolus_history">false</bool>
+    <string name="key_medlink_init_commands_last_bg_history">false</string>
+    <string name="key_medlink_init_commands_previous_bg_history">false</string>
+    <string name="key_medlink_init_commands_last_bolus_history">false</string>
     <string name="medlink_init_commands_last_bolus_history">Last Bolus History Page(H)</string>
     <string name="medlink_init_commands_previous_bg_history">Previous BG History Page(T and J)</string>
     <string name="medlink_init_commands_last_bg_history">Last BG History Page(C and I)</string>

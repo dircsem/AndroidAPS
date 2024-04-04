@@ -1,20 +1,21 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
 
+import app.aaps.core.data.pump.defs.PumpType
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusProgressCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
-import info.nightscout.interfaces.pump.defs.PumpType
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.pump.common.data.MedLinkPartialBolus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 class BleBolusStatusCommand(
     aapsLogger: AAPSLogger,
     medLinkServiceData: MedLinkServiceData,
-    medLinkPumpPluginAbstract: MedLinkPumpPluginAbstract
+    val medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
@@ -30,7 +31,7 @@ class BleBolusStatusCommand(
             val responseIterator = fullResponse.substring(fullResponse.indexOf("last")).split("\n").iterator()
             status = MedLinkStatusParser.parseBolusInfo(
                 responseIterator, status
-            )
+            ) as MedLinkPartialBolus
             if(bleComm.needToCheckOnHold && bleComm.onHoldCommandQueue.isNotEmpty()){
                 val onHoldCommand = bleComm.onHoldCommandQueue.first
                 val firstCommand = onHoldCommand.commandList.first()
@@ -52,8 +53,8 @@ class BleBolusStatusCommand(
             }
             aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
             aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
-            if (status.lastBolusAmount != null && status.bolusDeliveredAmount > 0 &&
-                status.bolusDeliveredAmount < status.lastBolusAmount!!
+            if (status.lastBolusAmount != null && status.bolusDeliveredAmount!! > 0 &&
+                status.bolusDeliveredAmount!! < status.lastBolusAmount!!
             ) {
                 bleComm.clearExecutedCommand()
                 bleComm.postponeCurrentCommand()

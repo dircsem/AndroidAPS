@@ -1,5 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.common.di
 
+import app.aaps.core.interfaces.plugin.MedLinkProfileParser
+import dagger.Binds
 import dagger.Module
 import dagger.android.ContributesAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.dialog.MedLinkBLEConfigActivity
@@ -32,4 +34,5 @@ abstract class MedLinkModule {
     @ContributesAndroidInjector abstract fun contributesMedLinkStatusGeneral(): MedLinkStatusGeneralFragment
     @ContributesAndroidInjector abstract fun contributesMedLinkStatusHistoryFragment(): MedLinkStatusHistoryFragment
     @ContributesAndroidInjector abstract fun contributesMedLinkStatusActivity(): MedLinkStatusActivity
+
 }

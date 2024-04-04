@@ -5,8 +5,8 @@
 // import info.nightscout.database.ValueWrapper
 // import info.nightscout.database.impl.AppRepository
 // import info.nightscout.interfaces.pump.InMemoryMedLinkConfig
-// import info.nightscout.rx.logging.AAPSLogger
-// import info.nightscout.rx.logging.LTag
+// import app.aaps.core.interfaces.logging.AAPSLogger
+// import app.aaps.core.interfaces.logging.LTag
 // import javax.inject.Inject
 //
 // class MedLinkSyncImplementation @Inject constructor(

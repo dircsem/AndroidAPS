@@ -1,10 +1,10 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data
 
 
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleBolusCommand
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.interfaces.pump.DetailedBolusInfo
 import java.util.function.Function
 import java.util.function.Supplier
 import java.util.stream.Stream

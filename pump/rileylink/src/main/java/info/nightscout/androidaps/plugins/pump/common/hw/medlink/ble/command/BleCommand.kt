@@ -9,8 +9,8 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import java.util.*
 import java.util.function.Function
 import java.util.function.Supplier

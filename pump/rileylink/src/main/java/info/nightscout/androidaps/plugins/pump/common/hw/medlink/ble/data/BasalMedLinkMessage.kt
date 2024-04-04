@@ -1,10 +1,10 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data
 
+import app.aaps.core.interfaces.profile.Profile
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandPriority
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCommand
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.interfaces.profile.Profile
 import java.util.*
 import java.util.function.Function
 import java.util.function.Supplier

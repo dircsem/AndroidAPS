@@ -4,14 +4,16 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import app.aaps.core.interfaces.pump.PumpRunningState;
+import app.aaps.core.interfaces.pump.PumpSync;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn;
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin;
-import info.nightscout.interfaces.pump.PumpSync;
+
 import info.nightscout.pump.common.defs.PumpDriverState;
-import info.nightscout.pump.common.defs.PumpRunningState;
-import info.nightscout.rx.logging.AAPSLogger;
-import info.nightscout.rx.logging.LTag;
+
+import app.aaps.core.interfaces.logging.AAPSLogger;
+import app.aaps.core.interfaces.logging.LTag;
 
 /**
  * Created by Dirceu on 19/01/21.

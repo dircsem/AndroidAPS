@@ -2,14 +2,10 @@
 <resources>
     <string name="app_name">AAPS</string>
     <string name="label_actions_activity">AAPS</string>
-    <string name="label_watchface">AAPS</string>
     <string name="label_watchface_large">AAPS (Большой)</string>
     <string name="label_watchface_big_chart">AAPS (Крупный график)</string>
     <string name="label_watchface_no_chart">AAPS (Без графика)</string>
     <string name="label_watchface_circle">AAPS (круглый)</string>
-    <string name="label_watchface_v2">AAPS(v2)</string>
-    <string name="label_watchface_cockpit">AAPS (кабина пилота)</string>
-    <string name="label_watchface_steampunk">AAPS (Стимпанк)</string>
     <string name="label_watchface_digital_style">AAPS (ЦифровойСтиль)</string>
     <string name="label_watchface_custom">AAPS (настраиваемый)</string>
     <string name="label_actions_tile">AAPS (Действия)</string>
@@ -44,6 +40,9 @@
     <string name="pref_show_bgi">Отображать ГКИ (BGI)</string>
     <string name="pref_show_direction_arrow">Показывать стрелку тренда</string>
     <string name="pref_show_ago">Показывать ретро события</string>
+    <string name="pref_show_temp_basal">Показывать ВБС</string>
+    <string name="pref_show_bolus">Показывать болюс &amp; СМБ</string>
+    <string name="pref_show_grid">Показывать сетку</string>
     <string name="pref_dark" comment="Enables dark visual theme">Тёмная</string>
     <string name="pref_highlight_basals">Выделить базалы</string>
     <string name="pref_prediction_lines">Показывать прогноз</string>
@@ -59,7 +58,6 @@
     <string name="pref_quick_righty">Быстрый правосторонний</string>
     <string name="pref_quick_lefty">Быстрый левосторонний</string>
     <string name="pref_modern_sparse">Современный разреженный</string>
-    <string name="pref_delta_granularity">Дельта детально (Стимпанк)</string>
     <string name="pref_low">Низкий</string>
     <string name="pref_medium">Средний</string>
     <string name="pref_high">Высокий</string>
@@ -118,7 +116,7 @@
     <string name="action_confirm">ПОДТВЕРДИТЬ</string>
     <string name="action_timeshift">сдвиг по времени</string>
     <string name="action_bolus">Болюс</string>
-    <string name="bolus_progress">Подается болюс</string>
+    <string name="bolus_progress">Вводится болюс</string>
     <string name="press_to_cancel">нажмите для отмены</string>
     <string name="cancel_bolus">ОТМЕНИТЬ БОЛЮС</string>
     <string name="status_pump">Помпа</string>
@@ -163,10 +161,10 @@
     <string name="digitalstyle_pref_your_color">Ваш цвет:</string>
     <string name="digitalstyle_pref_your_color_saturation">Ваша цветовая насыщенность:</string>
     <string name="digitalstyle_pref_your_color_opacity">Непрозрачность вашего цвета:</string>
-    <string name="bolus_progress_channel_name">Подается болюс</string>
-    <string name="bolus_progress_silent_channel_name">Беззвучная подача болюса</string>
-    <string name="bolus_progress_channel_description">Подача и отмена болюса</string>
-    <string name="bolus_progress_silent_channel_description">Подача и отмена болюса с меньшими вибрациями</string>
+    <string name="bolus_progress_channel_name">Вводится болюс</string>
+    <string name="bolus_progress_silent_channel_name">Беззвучный ввод болюса</string>
+    <string name="bolus_progress_channel_description">Ввод и отмена болюса</string>
+    <string name="bolus_progress_silent_channel_description">Введение и отмена болюса с меньшими вибрациями</string>
     <string name="simple_ui_off">Выкл</string>
     <string name="simple_ui_charging">Во время зарядки</string>
     <string name="simple_ui_always_on">Режим: всегда вкл</string>
@@ -182,8 +180,6 @@
     <string name="wear_control_no_data">Нет данных</string>
     <string name="increment">приращение</string>
     <string name="decrement">декремент</string>
-    <string name="first_char_high">В</string>
-    <string name="first_char_low">Н</string>
     <string name="abbreviation_average">сред</string>
     <string name="no_iob_u">--ед</string>
     <string name="no_cob_g">--г</string>
@@ -196,7 +192,7 @@
     <string name="cob_000g">000г</string>
     <string name="svg_00_0" comment="use , or . only">00,0</string>
     <string name="iob_0_00u">0,00 ед</string>
-    <string name="snooze_alert">Оповещение о переходе AAPS в режим энергосбережения</string>
+    <string name="snooze_alert">Отложить оповещения AAPS</string>
     <string name="sending_snooze">Отправка команды отложить оповещения AAPS</string>
     <string name="short_hour">ч</string>
     <string name="week_short">н</string>
@@ -208,4 +204,5 @@
     <string name="old_warning">!старое!</string>
     <string name="error">!ошибка!</string>
     <string name="pref_heartRateSampling">Частота сердечных сокращений</string>
+    <string name="pref_stepsSampling">Включить счетчик шагов</string>
 </resources>

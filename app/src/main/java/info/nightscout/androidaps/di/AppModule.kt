@@ -1,28 +1,29 @@
 package info.nightscout.androidaps.di
 
 import android.content.Context
+import app.aaps.MainApp
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.objects.Instantiator
+import app.aaps.core.interfaces.plugin.MedLinkProfileParser
+import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.di.PluginsListModule
+import app.aaps.implementation.instantiator.InstantiatorImpl
+import app.aaps.implementations.ConfigImpl
+import app.aaps.implementations.UiInteractionImpl
+import app.aaps.workflow.CalculationWorkflowImpl
 import dagger.Binds
 import dagger.Lazy
 import dagger.Module
 import dagger.Provides
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.MainApp
-import info.nightscout.androidaps.implementations.ConfigImpl
-import info.nightscout.androidaps.implementations.InstantiatorImpl
-import info.nightscout.androidaps.implementations.UiInteractionImpl
-import info.nightscout.androidaps.interfaces.BgSync
-import info.nightscout.androidaps.plugins.BgSyncImplementation
-import info.nightscout.androidaps.plugins.MedLinkProfileParserImpl
+import app.aaps.implementation.pump.BgSyncImplementation
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkProfileParserImpl
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
-import info.nightscout.androidaps.workflow.CalculationWorkflowImpl
-import info.nightscout.core.workflow.CalculationWorkflow
-import info.nightscout.interfaces.Config
-import info.nightscout.interfaces.plugin.MedLinkProfileParser
-import info.nightscout.interfaces.plugin.PluginBase
-import info.nightscout.interfaces.profile.Instantiator
-import info.nightscout.interfaces.ui.UiInteraction
 
 @Suppress("unused")
 @Module(
@@ -58,17 +59,13 @@ open class AppModule {
         @Binds fun bindConfigInterface(config: ConfigImpl): Config
 
         @Binds fun bindActivityNames(activityNames: UiInteractionImpl): UiInteraction
-        @Binds fun bindCalculationWorkflow(calculationWorkflow: CalculationWorkflowImpl): CalculationWorkflow
+        // @Binds fun bindCalculationWorkflow(calculationWorkflow: CalculationWorkflowImpl): CalculationWorkflow
         @Binds fun bindInstantiator(instantiatorImpl: InstantiatorImpl): Instantiator
+        @Binds fun bindBGSync(bgSyncImplementation: BgSyncImplementation): BgSync
 
-
-        /**
-         * Medlink binding
-         */
-        @Binds fun bindBgSync(bgSyncImplementation: BgSyncImplementation): BgSync
 
         @Binds fun bindMedLinkProfileParser(medLinkProfileParser: MedLinkProfileParserImpl<MedLinkStandardReturn<MedLinkMedtronicDeviceType>>)
-        :MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>,BasalProfile>
+            : MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>
     }
 }
 

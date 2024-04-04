@@ -3,16 +3,17 @@ package info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import info.nightscout.pump.common.data.MedLinkPumpStatus;
+
+
 
 /**
  * Created by Dirceu on 21/12/20.
  */
-public abstract class BaseStatusCallback extends BaseCallback<MedLinkPumpStatus, Supplier<Stream<String>>> {
+public abstract class BaseStatusCallback<A> extends BaseCallback<A, Supplier<Stream<String>>> {
 
-    private final MedLinkPumpStatus pumpStatus;
+    private A pumpStatus;
 //    private MedLinkStatusParser parser = new MedLinkStatusParser();
-    public BaseStatusCallback(MedLinkPumpStatus pumpStatus) {
+    public BaseStatusCallback(A pumpStatus) {
         super();
         this.pumpStatus = pumpStatus;
     }

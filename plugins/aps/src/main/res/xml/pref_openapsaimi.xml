@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        android:key="@string/key_openapsaimi_settings"
+        android:title="@string/openapsaimi"
+        app:initialExpandedChildrenCount="0">
+
+        <app.aaps.core.keys.AdaptiveSwitchPreference
+            android:key="@string/count_steps_watch"
+            android:title="@string/countsteps_watch_title"
+            android:summary="@string/countsteps_watch_summary" />
+
+        <app.aaps.core.keys.AdaptiveSwitchPreference
+            android:key="@string/key_enable_basal"
+            android:title="@string/Enable_basal_title"
+            android:summary="@string/Enable_basal_summary" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/openapsma_max_basal_summary"
+            android:key="@string/key_openaps_max_basal"
+            android:title="@string/openapsma_max_basal_title" />
+
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/openapssmb_max_iob_summary"
+            android:key="@string/key_openaps_smb_max_iob"
+            android:title="@string/openapssmb_max_iob_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/openapsaimi_maxsmb_summary"
+            android:key="@string/key_openapsaimi_max_smb"
+            android:title="@string/openapsaimi_maxsmb_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_weight_summary"
+            android:key="@string/key_aimiweight"
+            android:title="@string/oaps_aimi_weight_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_tdd7_summary"
+            android:key="@string/key_tdd7"
+            android:title="@string/oaps_aimi_tdd7_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_cho_summary"
+            android:key="@string/key_cho"
+            android:title="@string/oaps_aimi_cho_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/DynISF_Adjust_summary"
+            android:key="@string/key_DynISFAdjust"
+            android:title="@string/DynISF_Adjust_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_mealAdjFact_summary"
+            android:key="@string/key_oaps_aimi_mealAdjFact"
+            android:title="@string/oaps_aimi_mealAdjFact_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_morning_factor_summary"
+            android:key="@string/key_oaps_aimi_morning_factor"
+            android:title="@string/oaps_aimi_morning_factor_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_afternoon_factor_summary"
+            android:key="@string/key_oaps_aimi_afternoon_factor"
+            android:title="@string/oaps_aimi_afternoon_factor_title" />
+
+        <app.aaps.core.validators.AdaptiveDoublePreference
+            android:dialogMessage="@string/oaps_aimi_evening_factor_summary"
+            android:key="@string/key_oaps_aimi_evening_factor"
+            android:title="@string/oaps_aimi_evening_factor_title" />
+
+
+        <androidx.preference.PreferenceScreen
+            android:key="high_BG_settings"
+            android:title="High BG Preferences">
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/oaps_aimi_hyper_factor_summary"
+                android:key="@string/key_oaps_aimi_hyper_factor"
+                android:title="@string/oaps_aimi_hyper_factor_title" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/DynISFAdjusthyper_summary"
+                android:key="@string/key_DynISFAdjusthyper"
+                android:title="@string/DynISFAdjusthyper_title" />
+
+
+        </androidx.preference.PreferenceScreen>
+        <androidx.preference.PreferenceScreen
+            android:key="MT_testing_ideas"
+            android:title="MT Test Idea Preferences">
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/prebolus_meal_mode_summary"
+                android:key="@string/key_prebolus_meal_mode"
+                android:title="@string/prebolus_meal_mode_title" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/prebolus_highcarb_mode_summary"
+                android:key="@string/key_prebolus_highcarb_mode"
+                android:title="@string/prebolus_highcarb_mode_title" />
+
+            <app.aaps.core.keys.AdaptiveSwitchPreference
+                android:key="@string/key_enable_ML_training"
+                android:title="@string/oaps_aimi_enableMlTraining_title"
+                android:summary="@string/oaps_aimi_enableMlTraining_summary" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/number_minutes_training_summary"
+                android:key="@string/key_nb_day_ML_training"
+                android:title="@string/nb_minutes_ML_training_title" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/number_epoch_training_summary"
+                android:key="@string/key_nb_epoch_ML_training"
+                android:title="@string/nb_epoch_ML_training_title" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/number_learningrate_training_summary"
+                android:key="@string/key_nb_learningrate_ML_training"
+                android:title="@string/nb_learningrate_ML_training_title" />
+
+            <app.aaps.core.validators.AdaptiveDoublePreference
+                android:dialogMessage="@string/number_iteration_training_summary"
+                android:key="@string/key_nb_iteration_ML_training"
+                android:title="@string/nb_iteration_ML_training_title" />
+
+        </androidx.preference.PreferenceScreen>
+
+    </PreferenceCategory>
+</androidx.preference.PreferenceScreen>

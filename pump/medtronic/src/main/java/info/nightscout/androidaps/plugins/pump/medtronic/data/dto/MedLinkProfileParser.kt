@@ -3,9 +3,9 @@
 // import dagger.android.HasAndroidInjector
 // import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 // import info.nightscout.interfaces.Constants
-// import info.nightscout.interfaces.profile.Profile
-// import info.nightscout.rx.logging.AAPSLogger
-// import info.nightscout.rx.logging.LTag
+// import app.aaps.core.interfaces.profile.Profile
+// import app.aaps.core.interfaces.logging.AAPSLogger
+// import app.aaps.core.interfaces.logging.LTag
 // import org.json.JSONException
 // import org.json.JSONObject
 // import java.util.*

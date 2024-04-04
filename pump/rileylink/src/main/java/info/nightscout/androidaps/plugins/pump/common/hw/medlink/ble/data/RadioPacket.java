@@ -5,7 +5,7 @@ import javax.inject.Inject;
 import dagger.android.HasAndroidInjector;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil;
 import info.nightscout.androidaps.plugins.pump.common.utils.CRC;
-import info.nightscout.pump.core.utils.ByteUtil;
+
 
 /**
  * Created by dirceu on 10/12/20.
@@ -31,7 +31,8 @@ public class RadioPacket {
 
 
     private byte[] getWithCRC() {
-        byte[] withCRC = ByteUtil.concat(pkt, CRC.crc8(pkt));
+        byte[] withCRC = new byte[0];
+//                ByteUtil.concat(pkt, CRC.crc8(pkt));
         return withCRC;
     }
 

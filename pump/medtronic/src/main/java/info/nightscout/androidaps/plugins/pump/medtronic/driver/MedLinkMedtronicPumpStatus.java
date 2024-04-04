@@ -1,7 +1,11 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.driver;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import org.jetbrains.annotations.NotNull;
 
+import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
@@ -11,6 +15,13 @@ import java.util.Map;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue;
+import app.aaps.core.data.pump.defs.PumpType;
+import app.aaps.core.interfaces.pump.BgSync;
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
+import app.aaps.core.interfaces.resources.ResourceHelper;
+import app.aaps.core.interfaces.rx.bus.RxBus;
+import app.aaps.core.interfaces.sharedPreferences.SP;
 import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
@@ -19,12 +30,7 @@ import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.BatteryType;
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType;
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst;
-import info.nightscout.interfaces.pump.defs.PumpType;
-import info.nightscout.pump.common.data.MedLinkPumpStatus;
-import info.nightscout.pump.core.defs.PumpDeviceState;
-import info.nightscout.rx.bus.RxBus;
-import info.nightscout.shared.interfaces.ResourceHelper;
-import info.nightscout.shared.sharedPreferences.SP;
+import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl;
 
 
 /**
@@ -33,7 +39,7 @@ import info.nightscout.shared.sharedPreferences.SP;
  */
 
 @Singleton
-public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatus {
+public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatusImpl {
 
 
     private final ResourceHelper resourceHelper;
@@ -142,9 +148,7 @@ public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatus {
         return 0;
     }
 
-    public double getCurrentBasal() {
-        return super.currentBasal;
-    }
+
     // Battery type
     private Map<String, BatteryType> mapByDescription;
 
@@ -168,18 +172,18 @@ public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatus {
 
 
     public <E> E getCustomData(String key, Class<E> clazz) {
-        switch(key) {
+        switch (key) {
             case "SERIAL_NUMBER":
-                return (E)serialNumber;
+                return (E) serialNumber;
 
             case "PUMP_FREQUENCY":
-                return (E)pumpFrequency;
+                return (E) pumpFrequency;
 
             case "PUMP_MODEL": {
-                if (medtronicDeviceType==null)
+                if (medtronicDeviceType == null)
                     return null;
                 else
-                    return (E)medtronicDeviceType.getPumpModel();
+                    return (E) medtronicDeviceType.getPumpModel();
             }
 
 
@@ -202,8 +206,8 @@ public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatus {
         rxBus.send(new EventRileyLinkDeviceStatusChange(pumpDeviceState));
     }
 
-    public boolean needToGetBGHistory(){
-        return getLastDataTime() - lastBGTimestamp > 360000;
+    public boolean needToGetBGHistory() {
+        return getLastDataTime() - super.getLastBGTimestamp() > 360000;
     }
 
 }

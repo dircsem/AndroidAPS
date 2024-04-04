@@ -1,36 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="key_openapsama_max_daily_safety_multiplier" translatable="false">openapsama_max_daily_safety_multiplier</string>
-    <string name="key_openapsama_current_basal_safety_multiplier" translatable="false">openapsama_current_basal_safety_multiplier</string>
-    <string name="key_openapsama_autosens_adjusttargets" translatable="false">autosens_adjust_targets</string>
-    <string name="key_always_use_shortavg" translatable="false">always_use_shortavg</string>
-    <string name="key_openapsma_max_iob" translatable="false">openapsma_max_iob</string>
-    <string name="key_sensitivity_raises_target" translatable="false">sensitivity_raises_target</string>
-    <string name="key_resistance_lowers_target" translatable="false">resistance_lowers_target</string>
-    <string name="key_use_smb" translatable="false">use_smb</string>
-    <string name="key_use_uam" translatable="false">use_uam</string>
-    <string name="key_smb_interval" translatable="false">smbinterval</string>
-    <string name="key_enableSMB_always" translatable="false">enableSMB_always</string>
-    <string name="key_enableSMB_with_COB" translatable="false">enableSMB_with_COB</string>
-    <string name="key_enableSMB_with_temptarget" translatable="false">enableSMB_with_temptarget</string>
-    <string name="key_enableSMB_after_carbs" translatable="false">enableSMB_after_carbs</string>
-    <string name="key_allowSMB_with_high_temptarget" translatable="false">enableSMB_with_high_temptarget</string>
-    <string name="key_smb_max_minutes" translatable="false">smbmaxminutes</string>
-    <string name="key_uam_smb_max_minutes" translatable="false">uamsmbmaxminutes</string>
-    <string name="key_carbsReqThreshold" translatable="false">carbsReqThreshold</string>
-    <string name="key_openapssmb_max_iob" translatable="false">openapsmb_max_iob</string>
-    <string name="key_lgs_threshold" translatable="false">lgsThreshold</string>
-    <string name="key_DynISFAdjust" translatable="false">DynISFAdjust</string>
-    <string name="key_adjust_sensitivity" translatable="false">dynisf_adjust_sensitivity</string>
-    <string name="key_openapsma_max_basal" translatable="false">openapsma_max_basal</string>
-    <string name="key_openapsama_use_autosens" translatable="false">openapsama_useautosens</string>
-    <string name="key_openapssmb_max_smb">key_openapssmb_max_smb</string>
-    <string name="openapsaismb">OpenAPS aiSMB</string>
-    <string name="key_openapsaismb_settings">OpenAPS aiSMB Settings</string>
-    <string name="oaps_aismb_shortname">aiSMB</string>
-
-
-    <string name="dynisf_adjust_sensitivity">Adjust sensitivity and BG</string>
+    <string name="dynisf_adjust_sensitivity">Enable TDD based sensitivity ratio for basal and glucose target modification</string>
+    <string name="dynisf_adjust_sensitivity_summary">Uses the last 24h TDD/7D TDD to calculate sensitivity ratio used for increasing or decreasing basal rate, and also adjust glucose target if these options are enabled, in the same way Autosens does. It is recommended to start with this option turned off</string>
     <string name="DynISFAdjust_title" formatted="false">DynamicISF Adjustment Factor %</string>
     <string name="DynISFAdjust_summary" formatted="false">Adjustment factor for DynamicISF. Set more than 100% for more aggressive correction doses, and less than 100% for less aggressive corrections.</string>
     <string name="DynISF_variant_title" formatted="false">Variant</string>
@@ -120,6 +91,7 @@
     <string name="smb_disabled_in_preferences">SMB disabled in preferences</string>
     <string name="uam_disabled_in_preferences">UAM disabled in preferences</string>
     <string name="autosens_disabled_in_preferences">Autosens disabled in preferences</string>
+    <string name="autosens_disabled_in_dyn_isf">Autosens disabled in DynISF</string>
 
     <!--    Verify if needed in safety-->
     <string name="limiting_iob">Limiting IOB to %1$.1f U because of %2$s</string>
@@ -157,92 +129,72 @@
     <string name="loop_open_mode_min_change">Minimal request change [%]</string>
     <string name="loop_open_mode_min_change_summary" formatted="false">Open Loop will popup new change request only if change is bigger than this value in %. Default value is 20%</string>
     <string name="fallback_smb_no_tdd">Fallback to SMB. Not enough TDD data.</string>
-
-    <!--    Loop -->
-
-    <string name="aimi">AIMI</string>
-    <string name="description_aimi">Automated Insulin Management Interface, base on artificial intelligence and machine learning decision.</string>
-    <string name="key_aimi_settings" translatable="false">aimi_settings</string>
-    <string name="key_use_AimiIgnoreCOB" translatable="false">key_use_AimiIgnoreCOB</string>
-    <string name="key_use_Aimiprotein" translatable="false">key_use_Aimiprotein</string>
-    <string name="key_use_AimiIOBpredBG" translatable="false">key_use_AimiIOBpredBG</string>
-    <string name="iTime">iTime</string>
-    <string name="iTimeSettings">iTime</string>
-    <string name="key_iTime" translatable="false">iTime</string>
-    <string name="iTime_title">iTime</string>
-    <string name="iTime_summary">iTime is the duration in minutes of the meal who authorize larger SMB. This variable was created to let child/teenager adapt this value</string>
-    <string name="key_UAM_InsulinReq" translatable="false">UAM_InsulinReq</string>
-    <string name="UAM_InsulinReq_title">AIMI iTime SMB Power %</string>
-    <string name="UAM_InsulinReq_summary">percentage of the AIMI response during the iTime duration</string>
-    <string name="key_iTime_MaxBolus_minutes" translatable="false">iTime_MaxBolus_minutes</string>
-    <string name="iTime_MaxBolus_minutes_title">iTime_MaxBolus_minutes</string>
-    <string name="iTime_MaxBolus_minutes_summary">iTime give a duration of the meal who allow larger smb and maxbolus. this variable give the higher maxbolus (basal * iTime_MaxBolus_minutes / 60)</string>
-    <string name="disable_Libre_smb_restrictions">Filtering active for every sensor, Go SMB!</string>
-    <string name="key_iTime_Bolus" translatable="false">iTime_Bolus</string>
-    <string name="iTime_Bolus_title">iTime_Bolus</string>
-    <string name="iTime_Bolus_summary">Automated Bolus at 28 minutes if delta > 2 if iTime Start with a manual bolus and 15 minutes if delta > 2 and iTime start with more than 30 carbs</string>
-    <string name="key_iTime_Starting_Bolus" translatable="false">iTime_Starting_Bolus</string>
-    <string name="key_iTime_B30_upperBG" translatable="false">iTime_b30_upperBG</string>
-    <string name="key_iTime_B30_upperdelta" translatable="false">iTime_b30_upperdelta</string>
-    <string name="key_iTime_B30_duration" translatable="false">iTime_b30_duration</string>
-    <string name="key_aimi_B30_proteinstart" translatable="false">aimi_B30_proteinstart</string>
-    <string name="key_aimi_B30_proteinduration" translatable="false">aimi_B30_proteinduration</string>
-    <string name="key_aimi_B30_proteinpercent" translatable="false">aimi_B30_proteinpercent</string>
-    <string name="iTime_Starting_Bolus_title">iTime_Starting_Bolus</string>
-    <string name="iTime_Starting_Bolus_summary">Value of the manual Bolus who will start iTime, like > iTime_Starting_Bolus</string>
-    <string name="key_openapsama_smb_delivery_ratio" translatable="false">openapsama_smb_delivery_ratio</string>
-    <string name="key_openapsama_smb_delivery_ratio_min" translatable="false">openapsama_smb_delivery_ratio_min</string>
-    <string name="key_openapsama_smb_delivery_ratio_max" translatable="false">openapsama_smb_delivery_ratio_max</string>
-    <string name="key_openapsama_smb_delivery_ratio_bg_range" translatable="false">openapsama_smb_delivery_ratio_bg_range</string>
-    <string name="key_openapsama_smb_max_range_extension" translatable="false">openapsama_smb_max_range_extension</string>
-    <string name="openapsama_smb_delivery_ratio_summary">Default value: 0.5 This is another key OpenAPS safety cap, and specifies what share of the total insulin required can be delivered as SMB. This is to prevent people from getting into dangerous territory by setting SMB requests from the caregivers phone at the same time. Increase this experimental value slowly and with caution.</string>
-    <string name="openapsama_smb_delivery_ratio_min_summary">Default value: 0.5 This is the lower end of a linearly increasing ratio rather than the fix value above.</string>
-    <string name="openapsama_smb_delivery_ratio_max_summary">Default value: 0.9 This is the upper end of a linearly increasing ratio rather than the fix value above.</string>
-    <string name="openapsama_smb_delivery_ratio_bg_range_summary">Default value: 40. The linearly increasing SMB delivery ratio is mapped to the glucose range [target_bg, target_bg+bg_range].\nAt target_bg the SMB ratio is smb_delivery_ratio_min, at target_bg+bg_range it is smb_delivery_ratio_max\nWith 0 the linearly increasing SMB ratio is disabled and the fix smb_delivery_ratio is used.</string>
-    <string name="openapsama_smb_max_range_extension_summary">Default value: 1 This is another key OpenAPS safety cap, and specifies by what factor you can exceed the regular 120 maxSMB/maxUAM minutes. Increase this experimental value slowly and with caution.</string>
-    <string name="openapsama_smb_delivery_ratio">fixed SMB delivery ratio</string>
-    <string name="openapsama_smb_delivery_ratio_min">variable SMB delivery ratio, lower end</string>
-    <string name="openapsama_smb_delivery_ratio_max">variable SMB delivery ratio, upper end</string>
-    <string name="openapsama_smb_delivery_ratio_bg_range">variable SMB delivery ratio, mapped glucose range</string>
-    <string name="openapsama_smb_max_range_extension">SMB/UAM max range extension</string>
-    <string name="variant_title">Variant</string>
-    <string name="key_aimi_variant" translatable="false">AIMI_variant</string>
-    <string name="aimi_variant_title">AIMI Variant</string>
-    <string name="key_use_AIMI_COB" translatable="false">key_use_AIMI_COB</string>
-    <string name="key_use_AIMI_CAP" translatable="false">key_use_AIMI_CAP</string>
-    <string name="key_use_AIMI_SlowInsulin" translatable="false">key_use_AIMI_SlowInsulin</string>
-    <string name="key_use_AIMI_PBolus" translatable="false">key_use_AIMI_PBolus</string>
-    <string name="key_use_AIMI_BreakFastLight" translatable="false">key_use_AIMI_BreakfastLight</string>
-    <string name="key_use_AIMI_factor" translatable="false">key_use_AIMI_factor</string>
-    <string name="key_AIMI_NoSMB_timeend">key_AIMI_NoSMB_timeend</string>
-    <string name="key_AIMI_NoSMB_timestart">key_AIMI_NoSMB_timestart</string>
-    <string name="key_use_AimiUAM" translatable="false">AIMI</string>
-    <string name="key_use_AimiPower" translatable="false">AIMI_Power</string>
-    <string name="key_use_noNightsmb" translatable="false">No Night SMB</string>
-    <string name="key_use_AimiUAM_ISF" translatable="false">AIMI_ISF</string>
-    <string name="key_use_AimiBreak" translatable="false">key_use_AimiBreak</string>
-    <string name="key_use_disable_b30_BFL" translatable="false">key_use_disable_b30_BFL</string>
-    <string name="key_use_b30mssv" translatable="false">Variant B30-MSSV</string>
-    <string name="key_use_b30mssvaimi" translatable="false">Variant B30-MSSV-100%AIMI</string>
-    <string name="key_use_mssv" translatable="false">Variant MSSV </string>
-    <string name="key_use_pammssv" translatable="false">Variant PAM-MSSV</string>
-    <string name="key_use_pam" translatable="false">Variant PAM</string>
-    <string name="key_use_newSMB" translatable="false">new aimi smb calculation proportional</string>
-    <string name="key_use_enable_mssv" translatable="false">Enable the variation of max smb size</string>
-    <string name="key_use_countsteps" translatable="false">Enable counting steps</string>
-    <string name="key_use_fcl_smb" translatable="false">Enable FCL Automated SMB</string>
-    <string name="count_steps_watch" translatable="false">Enable Steps from the watch</string>
-    <string name="key_iTime_B30_bolus">key_iTime_B30_bolus</string>
-    <string name="key_iTime_B30_bolus_duration">key_iTime_B30_bolus_duration</string>
-    <string name="key_use_Aimib30bolus">key_use_Aimib30bolus</string>
-    <string name="key_use_enable_circadian">key_use_enable_circadian</string>
-    <string name="key_mbi">AIMI smb interval duration after a bolus</string>
+    <string name="key_openapsaimi_settings">key_openapsaimi_settings</string>
+    <string name="openapsaimi">"OpenapsAIMI Settings "</string>
+    <string name="openapsaimi_maxsmb_summary">Value of max smb size</string>
+    <string name="key_openapsaimi_max_smb">key_openapsaimi_max_smb</string>
+    <string name="openapsaimi_maxsmb_title">OpenapsAIMI Max SMB</string>
+    <string name="description_openapsaimi">Small micro boluses based on Artifical Intelligence and Machine Learning.</string>
+    <string name="oaps_aimi_shortname">OpenApsAIMI</string>
     <string name="key_aimiweight">key_aimiweight</string>
     <string name="key_tdd7">key_tdd7</string>
     <string name="key_cho">key_cho</string>
-    <string name="key_UAMpredBG">key_UAMpredBG</string>
-    <string name="key_fcl_smb">key_fcl_smb</string>
-    <string name="key_use_AimiPregnancy">key_use_AimiPregnancy</string>
-
+    <string name="key_B30_upperBG">key_B30_upperBG</string>
+    <string name="key_B30_upperdelta">key_B30_upperdelta</string>
+    <string name="key_B30_duration">key_B30_duration</string>
+    <string name="count_steps_watch">count_steps_watch</string>
+    <string name="oaps_aimi_evening_factor_summary">% of Reactivity of the plugin between 6 pm and midnight</string>
+    <string name="key_oaps_aimi_evening_factor">key_oaps_aimi_evening_factor</string>
+    <string name="oaps_aimi_evening_factor_title">Evening Reactivity Percentage</string>
+    <string name="oaps_aimi_afternoon_factor_title">Afternoon Reactivity Percentage</string>
+    <string name="oaps_aimi_morning_factor_title">Morning Reactivity Percentage</string>
+    <string name="oaps_aimi_morning_factor_summary">Morning Reactivity Percentage between midnight and 11 am</string>
+    <string name="key_oaps_aimi_morning_factor">key_oaps_aimi_morning_factor</string>
+    <string name="oaps_aimi_afternoon_factor_summary">Afternoon reactivity percentage between 12pm and 6 pm</string>
+    <string name="key_oaps_aimi_afternoon_factor">key_oaps_aimi_afternoon_factor</string>
+    <string name="key_oaps_aimi_hyper_factor">key_oaps_aimi_hyper_factor</string>
+    <string name="key_DynISFAdjusthyper">key_DynISFAdjusthyper</string>
+    <string name="oaps_aimi_hyper_factor_summary"><![CDATA[Reactivity factor when bg > 180]]></string>
+    <string name="oaps_aimi_hyper_factor_title"><![CDATA[Reactivity factor BG > 180]]></string>
+    <string name="DynISFAdjusthyper_summary"><![CDATA[Increasing this value will increase the velocity to send smb when bg > 180]]></string>
+    <string name="DynISFAdjusthyper_title"><![CDATA[Dynisf Adjustment factor % BG > 180]]></string>
+    <string name="key_enable_basal">key_enable_basal</string>
+    <string name="prebolus_meal_mode_summary">If you set a note in action page, with the work meal, you will receive one time this value like a pre-bolus.</string>
+    <string name="key_prebolus_meal_mode">key_prebolus_meal_mode</string>
+    <string name="prebolus_meal_mode_title">Meal mode pre-bolus</string>
+    <string name="prebolus_highcarb_mode_title">Mode high carb pre-bolus</string>
+    <string name="key_prebolus_highcarb_mode">key_prebolus_highcarb_mode</string>
+    <string name="prebolus_highcarb_mode_summary">If you set a note in action page, with the word highcarb, you will receive this pre-bolus one time.</string>
+    <string name="number_day_ML_training_summary">Number of day to train the model</string>
+    <string name="key_nb_day_ML_training">key_nb_day_ML_training</string>
+    <string name="nb_day_ML_training_title">ML number training day</string>
+    <string name="key_enable_ML_training">key_enable_ML_training</string>
+    <string name="nb_minutes_ML_training_title">Nb minutes to train the data</string>
+    <string name="number_minutes_training_summary">Nb minutes to train the data for the ML engine</string>
+    <string name="number_epoch_training_summary">NB Epoch to train the data</string>
+    <string name="nb_epoch_ML_training_title">NB Epoch to train the data</string>
+    <string name="key_nb_epoch_ML_training">key_nb_epoch_ML_training</string>
+    <string name="key_nb_learningrate_ML_training">key_nb_learningrate_ML_training</string>
+    <string name="number_learningrate_training_summary">nb learning rate to train the data</string>
+    <string name="nb_learningrate_ML_training_title">learning rate to train the data</string>
+    <string name="number_iteration_training_summary">Nb time it will try before stopping the loop if it can not get a satisfying result.</string>
+    <string name="key_nb_iteration_ML_training">key_nb_iteration_ML_training</string>
+    <string name="nb_iteration_ML_training_title">NB iteration stopping the loop</string>
+    <string name="DynISF_Adjust_summary" formatted="false">Increase this value greater than 100 if you want to receive more smb. The opposite is true if you receive too much smb.</string>
+    <string name="DynISF_Adjust_title" formatted="false">DynISF factor to increase or discrease the number of SMB</string>
+    <string name="oaps_aimi_mealAdjFact_summary">DynISF adjustment factor for Meal mode</string>
+    <string name="oaps_aimi_mealAdjFact_title">Meal Mode DynISF factor</string>
+    <string name="Enable_basal_title">Enable Basal</string>
+    <string name="Enable_basal_summary">This option will enable basal from the profile when bg is greater than 80 and delta not negative.</string>
+    <string name="countsteps_watch_title">Enable Counting steps from the watch</string>
+    <string name="countsteps_watch_summary">This option will use the hardware from the watch instead of the phone.</string>
+    <string name="oaps_aimi_weight_summary">Weight in kg to calculate the basal</string>
+    <string name="oaps_aimi_weight_title">Weight in kg</string>
+    <string name="oaps_aimi_tdd7_summary">TDD average 7 days</string>
+    <string name="oaps_aimi_tdd7_title">TDD 7 days</string>
+    <string name="oaps_aimi_cho_summary">Average carbs for a meal. it\'s an estimation not a precise value</string>
+    <string name="oaps_aimi_cho_title">CHO Meal average lunch or dinner</string>
+    <string name="oaps_aimi_enableMlTraining_title">Enable ML training calculation</string>
+    <string name="oaps_aimi_enableMlTraining_summary">\"This option will enable training ML calculation and use the result for the smb size.</string>
 
 </resources>

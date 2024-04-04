@@ -5,15 +5,17 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandExec
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
 
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.rx.bus.RxBus
-import info.nightscout.rx.events.EventDismissBolusProgressIfRunning
-import info.nightscout.rx.events.EventOverviewBolusProgress
-import info.nightscout.rx.events.EventOverviewBolusProgress.t
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
+import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
+import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress.t
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
 
 import org.json.JSONObject
 import java.util.function.Supplier
@@ -47,13 +49,13 @@ data class BolusProgressCallback(
         aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.lastBolusAmount)
         aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.bolusDeliveredAmount)
         aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.lastBolusInfo)
-        aapsLogger.info(LTag.PUMPBTCOMM, detailedBolusInfo.toJsonString())
+        aapsLogger.info(LTag.PUMPBTCOMM, detailedBolusInfo.toString())
         if (pumpStatus.lastBolusAmount != null) {
             aapsLogger.info(LTag.PUMPBTCOMM, "lastbolusAmount")
             val bolusEvent = EventOverviewBolusProgress
             bolusEvent.t = t
-            bolusEvent.status = resourceHelper.gs(info.nightscout.core.ui.R.string.bolus_delivering, pumpStatus.bolusDeliveredAmount, pumpStatus.lastBolusAmount)
-            bolusEvent.percent = ((pumpStatus.bolusDeliveredAmount / detailedBolusInfo.insulin) * 100).roundToInt()
+            bolusEvent.status = resourceHelper.gs(app.aaps.core.ui.R.string.bolus_delivering, pumpStatus.bolusDeliveredAmount, pumpStatus.lastBolusAmount)
+            bolusEvent.percent = ((pumpStatus.bolusDeliveredAmount?.div(detailedBolusInfo.insulin))?.times(100)?.roundToInt())?.or(0) ?: 0
 
             rxBus.send(bolusEvent)
             if (bolusEvent.percent == 100 || pumpStatus.bolusDeliveredAmount == 0.0) {
@@ -62,18 +64,18 @@ data class BolusProgressCallback(
                 // medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(detailedBolusInfo.toJsonString())))
 
                 pumpStatus.lastBolusInfo.let {
-                    it.timestamp = pumpStatus.lastBolusTime?.time ?: it.timestamp
+                    it?.timestamp = pumpStatus.lastBolusTime?.time ?: it!!.timestamp
 
-                    it.insulin = pumpStatus.lastBolusAmount ?: it.insulin
+                    it?.insulin = pumpStatus.lastBolusAmount ?: it!!.insulin
 
-                    it.bolusType = detailedBolusInfo.bolusType
-                    it.carbs = detailedBolusInfo.carbs
-                    it.eventType = detailedBolusInfo.eventType
-                    medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(it.toJsonString())))
+                    it?.bolusType = detailedBolusInfo.bolusType
+                    it?.carbs = detailedBolusInfo.carbs
+                    it?.eventType = detailedBolusInfo.eventType
+                    medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(it.toString())))
                 }
 
                 SystemClock.sleep(200)
-                bolusEvent.status = resourceHelper.gs(info.nightscout.core.ui.R.string.bolus_delivering, pumpStatus.lastBolusAmount)
+                bolusEvent.status = resourceHelper.gs(app.aaps.core.ui.R.string.bolus_delivering, pumpStatus.lastBolusAmount)
                 bolusEvent.percent = 100
                 rxBus.send(bolusEvent)
                 SystemClock.sleep(1000)

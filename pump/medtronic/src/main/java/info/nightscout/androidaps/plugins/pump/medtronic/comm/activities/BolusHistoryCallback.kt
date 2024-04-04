@@ -1,14 +1,17 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
+import app.aaps.core.data.model.TE
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.R
-import info.nightscout.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
 
-import info.nightscout.core.utils.JsonHelper.safeGetString
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.utils.JsonHelper.safeGetString
+import info.nightscout.pump.common.extensions.toJsonString
 
 import org.json.JSONException
 import org.json.JSONObject
@@ -43,7 +46,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             answers.next()
             return try {
                 val commandHistory = processBolusHistory(answers)
-                if (medLinkPumpPlugin.sp.getBoolean(R.bool.key_medlink_handle_cannula_change_event, false)) {
+                if (medLinkPumpPlugin.sp.getBoolean(R.string.key_medlink_handle_cannula_change_event, false)) {
                     medLinkPumpPlugin.handleNewCareportalEvent(Supplier { commandHistory.get().filter { f: JSONObject -> !isBolus(f) } })
                 }
                 val resultStream = Supplier { commandHistory.get().filter { f: JSONObject -> isBolus(f) } }
@@ -67,9 +70,9 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
 
     private fun isBolus(json: JSONObject): Boolean {
         return safeGetString(json, "eventType", "") ==
-            DetailedBolusInfo.EventType.BOLUS_WIZARD.name || safeGetString(json, "eventType", "") ==
-            DetailedBolusInfo.EventType.MEAL_BOLUS.name || safeGetString(json, "eventType", "") ==
-            DetailedBolusInfo.EventType.CORRECTION_BOLUS.name
+            TE.Type.BOLUS_WIZARD.name || safeGetString(json, "eventType", "") ==
+            TE.Type.MEAL_BOLUS.name || safeGetString(json, "eventType", "") ==
+            TE.Type.CORRECTION_BOLUS.name
     }
 
     @Throws(ParseException::class)
@@ -82,15 +85,15 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             if (verifyNext && data.isPresent
                 && cannulaChange.isPresent
             ) {
-                if (data.get().get("eventType") != DetailedBolusInfo.EventType.INSULIN_CHANGE) {
+                if (data.get().get("eventType") != TE.Type.INSULIN_CHANGE) {
                     resultList.add(cannulaChange.get())
                     cannulaChange = Optional.empty()
                 }
                 verifyNext = false
             }
             if (!verifyNext && data.isPresent
-                && data.get().get("eventType") == DetailedBolusInfo.EventType.CANNULA_CHANGE
-                && !medLinkPumpPlugin.sp.getBoolean(R.bool.key_medlink_change_cannula, true)
+                && data.get().get("eventType") == TE.Type.CANNULA_CHANGE
+                && !medLinkPumpPlugin.sp.getBoolean(R.string.key_medlink_handle_cannula_change_event, true)
             ) {
                 cannulaChange = data
                 data = Optional.empty()
@@ -135,7 +138,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             json.put("mills", date)
             json.put(
                 "eventType",
-                DetailedBolusInfo.EventType.CANNULA_CHANGE
+                TE.Type.CANNULA_CHANGE
             )
             json.put("enteredBy", "PUMP")
             aapsLogger.debug("USER ENTRY: CAREPORTAL \${careportalEvent.eventType} json: \${careportalEvent.json}")
@@ -151,7 +154,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             val json = JSONObject()
             val date = parsetTime(answer, matcher)
             json.put("mills", date)
-            json.put("eventType", DetailedBolusInfo.EventType.INSULIN_CHANGE)
+            json.put("eventType", TE.Type.INSULIN_CHANGE)
             aapsLogger.debug("USER ENTRY: CAREPORTAL \${careportalEvent.eventType} json: \${careportalEvent.json}")
             return Optional.of(json)
         }
@@ -165,7 +168,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             val json = JSONObject()
             val date = parsetTime(answer, matcher)
             json.put("mills", date)
-            json.put("eventType", DetailedBolusInfo.EventType.PUMP_BATTERY_CHANGE)
+            json.put("eventType", TE.Type.PUMP_BATTERY_CHANGE)
             aapsLogger.debug("USER ENTRY: CAREPORTAL \${careportalEvent.eventType} json: \${careportalEvent.json}")
             return Optional.of(json)
         }

@@ -1,6 +1,12 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.data
 
 
+import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.android.HasAndroidInjector
@@ -13,18 +19,15 @@ import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.ClockDTO
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedtronicPumpStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicUtil
-import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.interfaces.pump.PumpSync
-import info.nightscout.interfaces.pump.defs.PumpType
-import info.nightscout.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.utils.StringUtil
 import info.nightscout.pump.common.sync.PumpSyncStorage
-import info.nightscout.pump.core.utils.StringUtil
-import info.nightscout.rx.bus.RxBus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
+
 import org.apache.commons.lang3.StringUtils
 import java.util.*
 import javax.inject.Inject
@@ -54,9 +57,10 @@ class MedLinkMedtronicHistoryData @Inject constructor(
     medtronicPumpStatus: MedtronicPumpStatus,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
-    uiInteraction: UiInteraction
+    uiInteraction: UiInteraction,
+    profileUtil: ProfileUtil
 ): MedtronicHistoryData(injector, aapsLogger, sp, rh, rxBus, activePlugin, medtronicUtil, medtronicPumpHistoryDecoder, medtronicPumpStatus, pumpSync, pumpSyncStorage,
-uiInteraction ) {
+uiInteraction, profileUtil ) {
 
     private var newHistory: MutableList<PumpHistoryEntry> = ArrayList<PumpHistoryEntry>()
     private var isInit = false
@@ -150,7 +154,7 @@ uiInteraction ) {
 //         showLogs("List of history (after filtering): [" + newHistory!!.size + "]", gson().toJson(newHistory))
 //     }
 
-    private fun extendBolusRecords(bolusEstimates: List<PumpHistoryEntry>, newHistory2: List<PumpHistoryEntry>) {
+    private fun extendBolusRecords(bolusEstimates: MutableList<PumpHistoryEntry>, newHistory2: MutableList<PumpHistoryEntry>) {
         val boluses: List<PumpHistoryEntry> = getFilteredItems(newHistory2, PumpHistoryEntryType.Bolus)
         for (bolusEstimate in bolusEstimates) {
             for (bolus in boluses) {
@@ -1141,7 +1145,7 @@ uiInteraction ) {
         }
     }
 
-    private fun getFilteredItems(inList: List<PumpHistoryEntry>, vararg entryTypes: PumpHistoryEntryType): MutableList<PumpHistoryEntry> {
+    private fun getFilteredItems(inList: MutableList<PumpHistoryEntry>, vararg entryTypes: PumpHistoryEntryType): MutableList<PumpHistoryEntry> {
 
         // aapsLogger.debug(LTag.PUMP, "InList: " + inList.size());
         val outList: MutableList<PumpHistoryEntry> = ArrayList<PumpHistoryEntry>()
@@ -1184,7 +1188,7 @@ uiInteraction ) {
     }
 
     init {
-        allHistory = ArrayList<PumpHistoryEntry>()
+        // allHistory = ArrayList<PumpHistoryEntry>()
         // this.injector = injector
         // this.aapsLogger = aapsLogger
         // this.sp = sp

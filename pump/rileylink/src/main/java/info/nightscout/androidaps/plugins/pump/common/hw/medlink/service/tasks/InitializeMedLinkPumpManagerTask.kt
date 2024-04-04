@@ -1,14 +1,14 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks
 
 import android.content.Context
+import app.aaps.core.data.pump.defs.ManufacturerType
 import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
-import info.nightscout.interfaces.pump.defs.ManufacturerType
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import javax.inject.Inject
 
 /**

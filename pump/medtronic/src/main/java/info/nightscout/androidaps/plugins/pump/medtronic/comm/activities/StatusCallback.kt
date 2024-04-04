@@ -1,28 +1,30 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
-import info.nightscout.androidaps.interfaces.BgSync.BgHistory
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.BGReadingStatus
+import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseStatusCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser.Companion.parseStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.pump.core.defs.PumpDeviceState
+import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl
 import java.util.*
 import java.util.function.Supplier
 import java.util.regex.Pattern
 import java.util.stream.Collectors
 import java.util.stream.Stream
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
 
 /**
  * Created by Dirceu on 19/01/21.
  */
 class StatusCallback(
     private val aapsLogger: AAPSLogger,
-    private val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin, private val medLinkPumpStatus: MedLinkMedtronicPumpStatus
-) : BaseStatusCallback(medLinkPumpStatus) {
+    private val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin, private val medLinkPumpStatus: MedLinkPumpStatus
+) : BaseStatusCallback<MedLinkPumpStatus>(medLinkPumpStatus) {
 
     override fun apply(s: Supplier<Stream<String>>): MedLinkStandardReturn<MedLinkPumpStatus> {
         val f = MedLinkStandardReturn<MedLinkPumpStatus>(s, medLinkPumpStatus)
@@ -45,15 +47,15 @@ class StatusCallback(
         medLinkPumpPlugin.setPumpTime(pumpStatus.lastDataTime)
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.currentBasal)
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.reservoirRemainingUnits)
-        aapsLogger.info(LTag.PUMPBTCOMM, "status " + medLinkPumpStatus.getCurrentBasal())
+        aapsLogger.info(LTag.PUMPBTCOMM, "status " + medLinkPumpStatus.currentBasal)
         medLinkPumpStatus.setLastCommunicationToNow()
         aapsLogger.info(LTag.PUMPBTCOMM, "bgreading " + pumpStatus.bgReading)
         if (pumpStatus.bgReading != null) {
-            medLinkPumpPlugin.handleNewSensorData(BgHistory(listOf(pumpStatus.sensorDataReading), emptyList(), null))
-            medLinkPumpStatus.lastReadingStatus = MedLinkPumpStatus.BGReadingStatus.SUCCESS
+            medLinkPumpPlugin.handleNewSensorData(BgSync.BgHistory(listOf(pumpStatus.sensorDataReading), emptyList(), null))
+            medLinkPumpStatus.lastReadingStatus = BGReadingStatus.SUCCESS
         } else {
             medLinkPumpPlugin.handleNewPumpData()
-            medLinkPumpStatus.lastReadingStatus = MedLinkPumpStatus.BGReadingStatus.FAILED
+            medLinkPumpStatus.lastReadingStatus = BGReadingStatus.FAILED
         }
         medLinkPumpPlugin.sendPumpUpdateEvent()
         if (f.getAnswer().anyMatch { m -> m.contains("eomeomeom") || m.contains("ready") }) {

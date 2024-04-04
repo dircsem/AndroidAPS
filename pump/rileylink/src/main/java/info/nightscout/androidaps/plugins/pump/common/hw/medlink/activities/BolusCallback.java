@@ -11,11 +11,11 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import app.aaps.core.interfaces.pump.DetailedBolusInfo;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.PumpResponses;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.BolusAnswer;
-import info.nightscout.interfaces.pump.DetailedBolusInfo;
-import info.nightscout.rx.logging.AAPSLogger;
-import info.nightscout.rx.logging.LTag;
+import app.aaps.core.interfaces.logging.AAPSLogger;
+import app.aaps.core.interfaces.logging.LTag;
+import info.nightscout.androidaps.plugins.pump.medtronic.data.BolusAnswer;
 
 /**
  * Created by Dirceu on 21/12/20.

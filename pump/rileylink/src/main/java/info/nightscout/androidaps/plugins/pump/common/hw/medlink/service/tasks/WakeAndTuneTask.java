@@ -2,12 +2,13 @@ package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks;
 
 import javax.inject.Inject;
 
+import app.aaps.core.interfaces.plugin.ActivePlugin;
+import app.aaps.core.interfaces.rx.events.EventRefreshButtonState;
 import dagger.android.HasAndroidInjector;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.PumpTask;
-import info.nightscout.interfaces.plugin.ActivePlugin;
-import info.nightscout.rx.bus.RxBus;
-import info.nightscout.rx.events.EventRefreshButtonState;
+
+import app.aaps.core.interfaces.rx.bus.RxBus;
 
 /**
  * Created by geoff on 7/16/16.

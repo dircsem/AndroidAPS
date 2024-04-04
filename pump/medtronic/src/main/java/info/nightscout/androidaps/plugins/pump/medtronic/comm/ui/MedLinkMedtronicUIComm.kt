@@ -4,8 +4,8 @@ import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 
 /**
  * Created by Dirceu on 25/09/20.

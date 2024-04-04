@@ -2,7 +2,7 @@ package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
 
 import com.google.gson.annotations.Expose;
 
-import info.nightscout.rx.logging.AAPSLogger;
+import app.aaps.core.interfaces.logging.AAPSLogger;
 
 
 

@@ -1,11 +1,14 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
 
+import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
+import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import app.aaps.core.interfaces.pump.PumpRunningState
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.interfaces.BgSync
-import info.nightscout.interfaces.pump.EnliteInMemoryGlucoseValue
-import info.nightscout.pump.common.data.MedLinkPartialBolus
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.pump.common.defs.PumpRunningState
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.PumpStatus
+
 import java.lang.Exception
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
@@ -142,7 +145,7 @@ class MedLinkStatusParser {
             }
         }
 
-        fun parseBolusInfo(messageIterator: Iterator<String>, pumpStatus: MedLinkPartialBolus): MedLinkPartialBolus {
+        fun parseBolusInfo(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
             var status = pumpStatus
             while (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
@@ -158,7 +161,7 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun squareBolus(currentLine: String, lastBolusStatus: MedLinkPartialBolus): MedLinkPartialBolus {
+        private fun squareBolus(currentLine: String, lastBolusStatus: MedLinkPumpStatus): MedLinkPumpStatus {
             if (currentLine.contains("square bolus:")) {
                 val bolusPat = Pattern.compile("\\d+\\.\\d+")
                 val bolusMatcher = bolusPat.matcher(currentLine)
@@ -298,9 +301,7 @@ class MedLinkStatusParser {
                     val matcher = pattern.matcher(currentLine)
                     if (matcher.find()) {
                         val currentAge = Integer.valueOf(matcher.group())
-                        if (pumpStatus.sensorAge != null) {
-                            previousAge = pumpStatus.sensorAge
-                        }
+                        pumpStatus.sensorAge?.let { previousAge = it }
                         pumpStatus.sensorAge = currentAge
                     }
                 }
@@ -424,7 +425,7 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseLastBolus(currentLine: String, pumpStatus: MedLinkPartialBolus): MedLinkPartialBolus {
+        private fun parseLastBolus(currentLine: String, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
             //        18:36:49.495 Last bolus: 0.2u 13‑12‑20 18:32
             if (currentLine.contains("last bolus")) {
                 val lastBolusPattern = Pattern.compile("\\d{1,2}\\.\\du")

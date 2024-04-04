@@ -5,7 +5,7 @@ import org.joda.time.LocalDateTime;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
-import info.nightscout.shared.interfaces.ResourceHelper;
+import app.aaps.core.interfaces.resources.ResourceHelper;
 
 /**
  * Created by Dirceu on 25/09/20
@@ -29,7 +29,7 @@ public class MLHistoryItemMedtronic extends MLHistoryItem {
                         + (this.errorCode == null ? "" : ", Error Code: " + errorCode);
 
             case MedtronicPump:
-                return resourceHelper.gs(pumpDeviceState.getResourceId());
+                return super.getDescription(resourceHelper);
 
             case MedtronicCommand:
                 return medtronicCommandType.name();

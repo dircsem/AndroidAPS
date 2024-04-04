@@ -27,12 +27,13 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPum
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.GattAttributes
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.MedLinkBleConfigActivityBinding
-import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.pump.BlePreCheck
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.BlePreCheck
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.sharedPreferences.SP
 import org.apache.commons.lang3.StringUtils
 import java.util.*
 import javax.inject.Inject

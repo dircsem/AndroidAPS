@@ -2,11 +2,11 @@ package info.nightscout.androidaps.plugins.pump.common.hw.medlink.data;
 
 import org.joda.time.LocalDateTime;
 
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
+import app.aaps.core.interfaces.resources.ResourceHelper;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkError;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
-import info.nightscout.pump.core.defs.PumpDeviceState;
-import info.nightscout.shared.interfaces.ResourceHelper;
 
 
 /**
@@ -87,7 +87,7 @@ public class MLHistoryItem  {
                         + (this.errorCode == null ? "" : ", Error Code: " + errorCode);
 
             case MedtronicPump:
-                return resourceHelper.gs(pumpDeviceState.getResourceId());
+                return resourceHelper.gs(serviceState.getResourceId());
 
             default:
                 return "Unknown Description";

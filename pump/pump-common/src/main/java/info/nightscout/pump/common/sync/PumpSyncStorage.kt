@@ -1,14 +1,12 @@
 package info.nightscout.pump.common.sync
 
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.sharedPreferences.SP
 import com.thoughtworks.xstream.XStream
 import com.thoughtworks.xstream.security.AnyTypePermission
-import info.nightscout.annotations.OpenForTesting
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.interfaces.pump.PumpSync
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-
-import info.nightscout.shared.sharedPreferences.SP
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,7 +14,6 @@ import javax.inject.Singleton
  * This class is intended for Pump Drivers that use temporaryId and need way to pair records
  */
 @Singleton
-@OpenForTesting
 class PumpSyncStorage @Inject constructor(
     val pumpSync: PumpSync,
     val sp: SP,

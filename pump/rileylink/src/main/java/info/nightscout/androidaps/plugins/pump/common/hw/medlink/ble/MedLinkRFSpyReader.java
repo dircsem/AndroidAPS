@@ -7,11 +7,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import app.aaps.core.utils.pump.ThreadUtil;
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkEncodingType;
-import info.nightscout.pump.core.utils.ByteUtil;
-import info.nightscout.pump.core.utils.ThreadUtil;
-import info.nightscout.rx.logging.AAPSLogger;
-import info.nightscout.rx.logging.LTag;
+
+import app.aaps.core.interfaces.logging.AAPSLogger;
+import app.aaps.core.interfaces.logging.LTag;
 
 /**
  * Created by Dirceu on 06/10/20.
@@ -60,7 +60,7 @@ public class MedLinkRFSpyReader {
                 // returns null if timeout.
                 byte[] dataFromQueue = mDataQueue.poll(timeout_ms, TimeUnit.MILLISECONDS);
                 if (dataFromQueue != null) {
-                    aapsLogger.debug(LTag.PUMPBTCOMM, "Got data [" + ByteUtil.shortHexString(dataFromQueue) + "] at t=="
+                    aapsLogger.debug(LTag.PUMPBTCOMM, "Got data [" + dataFromQueue + "] at t=="
                             + SystemClock.uptimeMillis());
                 } else {
                     aapsLogger.debug(LTag.PUMPBTCOMM, "Got data [null] at t==" + SystemClock.uptimeMillis());

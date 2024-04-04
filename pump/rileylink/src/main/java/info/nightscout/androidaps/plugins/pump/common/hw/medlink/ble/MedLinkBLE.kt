@@ -24,13 +24,13 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkSer
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
-import info.nightscout.pump.common.defs.PumpRunningState
-import info.nightscout.pump.core.utils.ByteUtil
-import info.nightscout.pump.core.utils.ThreadUtil
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.PumpRunningState
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.utils.pump.ByteUtil
+import app.aaps.core.utils.pump.ThreadUtil
 import org.apache.commons.lang3.StringUtils
 import java.nio.charset.StandardCharsets
 import java.util.*
@@ -1777,3 +1777,5 @@ class MedLinkBLE //extends RileyLinkBLE
     }
 
 }
+
+

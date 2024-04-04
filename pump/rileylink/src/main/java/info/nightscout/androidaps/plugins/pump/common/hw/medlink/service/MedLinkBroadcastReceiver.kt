@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import app.aaps.core.data.model.TE
 import dagger.android.DaggerBroadcastReceiver
 import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
@@ -17,13 +18,14 @@ import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkCons
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.DiscoverGattServicesTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
-import info.nightscout.interfaces.notifications.Notification
-import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.sharedPreferences.SP
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.sharedPreferences.SP
+
 import javax.inject.Inject
 
 /**
@@ -160,8 +162,8 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
 //            aapsLogger.debug(LTag.PUMPCOMM, "RfSpy version (BLE113): " + bleVersion);
             if (message.getIntExtra("BatteryLevel", 0) != 0) {
                 val medLinkService = getServiceInstance()
-                if (medLinkService!!.activePlugin.activePump is MedLinkPumpPluginAbstract) {
-                    val pump = medLinkService.activePlugin.activePump as MedLinkPumpPluginAbstract
+                if (medLinkService!!.activePlugin.activePump is MedLinkPumpPluginBase) {
+                    val pump = medLinkService.activePlugin.activePump as MedLinkPumpPluginBase
                     pump.setBatteryLevel(message.getIntExtra("BatteryLevel", 0))
                 }
                 medLinkService.medLinkServiceData.versionBLE113 = message.getStringExtra("FirmwareVersion")
@@ -204,14 +206,15 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
     {
         val pumpPlugin = activePlugin
 
-        if (pumpPlugin is MedLinkPumpPluginAbstract) {
-            val batteryEvent = pumpPlugin.pumpSync.lastTherapyEvent(DetailedBolusInfo.EventType.PUMP_BATTERY_CHANGE)
+        if (pumpPlugin is MedLinkPumpPluginBase) {
+            val batteryEvent = pumpPlugin.pumpSync.lastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)
             batteryEvent.map {
                 if (it > 4 * 24 * 60.0 && pumpPlugin.getBatteryType() == "LiPo") {
-                    pumpPlugin.uiInteraction.addNotificationWithSound(Notification.PUMP_UNREACHABLE,
-                                                                      pumpPlugin.rh.gs(info.nightscout.core.ui.R.string.pump_unreachable),
-                                                                      Notification.URGENT,
-                                                                      info.nightscout.core.ui.R.raw.alarm)
+                    pumpPlugin.uiInteraction.addNotificationWithSound(
+                        Notification.PUMP_UNREACHABLE,
+                        pumpPlugin.rh.gs(app.aaps.core.ui.R.string.pump_unreachable),
+                        Notification.URGENT,
+                        app.aaps.core.ui.R.raw.alarm)
                 }
                 }
         }

@@ -4,13 +4,13 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
 
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 
 class BleStartCommand(aapsLogger: AAPSLogger,
                       medLinkServiceData: MedLinkServiceData,
-                      medLinkPumpPluginAbstract: MedLinkPumpPluginAbstract
+                      medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 

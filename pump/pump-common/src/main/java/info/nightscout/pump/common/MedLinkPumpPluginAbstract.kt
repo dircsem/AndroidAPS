@@ -2,36 +2,35 @@ package info.nightscout.pump.common
 
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.text.format.DateFormat
-import com.google.gson.GsonBuilder
-import dagger.android.HasAndroidInjector
-import info.nightscout.core.utils.fabric.FabricPrivacy
-import info.nightscout.interfaces.constraints.Constraints
-import info.nightscout.interfaces.plugin.ActivePlugin
-import info.nightscout.interfaces.plugin.PluginDescription
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.pump.*
-import info.nightscout.interfaces.pump.defs.ManufacturerType
-import info.nightscout.interfaces.pump.defs.PumpDescription
-import info.nightscout.interfaces.pump.defs.PumpType
-import info.nightscout.interfaces.queue.CommandQueue
-import info.nightscout.interfaces.ui.UiInteraction
-import info.nightscout.interfaces.utils.DecimalFormatter
-import info.nightscout.pump.common.data.PumpStatus
+import app.aaps.core.data.model.BS
+import app.aaps.core.data.plugin.PluginDescription
+import app.aaps.core.data.pump.defs.ManufacturerType
+import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.objects.Instantiator
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.Pump
+import app.aaps.core.interfaces.pump.PumpEnactResult
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.pump.defs.fillFor
+import app.aaps.core.interfaces.queue.CommandQueue
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAppExit
+import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import info.nightscout.pump.common.defs.PumpDriverState
 import info.nightscout.pump.common.sync.PumpSyncStorage
-import info.nightscout.rx.AapsSchedulers
-import info.nightscout.rx.bus.RxBus
-import info.nightscout.rx.events.EventAppExit
-import info.nightscout.rx.events.EventCustomActionsChanged
-import info.nightscout.rx.events.EventOverviewBolusProgress
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
-import info.nightscout.shared.utils.DateUtil
-import io.reactivex.rxjava3.disposables.CompositeDisposable
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -41,7 +40,6 @@ import org.json.JSONObject
 abstract class MedLinkPumpPluginAbstract protected constructor(
     pluginDescription: PluginDescription,
     pumpType: PumpType,
-    injector: HasAndroidInjector,
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     commandQueue: CommandQueue,
@@ -55,17 +53,17 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
     decimalFormatter: DecimalFormatter,
-    var uiInteraction: UiInteraction,
-) : PumpPluginAbstract(pluginDescription, pumpType, injector, rh, aapsLogger, commandQueue, rxBus, activePlugin, sp, context, fabricPrivacy, dateUtil, aapsSchedulers, pumpSync, pumpSyncStorage, decimalFormatter), Pump,
-    Constraints, info.nightscout.pump.common.sync.PumpSyncEntriesCreator, MedLinkPumpPluginBase {
+    override var uiInteraction: UiInteraction,
+    instantiator: Instantiator
+) : PumpPluginAbstract(pluginDescription, pumpType, rh, aapsLogger, commandQueue, rxBus, activePlugin, sp, context, fabricPrivacy, dateUtil, aapsSchedulers, pumpSync, pumpSyncStorage,
+                       decimalFormatter, instantiator), Pump, info.nightscout.pump.common.sync.PumpSyncEntriesCreator, MedLinkPumpPluginBase {
 
     abstract val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
 
-    abstract fun handleBolusDelivered(lastBolusInfo: DetailedBolusInfo?)
-    override val disposable = CompositeDisposable()
+
 
     // Pump capabilities
-    final override var pumpDescription = PumpDescription()
+    // final override var pumpDescription = PumpDescription()
     //protected set
 
     // protected override var serviceConnection: ServiceConnection? = null
@@ -291,6 +289,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         }
 
         pumpStatusData.lastBolusTime?.let {
+
             if (it.time != 0L) {
                 ret += "LastBolus: ${decimalFormatter.to2Decimal(pumpStatusData.lastBolusAmount!!)}U @${DateFormat.format("HH:mm", it)}\n"
             }
@@ -312,8 +311,8 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
                 // neither carbs nor bolus requested
                 aapsLogger.error("deliverTreatment: Invalid input")
                 func.invoke(
-                    PumpEnactResult(injector).success(false).enacted(false).bolusDelivered(0.0)
-                        .comment(rh.gs(info.nightscout.core.ui.R.string.invalid_input))
+                    instantiator.providePumpEnactResult().success(false).enacted(false).bolusDelivered(0.0)
+                        .comment(rh.gs(app.aaps.core.ui.R.string.invalid_input))
                 )
             } else if (detailedBolusInfo.insulin > 0) {
                 // bolus needed, ask pump to deliver it
@@ -325,14 +324,14 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
                 // no bolus required, carb only treatment
                 pumpSyncStorage.addBolusWithTempId(detailedBolusInfo, true, this)
                 val bolusingEvent = EventOverviewBolusProgress
-                bolusingEvent.t = EventOverviewBolusProgress.Treatment(detailedBolusInfo.insulin, detailedBolusInfo.carbs.toInt(), detailedBolusInfo.bolusType == DetailedBolusInfo.BolusType.SMB,
+                bolusingEvent.t = EventOverviewBolusProgress.Treatment(detailedBolusInfo.insulin, detailedBolusInfo.carbs.toInt(), detailedBolusInfo.bolusType == BS.Type.SMB,
                                                                        detailedBolusInfo.id)
                 bolusingEvent.percent = 100
                 rxBus.send(bolusingEvent)
 
                 aapsLogger.debug(LTag.PUMP, "deliverTreatment: Carb only treatment.")
                 func.invoke(
-                    PumpEnactResult(injector).success(true).enacted(true).bolusDelivered(0.0)
+                    instantiator.providePumpEnactResult().success(true).enacted(true).bolusDelivered(0.0)
                         .comment(rh.gs(R.string.common_resultok))
                 )
             }
@@ -354,7 +353,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     // protected abstract fun triggerUIChange()
 
     private fun getOperationNotSupportedWithCustomText(resourceId: Int): PumpEnactResult =
-        PumpEnactResult(injector).success(false).enacted(false).comment(resourceId)
+        instantiator.providePumpEnactResult().success(false).enacted(false).comment(resourceId)
 
     init {
         pumpDescription.fillFor(pumpType)
@@ -367,10 +366,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     )
 
     abstract fun storeCancelTempBasal()
-    abstract fun postInit()
-    abstract fun setMedtronicPumpModel(model: String)
-    abstract fun setBatteryLevel(batteryLevel: Int)
-    abstract fun getBatteryType(): String
+    override abstract fun  postInit()
+    override abstract fun setMedtronicPumpModel(model: String)
+    abstract override fun setBatteryLevel(batteryLevel: Int)
+    abstract override fun getBatteryType(): String
     abstract fun changeStatusTime(currentTimeMillis: Long)
 
     init {

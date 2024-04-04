@@ -1,8 +1,9 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.connector;
 
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RLMessage;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType;
-import info.nightscout.pump.core.defs.PumpDeviceState;
+
 
 /**
  * used by medlink

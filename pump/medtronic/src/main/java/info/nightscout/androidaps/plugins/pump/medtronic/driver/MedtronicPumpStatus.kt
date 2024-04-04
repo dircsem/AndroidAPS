@@ -1,5 +1,10 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.driver
 
+import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.sharedPreferences.SP
 import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.data.RLHistoryItem
@@ -8,14 +13,8 @@ import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.BatteryType
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicDeviceType
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst
-import info.nightscout.annotations.OpenForTesting
-import info.nightscout.interfaces.pump.defs.PumpType
-import info.nightscout.pump.common.data.PumpStatus
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.PumpStatus
 import info.nightscout.pump.common.sync.PumpDbEntryTBR
-import info.nightscout.pump.core.defs.PumpDeviceState
-import info.nightscout.rx.bus.RxBus
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
 import java.util.Calendar
 import java.util.GregorianCalendar
 import javax.inject.Inject
@@ -25,7 +24,6 @@ import javax.inject.Singleton
  * Created by andy on 4/28/18.
  */
 @Singleton
-@OpenForTesting
 class MedtronicPumpStatus @Inject constructor(
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -111,7 +109,7 @@ class MedtronicPumpStatus @Inject constructor(
 
     fun getBatteryTypeByDescription(batteryTypeStr: String?): BatteryType {
         if (batteryTypeByDescMap.isEmpty()) {
-            for (value in BatteryType.values()) {
+            for (value in BatteryType.entries) {
                 batteryTypeByDescMap[rh.gs(value.description)] = value
             }
         }

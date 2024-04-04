@@ -3,15 +3,15 @@ package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.GattAttributes
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import java.util.*
 
 open class BleActivePumpCommand(
     aapsLogger: AAPSLogger,
     medLinkServiceData: MedLinkServiceData,
-    medLinkPumpPluginAbstract: MedLinkPumpPluginAbstract
+    medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 

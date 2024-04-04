@@ -14,10 +14,10 @@ import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.Freq
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
-import info.nightscout.pump.common.data.PumpStatus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.sharedPreferences.SP
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import app.aaps.core.interfaces.sharedPreferences.SP
 import javax.inject.Inject
 
 /**
@@ -337,9 +337,7 @@ abstract class MedLinkCommunicationManager(val injector: HasAndroidInjector, rfs
     protected fun rememberLastGoodDeviceCommunicationTime() {
         lastGoodReceiverCommunicationTime = System.currentTimeMillis()
         sp!!.putLong(MedLinkConst.Prefs.LastGoodDeviceCommunicationTime, lastGoodReceiverCommunicationTime)
-        if (pumpStatus != null) {
-            pumpStatus!!.setLastCommunicationToNow()
-        }
+        pumpStatus?.setLastCommunicationToNow()
     }
 
     // private fun getLastGoodReceiverCommunicationTime(): Long {
@@ -359,7 +357,7 @@ abstract class MedLinkCommunicationManager(val injector: HasAndroidInjector, rfs
         }
     }
 
-    abstract val pumpStatus: PumpStatus?
+    abstract val pumpStatus: MedLinkPumpStatus?
     abstract val isDeviceReachable: Boolean
     abstract fun setDoWakeUpBeforeCommand(doWakeUp: Boolean)
     abstract fun getBGHistory(pumpMessage: MedLinkPumpMessage<Any, Any>): Boolean

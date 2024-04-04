@@ -1,15 +1,15 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
-import info.nightscout.androidaps.interfaces.BgSync
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicNotificationType
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-import info.nightscout.rx.bus.RxBus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.resources.ResourceHelper
 import java.util.function.Supplier
 import java.util.regex.Pattern
 import java.util.stream.Collectors

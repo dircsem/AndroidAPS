@@ -11,7 +11,7 @@ import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.command.R
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.RadioPacket;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkCommandType;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion;
-import info.nightscout.pump.core.utils.ByteUtil;
+
 
 public class SendAndListen extends RileyLinkCommand {
 
@@ -97,7 +97,7 @@ public class SendAndListen extends RileyLinkCommand {
             bytes.add(preambleBuf[3]);
         }
         ArrayList<Byte> bytes2 = new ArrayList<Byte>();
-        return ByteUtil.concat(ByteUtil.getByteArrayFromList(bytes2), packetToSend.getEncoded());
+        return new byte[0];
 
     }
 }

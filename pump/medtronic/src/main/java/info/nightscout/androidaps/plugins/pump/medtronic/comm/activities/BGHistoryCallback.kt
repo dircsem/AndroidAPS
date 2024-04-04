@@ -1,15 +1,16 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
-import info.nightscout.androidaps.interfaces.BgSync
-import info.nightscout.androidaps.interfaces.BgSync.BgHistory
-import info.nightscout.androidaps.interfaces.BgSync.BgHistory.BgValue
+import android.os.Build
+import androidx.annotation.RequiresApi
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.BGReadingStatus
+import app.aaps.core.interfaces.pump.BgSync
 
 import java.text.ParseException
 import java.text.SimpleDateFormat
@@ -18,7 +19,6 @@ import java.util.*
 import java.util.function.Supplier
 import java.util.regex.Pattern
 import java.util.stream.Stream
-import kotlin.streams.toList
 
 /**
  * Created by Dirceu on 24/01/21.
@@ -28,13 +28,14 @@ class BGHistoryCallback(
     private val aapsLogger: AAPSLogger,
     private val handleBG: Boolean,
     private val isCalibration: Boolean
-) : BaseCallback<BgHistory, Supplier<Stream<String>>>() {
+) : BaseCallback<BgSync.BgHistory, Supplier<Stream<String>>>() {
 
-    var history: BgHistory? = null
+    var history: BgSync.BgHistory? = null
 
     private inner class InvalidBGHistoryException constructor(message: String?) : RuntimeException(message)
 
-    override fun apply(ans: Supplier<Stream<String>>): MedLinkStandardReturn<BgHistory> {
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    override fun apply(ans: Supplier<Stream<String>>): MedLinkStandardReturn<BgSync.BgHistory> {
         val state = parseAnswer(ans)
         aapsLogger.info(LTag.PUMPBTCOMM,"applying history")
         if (handleBG && !isCalibration) {
@@ -42,19 +43,19 @@ class BGHistoryCallback(
         }
         this.history = state.first
         if (isCalibration && state.second) {
-            val list = ans.get().toList().toMutableList()
+            val list = ans.get().toList()
             list.add(MedLinkConst.FREQUENCY_CALIBRATION_SUCCESS)
             return MedLinkStandardReturn({ list.stream() }, state.first)
         }
         return MedLinkStandardReturn(ans, state.first)
     }
 
-    private fun parseAnswer(ans: Supplier<Stream<String>>): Pair<BgHistory, Boolean> {
+    private fun parseAnswer(ans: Supplier<Stream<String>>): Pair<BgSync.BgHistory, Boolean> {
         val answers = ans.get()
         var calibration = true
         return try {
-            val calibrations: MutableList<BgHistory.Calibration> = mutableListOf()
-            val bgValues: MutableList<BgValue> = mutableListOf()
+            val calibrations: MutableList<BgSync.BgHistory.Calibration> = mutableListOf()
+            val bgValues: MutableList<BgSync.BgHistory.BgValue> = mutableListOf()
 
             answers.forEach { f: String ->
                 val bgLinePattern = Pattern.compile("[bg|cl]:\\s?\\d{2,3}\\s+\\d{1,2}:\\d{2}\\s+\\d{2}-\\d{2}-\\d{4}")
@@ -88,7 +89,7 @@ class BGHistoryCallback(
                         //                    aapsLogger.info(LTag.PUMPBTCOMM, f);
                         if (f.trim { it <= ' ' }.startsWith("cl:")) {
                             calibrations.add(
-                                BgHistory.Calibration(
+                                BgSync.BgHistory.Calibration(
                                     bgDate.time, bg,
                                     medLinkPumpPlugin.glucoseUnit()
                                 )
@@ -96,7 +97,7 @@ class BGHistoryCallback(
                         } else {
                             if (bgDate.toInstant().isAfter(Date().toInstant().minus(Duration.ofDays(3))) && bgDate.toInstant().isBefore(Date().toInstant().plus(Duration.ofMinutes(5)))) {
                                 bgValues.add(
-                                    BgValue(
+                                    BgSync.BgHistory.BgValue(
                                         bgDate.time, 0.0, bg,
                                         0.0,
                                         BgSync.BgArrow.NONE, BgSync.SourceSensor.MM_ENLITE, null, null,
@@ -115,9 +116,9 @@ class BGHistoryCallback(
                 }
             }
             bgValues.sortBy { it.timestamp }
-            // val sorted = bgs.sorted { b: BGHistory, a: BGHistory -> (b.timestamp - a.timestamp).toInt() }
-            // val history = BGHistoryAccumulator()
-            // sorted.forEachOrdered { f: BGHistory ->
+            // val sorted = bgs.sorted { b: BgSync.BgHistory, a: BgSync.BgHistory -> (b.timestamp - a.timestamp).toInt() }
+            // val history = BgSync.BgHistoryAccumulator()
+            // sorted.forEachOrdered { f: BgSync.BgHistory ->
             //     if (history.last != null) {
             //         f.lastBG = history.last!!.currentBG
             //         f.lastBGDate = history.last!!.lastBGDate
@@ -125,7 +126,7 @@ class BGHistoryCallback(
             //     history.addBG(f)
             // }
             // val result = Supplier {
-            //     history.acc.stream().map { f: BGHistory ->
+            //     history.acc.stream().map { f: BgSync.BgHistory ->
             //         EnliteInMemoryGlucoseValue(
             //             f.currentBGDate.time, f.currentBG, false,
             //             f.lastBGDate.time, f.lastBG
@@ -134,12 +135,12 @@ class BGHistoryCallback(
             // }
 
             if (bgValues.isNotEmpty() && !isCalibration) {
-                medLinkPumpPlugin.pumpStatusData.lastReadingStatus = MedLinkPumpStatus.BGReadingStatus.SUCCESS
+                medLinkPumpPlugin.pumpStatusData.lastReadingStatus = BGReadingStatus.SUCCESS
             }
-            Pair(BgHistory(bgValues, calibrations), calibration)
+            Pair(BgSync.BgHistory(bgValues, calibrations), calibration)
         } catch (e: InvalidBGHistoryException) {
             aapsLogger.info(LTag.PUMPBTCOMM, "Invalid bg history reading")
-            Pair(BgHistory(emptyList<BgValue>(), emptyList<BgHistory.Calibration>()), false)
+            Pair(BgSync.BgHistory(emptyList<BgSync.BgHistory.BgValue>(), emptyList<BgSync.BgHistory.Calibration>()), false)
         }
     }
 

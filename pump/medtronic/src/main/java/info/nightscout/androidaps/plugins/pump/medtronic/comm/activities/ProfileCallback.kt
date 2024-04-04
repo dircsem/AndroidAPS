@@ -1,6 +1,10 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
 import android.content.Context
+import app.aaps.core.interfaces.plugin.MedLinkProfileParser
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.sync.DataSyncSelector
+import app.aaps.core.ui.toast.ToastUtils.showToastInUiThread
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.R
@@ -8,10 +12,6 @@ import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.core.ui.toast.ToastUtils.showToastInUiThread
-import info.nightscout.interfaces.plugin.MedLinkProfileParser
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.sync.DataSyncSelector
 import org.json.JSONException
 import java.util.function.Function
 import java.util.function.Supplier
@@ -21,11 +21,12 @@ import java.util.stream.Stream
  * Created by Dirceu on 01/02/21.
  */
 class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPumpPlugin: MedLinkMedtronicPumpPlugin,
-                      private val parser: MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>) :
+                      private val parser: MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>
+) :
     Function<Supplier<Stream<String>>, MedLinkStandardReturn<Profile?>> {
 
     override fun apply(answer: Supplier<Stream<String>>): MedLinkStandardReturn<Profile?> {
-        val x:DataSyncSelector.PairProfileSwitch
+        val x: DataSyncSelector.PairProfileSwitch
 
         var result: MedLinkStandardReturn<Profile?>
         try {

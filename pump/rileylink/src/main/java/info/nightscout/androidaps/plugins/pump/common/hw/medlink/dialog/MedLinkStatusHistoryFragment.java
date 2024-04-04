@@ -17,13 +17,14 @@ import java.util.List;
 
 import javax.inject.Inject;
 
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
+import app.aaps.core.interfaces.utils.DateUtil;
 import dagger.android.support.DaggerFragment;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkUtil;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.data.RLHistoryItem;
-import info.nightscout.pump.core.defs.PumpDeviceState;
-import info.nightscout.shared.interfaces.ResourceHelper;
-import info.nightscout.shared.utils.DateUtil;
+
+import app.aaps.core.interfaces.resources.ResourceHelper;
 
 /**
  * Created by andy on 5/19/18.

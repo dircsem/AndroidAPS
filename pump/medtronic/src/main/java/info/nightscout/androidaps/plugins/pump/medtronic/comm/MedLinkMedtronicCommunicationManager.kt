@@ -18,24 +18,23 @@ import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.RileyLink
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RLMessage
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.activities.StatusCallback
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.PumpMessage
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.ClockDTO
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.PumpSettingDTO
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.TempBasalPair
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCommandType
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-import info.nightscout.core.utils.DateTimeUtil
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.pump.common.data.PumpStatus
-import info.nightscout.pump.core.defs.PumpDeviceState
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import org.joda.time.LocalDateTime
+
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.PumpStatus
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.utils.DateTimeUtil
 import java.util.*
 import java.util.function.Function
 import java.util.function.Supplier
@@ -517,7 +516,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
         //nextWakeUpRequired = System.currentTimeMillis() + (receiverDeviceAwakeForMinutes * 60 * 1000);
     }
 
-    override val pumpStatus: PumpStatus?
+    override val pumpStatus: MedLinkPumpStatus?
         get() = medLinkPumpPlugin!!.pumpStatusData
     override val isDeviceReachable: Boolean
         get() = TODO("Not yet implemented")
@@ -651,24 +650,24 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     //
     //        return false;
     //    }
-    fun getPumpTime(): ClockDTO? {
-        val responseObject = sendAndGetResponseWithCheck<MedLinkPumpStatus, Any>(
-            MedLinkCommandType.GetState,
-            MedLinkCommandType.NoCommand,
-            StatusCallback(
-                aapsLogger,
-                medLinkPumpPlugin!!, medtronicPumpStatus!!
-            ),
-            medLinkPumpPlugin!!.btSleepTime,
-            BleCommand(aapsLogger, medLinkServiceData)
-        )
-        return if (responseObject != null) {
-            ClockDTO(
-                LocalDateTime(),
-                (responseObject as LocalDateTime?)!!
-            )
-        } else null
-    }
+    // fun getPumpTime(): ClockDTO? {
+    //     val responseObject = sendAndGetResponseWithCheck<MedLinkPumpStatus, Any>(
+    //         MedLinkCommandType.GetState,
+    //         MedLinkCommandType.NoCommand,
+    //         StatusCallback(
+    //             aapsLogger,
+    //             medLinkPumpPlugin!!, medtronicPumpStatus!!
+    //         ),
+    //         medLinkPumpPlugin!!.btSleepTime,
+    //         BleCommand(aapsLogger, medLinkServiceData)
+    //     )
+    //     return if (responseObject != null) {
+    //         ClockDTO(
+    //             LocalDateTime(),
+    //             (responseObject as LocalDateTime?)!!
+    //         )
+    //     } else null
+    // }
 
     //    public TempBasalPair getTemporaryBasal() {
     //

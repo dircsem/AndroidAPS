@@ -4,6 +4,9 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Binder
 import android.os.IBinder
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState
+import app.aaps.core.utils.pump.ByteUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkEncodingType
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
@@ -17,9 +20,6 @@ import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicDeviceTyp
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedtronicPumpStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicUtil
-import info.nightscout.pump.core.defs.PumpDeviceState
-import info.nightscout.pump.core.utils.ByteUtil
-import info.nightscout.rx.logging.LTag
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -284,4 +284,7 @@ class RileyLinkMedtronicService : RileyLinkService() {
         inPreInit = false
         return reconfigureService(false)
     }
+
+    companion object {
+         }
 }

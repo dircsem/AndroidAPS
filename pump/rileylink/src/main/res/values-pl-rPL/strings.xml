@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- PumpDeviceState -->
     <!-- RL keys -->
     <string name="medlink_scanner_title">Skan MedLink</string>
     <string name="medlink_status">Stan MedLink</string>

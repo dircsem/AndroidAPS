@@ -23,7 +23,7 @@ import info.nightscout.androidaps.plugins.pump.medtronic.R;
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntry;
 import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkMedtronicHistoryData;
 import info.nightscout.pump.common.defs.PumpHistoryEntryGroup;
-import info.nightscout.shared.interfaces.ResourceHelper;
+import app.aaps.core.interfaces.resources.ResourceHelper;
 
 
 public class MedLinkMedtronicHistoryActivity extends DaggerActivity {
@@ -123,7 +123,7 @@ public class MedLinkMedtronicHistoryActivity extends DaggerActivity {
 
         typeListFull = getTypeList(PumpHistoryEntryGroup.Companion.getTranslatedList(resourceHelper));
 
-        ArrayAdapter<TypeList> spinnerAdapter = new ArrayAdapter<>(this, info.nightscout.core.ui.R.layout.spinner_centered, typeListFull);
+        ArrayAdapter<TypeList> spinnerAdapter = new ArrayAdapter<>(this, app.aaps.core.ui.R.layout.spinner_centered, typeListFull);
         historyTypeSpinner.setAdapter(spinnerAdapter);
 
         historyTypeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {

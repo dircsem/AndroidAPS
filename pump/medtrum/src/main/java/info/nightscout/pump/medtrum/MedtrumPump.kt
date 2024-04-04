@@ -1,11 +1,18 @@
 package info.nightscout.pump.medtrum
 
 import android.util.Base64
-import info.nightscout.interfaces.profile.Profile
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.interfaces.pump.PumpSync
-import info.nightscout.interfaces.pump.TemporaryBasalStorage
-import info.nightscout.interfaces.pump.defs.PumpType
+import app.aaps.core.data.model.TE
+import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.pump.TemporaryBasalStorage
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.interfaces.utils.DateUtil
 import info.nightscout.pump.medtrum.code.ConnectionState
 import info.nightscout.pump.medtrum.comm.enums.AlarmSetting
 import info.nightscout.pump.medtrum.comm.enums.AlarmState
@@ -14,16 +21,10 @@ import info.nightscout.pump.medtrum.comm.enums.MedtrumPumpState
 import info.nightscout.pump.medtrum.extension.toByteArray
 import info.nightscout.pump.medtrum.extension.toInt
 import info.nightscout.pump.medtrum.util.MedtrumSnUtil
-import info.nightscout.rx.events.EventOverviewBolusProgress
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
-import info.nightscout.shared.interfaces.ResourceHelper
-import info.nightscout.shared.sharedPreferences.SP
-import info.nightscout.shared.utils.DateUtil
-import info.nightscout.shared.utils.T
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import java.util.*
+import java.util.EnumSet
+import java.util.GregorianCalendar
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.round
@@ -68,6 +69,15 @@ class MedtrumPump @Inject constructor(
         get() = _activeAlarms
         set(value) {
             _activeAlarms = value
+        }
+
+    // New pump warnings
+    private val _pumpWarning = MutableStateFlow(AlarmState.NONE)
+    val pumpWarningFlow: StateFlow<AlarmState> = _pumpWarning
+    var pumpWarning: AlarmState
+        get() = _pumpWarning.value
+        set(value) {
+            _pumpWarning.value = value
         }
 
     // Prime progress as state flow
@@ -242,7 +252,7 @@ class MedtrumPump @Inject constructor(
     var bolusingTreatment: EventOverviewBolusProgress.Treatment? = null // actually delivered treatment
     var bolusProgressLastTimeStamp: Long = 0 // timestamp of last bolus progress message
     var bolusStopped = false // bolus stopped by user
-    var bolusDone = false // Bolus completed or stopped on pump
+    var bolusDone = true // Bolus completed or stopped on pump, initialize as true as to don't show bolus on init
 
     private val _bolusAmountDelivered = MutableStateFlow(0.0)
     val bolusAmountDeliveredFlow: StateFlow<Double> = _bolusAmountDelivered
@@ -278,6 +288,8 @@ class MedtrumPump @Inject constructor(
     var desiredAlarmSetting = AlarmSetting.LIGHT_VIBRATE_AND_BEEP
     var desiredHourlyMaxInsulin: Int = 40
     var desiredDailyMaxInsulin: Int = 180
+    var desiredPumpWarning = true
+    var desiredPumpWarningExpiryThresholdHours = 72L
 
     fun pumpType(): PumpType = pumpType(deviceType)
 
@@ -320,9 +332,11 @@ class MedtrumPump @Inject constructor(
     fun loadUserSettingsFromSP() {
         desiredPatchExpiration = sp.getBoolean(R.string.key_patch_expiration, false)
         val alarmSettingCode = sp.getString(R.string.key_alarm_setting, AlarmSetting.LIGHT_VIBRATE_AND_BEEP.code.toString()).toByte()
-        desiredAlarmSetting = AlarmSetting.values().firstOrNull { it.code == alarmSettingCode } ?: AlarmSetting.LIGHT_VIBRATE_AND_BEEP
+        desiredAlarmSetting = AlarmSetting.entries.firstOrNull { it.code == alarmSettingCode } ?: AlarmSetting.LIGHT_VIBRATE_AND_BEEP
         desiredHourlyMaxInsulin = sp.getInt(R.string.key_hourly_max_insulin, 40)
         desiredDailyMaxInsulin = sp.getInt(R.string.key_daily_max_insulin, 180)
+        desiredPumpWarning = sp.getBoolean(R.string.key_pump_warning_notification, true)
+        desiredPumpWarningExpiryThresholdHours = sp.getLong(R.string.key_pump_warning_expiry_hour, 72L)
         _pumpSN = pumpSNFromSP
 
     }
@@ -426,6 +440,10 @@ class MedtrumPump @Inject constructor(
             }
 
             basalType.isSuspendedByPump() && expectedTemporaryBasal?.pumpId != basalStartTime                                                               -> {
+                if (expectedTemporaryBasal != null && expectedTemporaryBasal.timestamp > basalStartTime && expectedTemporaryBasal.duration == T.mins(FAKE_TBR_LENGTH).msecs()) {
+                    aapsLogger.debug(LTag.PUMPCOMM, "handleBasalStatusUpdate: invalidateTemporaryBasal: ${expectedTemporaryBasal.timestamp}")
+                    pumpSync.invalidateTemporaryBasalWithPumpId(expectedTemporaryBasal.pumpId ?: 0L, expectedTemporaryBasal.pumpType, expectedTemporaryBasal.pumpSerial)
+                }
                 val newRecord = pumpSync.syncTemporaryBasalWithPumpId(
                     timestamp = basalStartTime,
                     rate = 0.0,
@@ -438,7 +456,8 @@ class MedtrumPump @Inject constructor(
                 )
                 aapsLogger.debug(
                     LTag.PUMPCOMM,
-                    "handleBasalStatusUpdate: ${newRecordInfo(newRecord)}EVENT TEMP_START ($basalType) ${dateUtil.dateAndTimeString(basalStartTime)} ($basalStartTime) expectedTemporaryBasal: $expectedTemporaryBasal"
+                    "handleBasalStatusUpdate: ${newRecordInfo(newRecord)}EVENT TEMP_START ($basalType) ${dateUtil.dateAndTimeString(basalStartTime)} ($basalStartTime) " +
+                        "expectedTemporaryBas$expectedTemporaryBasal"
                 )
             }
 
@@ -487,10 +506,12 @@ class MedtrumPump @Inject constructor(
         }
     }
 
-    fun setFakeTBRIfNeeded() {
+    fun setFakeTBRIfNotSet() {
         val expectedTemporaryBasal = pumpSync.expectedPumpState().temporaryBasal
         if (expectedTemporaryBasal?.duration != T.mins(FAKE_TBR_LENGTH).msecs()) {
             setFakeTBR()
+            _lastBasalType.value = BasalType.NONE
+            _lastBasalRate.value = 0.0
         }
     }
 
@@ -570,13 +591,13 @@ class MedtrumPump @Inject constructor(
         // Sync cannula change
         pumpSync.insertTherapyEventIfNewWithTimestamp(
             timestamp = newStartTime,
-            type = DetailedBolusInfo.EventType.CANNULA_CHANGE,
+            type = TE.Type.CANNULA_CHANGE,
             pumpType = pumpType(),
             pumpSerial = pumpSN.toString(radix = 16)
         )
         pumpSync.insertTherapyEventIfNewWithTimestamp(
             timestamp = newStartTime,
-            type = DetailedBolusInfo.EventType.INSULIN_CHANGE,
+            type = TE.Type.INSULIN_CHANGE,
             pumpType = pumpType(),
             pumpSerial = pumpSN.toString(radix = 16)
         )
@@ -593,12 +614,12 @@ class MedtrumPump @Inject constructor(
             EnumSet.noneOf(AlarmState::class.java)
         } else {
             alarmsStr.split(",")
-                .mapNotNull { AlarmState.values().find { alarm -> alarm.name == it } }
+                .mapNotNull { AlarmState.entries.find { alarm -> alarm.name == it } }
                 .let { EnumSet.copyOf(it) }
         }
     }
 
     private fun newRecordInfo(newRecord: Boolean): String {
-        return "${if (newRecord) "**NEW** " else ""}"
+        return if (newRecord) "**NEW** " else ""
     }
 }

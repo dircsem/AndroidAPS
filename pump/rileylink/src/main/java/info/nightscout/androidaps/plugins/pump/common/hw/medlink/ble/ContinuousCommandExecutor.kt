@@ -2,7 +2,7 @@ package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble
 
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCommand
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.CommandStructure
-import info.nightscout.rx.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.AAPSLogger
 
 abstract class ContinuousCommandExecutor<B>(
     val commands: MutableList<

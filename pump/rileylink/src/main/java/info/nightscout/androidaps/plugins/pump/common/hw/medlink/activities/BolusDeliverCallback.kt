@@ -1,18 +1,21 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities
 
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
-import info.nightscout.interfaces.pump.DetailedBolusInfo
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.pump.common.data.MedLinkPumpStatus
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
 import java.util.function.Supplier
 import java.util.stream.Stream
 
 /**
  * Created by Dirceu on 15/09/21.
  */
-class BolusDeliverCallback(val pumpStatus: MedLinkPumpStatus, val plugin: MedLinkPumpPluginAbstract,
+class BolusDeliverCallback(val pumpStatus: MedLinkPumpStatus, val plugin: MedLinkPumpPluginBase,
                            val aapsLogger: AAPSLogger, private val lastBolusInfo: DetailedBolusInfo
 ) : BaseStringAggregatorCallback() {
 

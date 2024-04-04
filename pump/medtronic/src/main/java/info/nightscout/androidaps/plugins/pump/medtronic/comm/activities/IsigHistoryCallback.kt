@@ -1,12 +1,12 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
 
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.interfaces.BgSync.BgHistory
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.rx.logging.AAPSLogger
-import info.nightscout.rx.logging.LTag
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.BgSync
 
 import java.util.*
 import java.util.function.Consumer
@@ -45,13 +45,13 @@ class IsigHistoryCallback     //        BGHistoryCallback.BGHistoryAccumulator h
     private val injector: HasAndroidInjector,
     private val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin,
     private val aapsLogger: AAPSLogger, private val handleBG: Boolean, private val bgHistoryCallback: BGHistoryCallback
-) : BaseCallback<BgHistory, Supplier<Stream<String>>>() {
+) : BaseCallback<BgSync.BgHistory, Supplier<Stream<String>>>() {
 
-    override fun apply(ans: Supplier<Stream<String>>): MedLinkStandardReturn<BgHistory?> {
+    override fun apply(ans: Supplier<Stream<String>>): MedLinkStandardReturn<BgSync.BgHistory?> {
         aapsLogger.info(LTag.PUMPBTCOMM, "isig")
         val toParse = ans.get()
         aapsLogger.info(LTag.PUMPBTCOMM, "isig2")
-        val readings: BgHistory? = parseAnswer(ans, bgHistoryCallback.history)
+        val readings: BgSync.BgHistory? = parseAnswer(ans, bgHistoryCallback.history)
         if (readings != null) {
             medLinkPumpPlugin.handleNewSensorData(readings)
         }
@@ -65,8 +65,8 @@ class IsigHistoryCallback     //        BGHistoryCallback.BGHistoryAccumulator h
 
     private fun parseAnswer(
         ans: Supplier<Stream<String>>,
-        bgReadings: BgHistory?
-    ): BgHistory? {
+        bgReadings: BgSync.BgHistory?
+    ): BgSync.BgHistory? {
         aapsLogger.info(LTag.PUMPBTCOMM, "isig")
         val answers = ans.get().iterator()
         val answer = ans.get().collect(Collectors.joining())
