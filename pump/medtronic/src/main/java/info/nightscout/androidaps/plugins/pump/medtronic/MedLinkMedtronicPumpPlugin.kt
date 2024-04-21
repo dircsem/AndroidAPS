@@ -75,10 +75,11 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkSer
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkService
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.WakeAndTuneTask
+import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.MedLinkWakeAndTuneTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpInfo
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ResetRileyLinkConfigurationTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
+import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.activities.*
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntry
 import info.nightscout.androidaps.plugins.pump.medtronic.data.BolusAnswer
@@ -737,10 +738,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (medLinkPumpStatus.basalProfileStatus !== BasalProfileStatus.NotInitialized
             && medtronicHistoryData.hasBasalProfileChanged()
         ) {
-            medtronicHistoryData.processLastBasalProfileChange(
-                pumpDescription.pumpType,
-                medLinkPumpStatus
-            )
+            // medtronicHistoryData.processLastBasalProfileChange(
+            //     pumpDescription.pumpType,
+            //     medLinkPumpStatus
+            // )
         }
         val previousState = pumpState
         if (medtronicHistoryData.isPumpSuspended()) {
@@ -1252,7 +1253,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (errorCount!! >= 5) {
             aapsLogger.error("Number of error counts was 5 or more. Starting tunning.")
             setRefreshButtonEnabled(true)
-            serviceTaskExecutor.startTask(WakeAndTuneTask(injector))
+            serviceTaskExecutor.startTask(MedLinkWakeAndTuneTask(injector))
             return
         }
         medLinkPumpStatus.setLastCommunicationToNow()
@@ -3806,7 +3807,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         serviceConnection = object : ServiceConnection {
             override fun onServiceDisconnected(name: ComponentName) {
                 aapsLogger.debug(LTag.PUMP, "MedLinkMedtronicService is disconnected")
-                medLinkService = null
+                // medLinkService = null
             }
 
             override fun onServiceConnected(name: ComponentName, service: IBinder) {

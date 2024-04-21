@@ -13,24 +13,31 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
+import dagger.android.HasAndroidInjector
 
 import javax.inject.Inject
 
 class MedLinkCommandBasalAbsolute(
+    injector: HasAndroidInjector,
     private val absolute: Double,
     private val durationInMinutes: Int,
     private val enforceNew: Boolean,
     private val profile: Profile,
     override val callback: Callback?,
-    override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE,
 
     ) : Command {
+
+    override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE
 
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var instantiator: Instantiator
+
+    init {
+        injector.androidInjector().inject(this)
+    }
 
     override fun execute() {
         val pump = activePlugin.activePump

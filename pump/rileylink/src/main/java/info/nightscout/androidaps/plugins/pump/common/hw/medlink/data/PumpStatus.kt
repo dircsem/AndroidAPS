@@ -17,7 +17,7 @@ abstract class PumpStatus(var pumpType: PumpType) {
 
     // read before lastConnection is modified for first time).
     // last bolus
-    var lastBolusTime: Date? = null
+    open var lastBolusTime: Date? = null
     var lastBolusAmount: Double? = null
 
     // other pump settings

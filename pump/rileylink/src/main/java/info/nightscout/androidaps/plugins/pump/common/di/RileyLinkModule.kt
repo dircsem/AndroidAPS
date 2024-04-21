@@ -52,6 +52,5 @@ abstract class RileyLinkModule {
     @ContributesAndroidInjector abstract fun contributesRileyLinkBroadcastReceiver(): RileyLinkBroadcastReceiver
     @ContributesAndroidInjector abstract fun contributesRileyLinkBluetoothStateReceiver(): RileyLinkBluetoothStateReceiver
 
-    @ContributesAndroidInjector abstract fun contributesMedLinkBroadcastReceiver(): MedLinkBroadcastReceiver
-    @ContributesAndroidInjector abstract fun contributesMedLinkBluetoothStateReceiver(): MedLinkBluetoothStateReceiver
+
 }

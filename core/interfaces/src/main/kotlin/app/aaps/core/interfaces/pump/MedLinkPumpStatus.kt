@@ -7,46 +7,48 @@ import java.util.Date
 
 interface MedLinkPumpStatus {
 
-    abstract val lastBolusInfo: DetailedBolusInfo?
-    abstract var lastReadingStatus: BGReadingStatus
+    val lastBolusInfo: DetailedBolusInfo?
+    var lastReadingStatus: BGReadingStatus
     var pumpDeviceState: PumpDeviceState
-    abstract val batteryRemaining: Int
-    abstract val iob: String?
-    abstract var lastConnection: Long
-    abstract var bolusDeliveredAmount: Double?
-    abstract var lastBolusAmount: Double?
-    abstract var latestBG: Double
-    abstract val lastBatteryChanged: Long
-    abstract var isBatteryChanged: Boolean
-    abstract var lastDataTime: Long
-    abstract var reservoirRemainingUnits: Double
-    abstract var batteryVoltage: Double
+    val batteryRemaining: Int
+    val iob: String?
+    var lastConnection: Long
+    var bolusDeliveredAmount: Double?
+    var lastBolusAmount: Double?
+    var latestBG: Double
+    val lastBatteryChanged: Long
+    var isBatteryChanged: Boolean
+    var lastDataTime: Long
+    var reservoirRemainingUnits: Double
+    var batteryVoltage: Double
     var currentBasal: Double
-    abstract var activeProfileName: String
-    abstract var tempBasalRemainMin: Int
-    abstract var tempBasalAmount: Double?
-    abstract var yesterdayTotalUnits: Double?
-    abstract var dailyTotalUnits: Double?
-    abstract var pumpRunningState: PumpRunningState
-    abstract var sensorAge: Int?
-    abstract var isig: Double?
-    abstract var bgReading:  EnliteInMemoryGlucoseValue
+    var activeProfileName: String
+    var tempBasalRemainMin: Int
+    var tempBasalAmount: Double?
+    var yesterdayTotalUnits: Double?
+    var dailyTotalUnits: Double?
+    var pumpRunningState: PumpRunningState
+    var sensorAge: Int?
+    var isig: Double?
+    var bgReading:  EnliteInMemoryGlucoseValue
     var sensorDataReading: BgSync.BgHistory.BgValue
     var calibrationFactor: Double?
-    abstract var nextCalibration: ZonedDateTime?
-    abstract var bgAlarmOn: Boolean
-    abstract var lastBolusTime: Date?
-    abstract var lastBGTimestamp: Long
+    var nextCalibration: ZonedDateTime?
+    var bgAlarmOn: Boolean
+    var lastBolusTime: Date?
+    var lastBGTimestamp: Long
 
-    fun setLastCommunicationToNow()
+    abstract fun setLastCommunicationToNow()
 }
 
 enum class PumpRunningState(val status: String) {
     Running("normal"),
-    Suspended("suspended");
+    Suspended("suspended"),
+    Unknow("unknow");
 }
 
 enum class BGReadingStatus {
     SUCCESS,
-    FAILED
+    FAILED,
+    UNKNOW
 }

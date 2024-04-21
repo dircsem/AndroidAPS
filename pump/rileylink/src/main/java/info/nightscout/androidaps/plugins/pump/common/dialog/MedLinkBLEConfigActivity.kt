@@ -34,12 +34,15 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.BlePreCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
+import app.aaps.core.ui.dialogs.OKDialog
+import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import org.apache.commons.lang3.StringUtils
 import java.util.*
 import javax.inject.Inject
 
 // IMPORTANT: This activity needs to be called from RileyLinkSelectPreference (see pref_medtronic.xml as example)
-class MedLinkBLEConfigActivity : DaggerAppCompatActivity() {
+class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var sp: SP
     @Inject lateinit var blePreCheck: BlePreCheck
@@ -97,18 +100,28 @@ class MedLinkBLEConfigActivity : DaggerAppCompatActivity() {
             }
         }
         binding.medLinkBleConfigButtonRemoveMedLink.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setIcon(android.R.drawable.ic_dialog_alert)
-                .setTitle(getString(R.string.med_link_ble_config_remove_med_link_confirmation_title))
-                .setMessage(getString(R.string.med_link_ble_config_remove_med_link_confirmation))
-                .setPositiveButton(getString(R.string.riley_link_common_yes)) { _: DialogInterface?, _: Int ->
-                    medLinkUtil.sendBroadcastMessage(MedLinkConst.Intents.MedLinkDisconnect, this@MedLinkBLEConfigActivity)
+            OKDialog.showConfirmation(
+                this@MedLinkBLEConfigActivity,
+                rh.gs(R.string.med_link_ble_config_remove_med_link_confirmation_title),
+                rh.gs(R.string.med_link_ble_config_remove_med_link_confirmation),
+                Runnable {
+                    medLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkDisconnect, this@MedLinkBLEConfigActivity)
                     sp.remove(MedLinkConst.Prefs.MedLinkAddress)
                     sp.remove(MedLinkConst.Prefs.MedLinkName)
                     updateCurrentlySelectedRileyLink()
-                }
-                .setNegativeButton(getString(R.string.riley_link_common_no), null)
-                .show()
+                })
+            // AlertDialog.Builder(this)
+            //     .setIcon(android.R.drawable.ic_dialog_alert)
+            //     .setTitle(getString(R.string.med_link_ble_config_remove_med_link_confirmation_title))
+            //     .setMessage(getString(R.string.med_link_ble_config_remove_med_link_confirmation))
+            //     .setPositiveButton(getString(R.string.riley_link_common_yes)) { _: DialogInterface?, _: Int ->
+            //         medLinkUtil.sendBroadcastMessage(MedLinkConst.Intents.MedLinkDisconnect, this@MedLinkBLEConfigActivity)
+            //         sp.remove(MedLinkConst.Prefs.MedLinkAddress)
+            //         sp.remove(MedLinkConst.Prefs.MedLinkName)
+            //         updateCurrentlySelectedRileyLink()
+            //     }
+            //     .setNegativeButton(getString(R.string.riley_link_common_no), null)
+            //     .show()
         }
     }
 

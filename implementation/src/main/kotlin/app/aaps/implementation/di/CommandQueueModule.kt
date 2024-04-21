@@ -21,6 +21,11 @@ import app.aaps.implementation.queue.commands.CommandStopPump
 import app.aaps.implementation.queue.commands.CommandTempBasalAbsolute
 import app.aaps.implementation.queue.commands.CommandTempBasalPercent
 import app.aaps.implementation.queue.commands.CommandUpdateTime
+import app.aaps.implementation.queue.commands.MedLinkCommandBasalAbsolute
+import app.aaps.implementation.queue.commands.MedLinkCommandBasalPercent
+import app.aaps.implementation.queue.commands.MedLinkCommandBolus
+import app.aaps.implementation.queue.commands.MedLinkCommandCancelTempBasal
+import app.aaps.implementation.queue.commands.MedLinkCommandSMBBolus
 import dagger.Module
 import dagger.android.ContributesAndroidInjector
 
@@ -49,4 +54,10 @@ abstract class CommandQueueModule {
     @ContributesAndroidInjector abstract fun commandTempBasalPercentInjector(): CommandTempBasalPercent
     @ContributesAndroidInjector abstract fun commandSetUserSettingsInjector(): CommandSetUserSettings
     @ContributesAndroidInjector abstract fun commandCustomCommandInjector(): CommandCustomCommand
+
+    @ContributesAndroidInjector abstract fun commandMedLinkBasalAbsoluteInjector(): MedLinkCommandBasalAbsolute
+    @ContributesAndroidInjector abstract fun commandMedLinkBasalPercentInjector(): MedLinkCommandBasalPercent
+    @ContributesAndroidInjector abstract fun commandMedLinkBolusInjector(): MedLinkCommandBolus
+    @ContributesAndroidInjector abstract fun commandMedLinkCancelTempBasalInjector(): MedLinkCommandCancelTempBasal
+    @ContributesAndroidInjector abstract fun commandMedLinkSMBBolusInjector(): MedLinkCommandSMBBolus
 }

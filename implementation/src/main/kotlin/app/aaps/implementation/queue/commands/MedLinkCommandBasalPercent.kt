@@ -13,15 +13,17 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
+import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 
 class MedLinkCommandBasalPercent(
+    injector: HasAndroidInjector,
     private val percent: Int,
     private val durationInMinutes: Int,
     private val enforceNew: Boolean,
     private val profile: Profile,
     override val callback: Callback?,
-    override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE,
+
 
     ) : Command {
 
@@ -31,6 +33,11 @@ class MedLinkCommandBasalPercent(
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var instantiator: Instantiator
 
+    init {
+        injector.androidInjector().inject(this)
+    }
+
+    override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE
     override fun execute() {
         val pump = activePlugin.activePump
         aapsLogger.info(LTag.PUMPQUEUE, "Command bolus plugin: ${pump} ")

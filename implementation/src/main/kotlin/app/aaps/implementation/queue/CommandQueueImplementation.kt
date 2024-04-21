@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.queue.Callback
@@ -70,6 +71,11 @@ import app.aaps.implementation.queue.commands.CommandStopPump
 import app.aaps.implementation.queue.commands.CommandTempBasalAbsolute
 import app.aaps.implementation.queue.commands.CommandTempBasalPercent
 import app.aaps.implementation.queue.commands.CommandUpdateTime
+import app.aaps.implementation.queue.commands.MedLinkCommandBasalAbsolute
+import app.aaps.implementation.queue.commands.MedLinkCommandBasalPercent
+import app.aaps.implementation.queue.commands.MedLinkCommandBolus
+import app.aaps.implementation.queue.commands.MedLinkCommandCancelTempBasal
+import app.aaps.implementation.queue.commands.MedLinkCommandSMBBolus
 import dagger.android.HasAndroidInjector
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -98,7 +104,7 @@ class CommandQueueImplementation @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val persistenceLayer: PersistenceLayer,
     private val decimalFormatter: DecimalFormatter,
-    private val instantiator: Instantiator
+    private val instantiator: Instantiator,
 ) : CommandQueue {
 
     private val disposable = CompositeDisposable()
@@ -316,6 +322,11 @@ class CommandQueueImplementation @Inject constructor(
         detailedBolusInfo.carbs =
             constraintChecker.applyCarbsConstraints(ConstraintObject(detailedBolusInfo.carbs.toInt(), aapsLogger)).value().toDouble()
         // add new command to queue
+
+        val pump = activePlugin.activePump
+        if (pump is MedLinkPumpPluginBase) {
+            addMedLinkBolus(detailedBolusInfo, callback, type)
+        } else
         if (detailedBolusInfo.bolusType == BS.Type.SMB) {
             add(CommandSMBBolus(injector, detailedBolusInfo, callback))
         } else {
@@ -366,7 +377,11 @@ class CommandQueueImplementation @Inject constructor(
         removeAll(CommandType.TEMPBASAL)
         val rateAfterConstraints = constraintChecker.applyBasalConstraints(ConstraintObject(absoluteRate, aapsLogger), profile).value()
         // add new command to queue
-        add(CommandTempBasalAbsolute(injector, rateAfterConstraints, durationInMinutes, enforceNew, profile, tbrType, callback))
+        if (activePlugin.activePump is MedLinkPumpPluginBase) {
+            add(MedLinkCommandBasalAbsolute(injector, rateAfterConstraints, durationInMinutes, enforceNew, profile, callback))
+        } else {
+            add(CommandTempBasalAbsolute(injector, rateAfterConstraints, durationInMinutes, enforceNew, profile, tbrType, callback))
+        }
         notifyAboutNewCommand()
         return true
     }
@@ -381,7 +396,11 @@ class CommandQueueImplementation @Inject constructor(
         removeAll(CommandType.TEMPBASAL)
         val percentAfterConstraints = constraintChecker.applyBasalPercentConstraints(ConstraintObject(percent, aapsLogger), profile).value()
         // add new command to queue
-        add(CommandTempBasalPercent(injector, percentAfterConstraints, durationInMinutes, enforceNew, profile, tbrType, callback))
+        if (activePlugin.activePump is MedLinkPumpPluginBase) {
+            add(MedLinkCommandBasalPercent(injector, percentAfterConstraints, durationInMinutes, enforceNew, profile, callback))
+        } else {
+            add(CommandTempBasalPercent(injector, percentAfterConstraints, durationInMinutes, enforceNew, profile, tbrType, callback))
+        }
         notifyAboutNewCommand()
         return true
     }
@@ -410,7 +429,11 @@ class CommandQueueImplementation @Inject constructor(
         // remove all unfinished
         removeAll(CommandType.TEMPBASAL)
         // add new command to queue
-        add(CommandCancelTempBasal(injector, enforceNew, callback))
+        if (activePlugin.activePump is MedLinkPumpPluginBase) {
+            add(MedLinkCommandCancelTempBasal(injector, enforceNew, callback))
+        } else {
+            add(CommandCancelTempBasal(injector, enforceNew, callback))
+        }
         notifyAboutNewCommand()
         return true
     }
@@ -671,6 +694,26 @@ class CommandQueueImplementation @Inject constructor(
             i.setClass(context, uiInteraction.bolusProgressHelperActivity)
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
+        }
+    }
+
+    private fun addMedLinkBolus(
+        detailedBolusInfo: DetailedBolusInfo, callback: Callback?,
+        type: CommandType,
+    ) {
+        aapsLogger.info(LTag.EVENTS, "adding mdelinkbolus")
+        if (detailedBolusInfo.bolusType == BS.Type.SMB) {
+            aapsLogger.info(LTag.EVENTS, "bolusing smb")
+            add(MedLinkCommandSMBBolus(injector, detailedBolusInfo, callback))
+        } else {
+            add(MedLinkCommandBolus(injector, detailedBolusInfo, callback))
+            aapsLogger.info(LTag.EVENTS, "bolusing " + type)
+            if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
+                // not when the Bolus command is starting. The command closes the dialog upon completion).
+                showBolusProgressDialog(detailedBolusInfo)
+                // Notify Wear about upcoming bolus
+                rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
+            }
         }
     }
 }

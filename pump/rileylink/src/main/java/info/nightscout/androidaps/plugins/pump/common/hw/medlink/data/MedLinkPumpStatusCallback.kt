@@ -6,7 +6,7 @@ import java.util.Date
 interface MedLinkPumpStatusCallback {
 
     abstract var lastBolusTime: Date?
-    abstract val lastBolusInfo: DetailedBolusInfo
+    abstract val lastBolusInfo: DetailedBolusInfo?
     abstract var bolusDeliveredAmount: Double?
     abstract var lastBolusAmount: Double?
 

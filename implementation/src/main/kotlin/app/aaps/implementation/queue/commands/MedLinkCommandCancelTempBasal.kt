@@ -14,7 +14,8 @@ import javax.inject.Inject
 class MedLinkCommandCancelTempBasal(
     injector: HasAndroidInjector,
     private val enforceNew: Boolean,
-    override val callback: Callback?, override val commandType: Command.CommandType = Command.CommandType.TEMPBASAL
+    override val callback: Callback?,
+
 ) : Command {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -22,6 +23,11 @@ class MedLinkCommandCancelTempBasal(
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var instantiator: Instantiator
 
+    init {
+        injector.androidInjector().inject(this)
+    }
+
+    override val commandType: Command.CommandType = Command.CommandType.TEMPBASAL
 
     override fun execute() {
         val pump = activePlugin.activePump

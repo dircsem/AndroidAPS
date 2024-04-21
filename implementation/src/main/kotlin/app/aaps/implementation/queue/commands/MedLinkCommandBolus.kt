@@ -20,8 +20,6 @@ class MedLinkCommandBolus(
     injector: HasAndroidInjector,
     private val detailedBolusInfo: DetailedBolusInfo,
     override val callback: Callback?,
-    override val commandType: Command.CommandType=Command.CommandType.BOLUS,
-    private val carbsRunnable: Runnable,
 ) : Command {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -29,6 +27,12 @@ class MedLinkCommandBolus(
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var instantiator: Instantiator
+
+    init {
+        injector.androidInjector().inject(this)
+    }
+
+    override val commandType: Command.CommandType=Command.CommandType.BOLUS
 
     override fun execute() {
         val pump = activePlugin.activePump

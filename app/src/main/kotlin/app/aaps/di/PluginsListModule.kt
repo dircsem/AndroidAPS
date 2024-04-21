@@ -41,6 +41,7 @@ import app.aaps.plugins.source.GlimpPlugin
 import app.aaps.plugins.source.GlunovoPlugin
 import app.aaps.plugins.source.IntelligoPlugin
 import app.aaps.plugins.source.MM640gPlugin
+import app.aaps.plugins.source.MedLinkPlugin
 import app.aaps.plugins.source.NSClientSourcePlugin
 import app.aaps.plugins.source.PoctechPlugin
 import app.aaps.plugins.source.RandomBgPlugin
@@ -450,6 +451,12 @@ abstract class PluginsListModule {
     @IntoMap
     @IntKey(473)
     abstract fun bindIntelligoPlugin(plugin: IntelligoPlugin): PluginBase
+
+    @Binds
+    @AllConfigs
+    @IntoMap
+    @IntKey(476)
+    abstract fun bindMedLinkPlugin(plugin: MedLinkPlugin): PluginBase
 
     @Binds
     @AllConfigs

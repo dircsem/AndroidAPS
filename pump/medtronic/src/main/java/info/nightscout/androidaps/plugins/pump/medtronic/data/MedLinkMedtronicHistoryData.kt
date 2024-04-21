@@ -80,6 +80,28 @@ uiInteraction, profileUtil ) {
         return gsonCore
     }
 
+    fun processLastBasalProfileChange(pumpType: PumpType, mdtPumpStatus: MedLinkMedtronicPumpStatus) {
+        val filteredItems: List<PumpHistoryEntry> = getFilteredItems(PumpHistoryEntryType.ChangeBasalProfile_NewProfile)
+        aapsLogger.debug(LTag.PUMP, "processLastBasalProfileChange. Items: $filteredItems")
+        var newProfile: PumpHistoryEntry? = null
+        var lastDate: Long? = null
+        if (filteredItems.size == 1) {
+            newProfile = filteredItems[0]
+        } else if (filteredItems.size > 1) {
+            for (filteredItem in filteredItems) {
+                if (lastDate == null || lastDate < filteredItem.atechDateTime) {
+                    newProfile = filteredItem
+                    lastDate = newProfile.atechDateTime
+                }
+            }
+        }
+        if (newProfile != null) {
+            aapsLogger.debug(LTag.PUMP, "processLastBasalProfileChange. item found, setting new basalProfileLocally: $newProfile")
+            val basalProfile = newProfile.decodedData["Object"] as BasalProfile
+            mdtPumpStatus.basalsByHour = basalProfile.getProfilesByHour(pumpType)
+        }
+    }
+
     /**
      * Add New History entries
      *
@@ -1072,7 +1094,7 @@ uiInteraction, profileUtil ) {
     //     return filteredItems.size > 0
     // }
 
-    fun processLastBasalProfileChange(pumpType: PumpType?, mdtPumpStatus: MedLinkMedtronicPumpStatus) {
+    fun lçprocessLastBasalProfileChange(pumpType: PumpType?, mdtPumpStatus: MedLinkMedtronicPumpStatus) {
         val filteredItems: List<PumpHistoryEntry> = getFilteredItems(PumpHistoryEntryType.ChangeBasalProfile_NewProfile)
         aapsLogger.debug(LTag.PUMP, "processLastBasalProfileChange. Items: $filteredItems")
         var newProfile: PumpHistoryEntry? = null

@@ -46,8 +46,9 @@ class MedLinkMedtronicUtil @Inject constructor(
     //private MedtronicDeviceType medtronicPumpModel;
     var currentCommand: MedLinkCommandType? = null
         set(value) {
-            this.currentCommand = currentCommand
+
             if (currentCommand != null) medlinkUtil.rileyLinkHistory.add(MLHistoryItemMedtronic(currentCommand))
+            field = value
         }
     var settings: Map<String, PumpSettingDTO>? = null
     private val BIG_FRAME_LENGTH = 65

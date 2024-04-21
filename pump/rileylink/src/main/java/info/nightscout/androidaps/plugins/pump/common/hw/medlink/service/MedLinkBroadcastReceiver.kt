@@ -13,7 +13,6 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkErr
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.WakeAndTuneTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.DiscoverGattServicesTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
@@ -33,11 +32,11 @@ import javax.inject.Inject
  */
 class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroadcastReceiver() {
 
-    @JvmField @Inject
-    var medLinkServiceData: MedLinkServiceData? = null
+    @Inject
+    lateinit var medLinkServiceData: MedLinkServiceData
 
-    @JvmField @Inject
-    var injector: HasAndroidInjector? = null
+    @Inject
+    lateinit var injector: HasAndroidInjector
 
     @JvmField @Inject
     var sp: SP? = null
@@ -45,11 +44,11 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
     @JvmField @Inject
     var aapsLogger: AAPSLogger? = null
 
-    @JvmField @Inject
-    var serviceTaskExecutor: ServiceTaskExecutor? = null
+    @Inject
+    lateinit var serviceTaskExecutor: ServiceTaskExecutor
 
-    @JvmField @Inject
-    var activePlugin: ActivePlugin? = null
+    @Inject
+    lateinit var activePlugin: ActivePlugin
     private val broadcastIdentifiers: MutableMap<String, List<String>> = HashMap()
     private fun createBroadcastIdentifiers() {
 
@@ -96,16 +95,16 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
         }
     }
 
-    private fun processTuneUpBroadcasts(action: String): Boolean {
-        return if (broadcastIdentifiers!!["TuneUp"]!!.contains(action)) {
-            if (medLinkService.rileyLinkTargetDevice.isTuneUpEnabled) {
-                serviceTaskExecutor!!.startTask(WakeAndTuneTask(injector))
-            }
+    private fun processTuneUpBroadcasts(action: String): Boolean =
+        if (broadcastIdentifiers["TuneUp"]?.contains(action) == true) {
+            if (medLinkServiceData.targetDevice?.isTuneUpEnabled == true) serviceTaskExecutor.startTask(
+                info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask(
+                    injector
+                )
+            )
             true
-        } else {
-            false
-        }
-    }
+        } else false
+
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)

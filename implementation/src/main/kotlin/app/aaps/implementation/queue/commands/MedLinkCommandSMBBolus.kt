@@ -20,7 +20,7 @@ import javax.inject.Inject
 class MedLinkCommandSMBBolus(
     injector: HasAndroidInjector,
     private val detailedBolusInfo: DetailedBolusInfo,
-    override val callback: Callback?, override val commandType: Command.CommandType = Command.CommandType.SMB_BOLUS,
+    override val callback: Callback?,
 ) : Command {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -29,8 +29,13 @@ class MedLinkCommandSMBBolus(
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var preferences: Preferences
-
     @Inject lateinit var instantiator: Instantiator
+
+    init {
+        injector.androidInjector().inject(this)
+    }
+
+    override val commandType: Command.CommandType = Command.CommandType.SMB_BOLUS
 
     override fun execute() {
         val r: PumpEnactResult

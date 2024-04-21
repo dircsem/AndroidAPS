@@ -34,6 +34,7 @@ import dagger.BindsInstance
 import dagger.Component
 import dagger.android.AndroidInjectionModule
 import dagger.android.AndroidInjector
+import info.nightscout.androidaps.plugins.pump.common.di.MedLinkModule
 import info.nightscout.androidaps.plugins.pump.common.di.RileyLinkModule
 import info.nightscout.androidaps.plugins.pump.eopatch.dagger.EopatchModule
 import info.nightscout.androidaps.plugins.pump.medtronic.di.MedtronicModule
@@ -91,6 +92,7 @@ LoggerModule::class,
         OmnipodErosModule::class,
         PumpCommonModule::class,
         RileyLinkModule::class,
+        MedLinkModule::class,
         MedtrumModule::class,
         EquilModule::class,
         VirtualPumpModule::class,

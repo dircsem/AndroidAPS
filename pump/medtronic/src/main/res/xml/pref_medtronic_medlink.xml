@@ -195,7 +195,7 @@
             android:key="@string/key_medlink_mac_address"
             android:summary=""
             android:title="MedLink Configuration">
-            <intent android:action="info.nightscout.androidaps.plugins.PumpCommon.dialog.MedLinkBLEScanActivity" />
+            <intent android:action="info.nightscout.androidaps.plugins.pump.common.dialog.MedLinkBLEConfigActivity" />
         </Preference>
 
         <SwitchPreference

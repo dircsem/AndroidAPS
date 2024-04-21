@@ -69,16 +69,5 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : MedLinkPartialBolus(pump
     var currentReadingStatus = BGReadingStatus.FAILED
     override var lastBGTimestamp: Long = 0
     override var latestBG = 0.0
-    override val lastBolusInfo: DetailedBolusInfo
-        get() {
-            val result = DetailedBolusInfo()
-            lastBolusAmount?.let {  result.insulin = it}
 
-            if (lastBolusTime != null) {
-                result.deliverAtTheLatest = lastBolusTime!!.time
-            }
-            return result
-        } //    public PumpStatusType getPumpStatusType(){
-    //        return pumpStatusType;
-    //    }
 }

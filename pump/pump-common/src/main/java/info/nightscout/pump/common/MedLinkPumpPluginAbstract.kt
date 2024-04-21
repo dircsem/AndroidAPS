@@ -102,15 +102,15 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         onStartScheduledPumpActions()
     }
 
-    override fun onStop() {
-        aapsLogger.debug(LTag.PUMP, model().model + " onStop()")
-        serviceConnection?.let { serviceConnection ->
-            context.unbindService(serviceConnection)
-        }
-        serviceRunning = false
-        disposable.clear()
-        super.onStop()
-    }
+    // override fun onStop() {
+    //     aapsLogger.debug(LTag.PUMP, model().model + " onStop()")
+    //     serviceConnection?.let { serviceConnection ->
+    //         context.unbindService(serviceConnection)
+    //     }
+    //     serviceRunning = false
+    //     disposable.clear()
+    //     super.onStop()
+    // }
 
     /**
      * If we need to run any custom actions in onStart (triggering events, etc)
