@@ -16,7 +16,7 @@ open class MedLinkPartialBolus(pumpType: PumpType?) : PumpStatus(pumpType!!), Me
     override var lastBolusInfo: DetailedBolusInfo?= DetailedBolusInfo()
         get() {
             val result = DetailedBolusInfo()
-            lastBolusAmount?.let {  result.insulin = it}
+            field?.let {  result.insulin = it.insulin}
 
             if (lastBolusTime != null) {
                 result.deliverAtTheLatest = lastBolusTime!!.time
@@ -36,12 +36,11 @@ open class MedLinkPartialBolus(pumpType: PumpType?) : PumpStatus(pumpType!!), Me
     override var isig: Double?= 0.0
 
     var bgRead: EnliteInMemoryGlucoseValue = EnliteInMemoryGlucoseValue()
-    override var bgReading: EnliteInMemoryGlucoseValue
-        get() = this.bgRead;
-        set(value) {this.bgRead=value}
-    override var sensorDataReading: BgSync.BgHistory.BgValue
-        get() = TODO("Not yet implemented")
-        set(value) {}
+    override lateinit var bgReading: EnliteInMemoryGlucoseValue
+
+
+    override lateinit var sensorDataReading: BgSync.BgHistory.BgValue
+
     override var calibrationFactor: Double?= 0.0
     override var nextCalibration: ZonedDateTime?=null
     override var bgAlarmOn: Boolean=false
@@ -50,8 +49,8 @@ open class MedLinkPartialBolus(pumpType: PumpType?) : PumpStatus(pumpType!!), Me
 
 
     override fun initSettings() {}
-    override val errorInfo: String?
-        get() = TODO("Not yet implemented")
+    override var errorInfo: String?=null
+
 
     override fun toString(): String {
         return "MedLinkPartialBolus{" +

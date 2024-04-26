@@ -19,12 +19,8 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : MedLinkPartialBolus(pump
 
     override var sensorAge: Int? = null
     override var isig: Double? = null
-    override var bgReading: EnliteInMemoryGlucoseValue
-        get() = TODO("Not yet implemented")
-        set(value) {}
-    override var sensorDataReading: BgValue
-        get() = TODO("Not yet implemented")
-        set(value) {}
+
+
     override var calibrationFactor: Double? = null
     override var yesterdayTotalUnits: Double? = null
     var deviceBatteryVoltage = 0.0
@@ -63,9 +59,8 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : MedLinkPartialBolus(pump
 
 
     override var lastReadingStatus = BGReadingStatus.FAILED
-    override var pumpDeviceState: PumpDeviceState
-        get() = pumpDeviceState
-        set(value) { this.pumpDeviceState = value }
+    override lateinit var pumpDeviceState: PumpDeviceState
+
     var currentReadingStatus = BGReadingStatus.FAILED
     override var lastBGTimestamp: Long = 0
     override var latestBG = 0.0
