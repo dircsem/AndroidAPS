@@ -71,7 +71,8 @@ data class BolusProgressCallback(
                     it?.bolusType = detailedBolusInfo.bolusType
                     it?.carbs = detailedBolusInfo.carbs
                     it?.eventType = detailedBolusInfo.eventType
-                    medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(it.toString())))
+                    aapsLogger.info(LTag.PUMP,it!!.toJsonString())
+                    medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(it?.toJsonString())))
                 }
 
                 SystemClock.sleep(200)

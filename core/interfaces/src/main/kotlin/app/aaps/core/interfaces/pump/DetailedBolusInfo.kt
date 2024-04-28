@@ -7,6 +7,7 @@ import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
+import com.google.gson.Gson
 
 class DetailedBolusInfo {
 
@@ -87,4 +88,12 @@ class DetailedBolusInfo {
         return n
     }
 
+    fun toJsonString(): String =
+        Gson().toJson(this)
+
+    companion object {
+
+        fun fromJsonString(json: String): DetailedBolusInfo =
+            Gson().fromJson(json, DetailedBolusInfo::class.java)
+    }
 }

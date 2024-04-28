@@ -22,6 +22,7 @@ import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -102,7 +103,7 @@ class PumpSyncImplementation @Inject constructor(
             return true
         }
 
-        if (showNotification && (type.description != storedType || serialNumber != storedSerial) && timestamp >= storedTimestamp)
+        if (showNotification && (type.description != storedType || serialNumber != storedSerial) && timestamp >= storedTimestamp && activePlugin !is MedLinkPumpPluginBase)
             rxBus.send(EventNewNotification(Notification(Notification.WRONG_PUMP_DATA, rh.gs(R.string.wrong_pump_data), Notification.URGENT)))
         aapsLogger.error(
             LTag.PUMP,
@@ -460,9 +461,8 @@ class PumpSyncImplementation @Inject constructor(
             timestamp = timestamp,
             amount = amount,
             type = type ?: BS.Type.NORMAL, // not used for update
-            isBasalInsulin = (type == BS.Type.TBR)
-            // interfaceIDs_backing = InterfaceIDs(
-            // )
+            isBasalInsulin = (type == BS.Type.TBR),
+            ids = IDs(pumpId = pumpId, pumpSerial = pumpSerial, pumpType = pumpType, temporaryId = temporaryId)
         )
         aapsLogger.info(LTag.DATABASE, bolus.toString())
         return persistenceLayer.insertBolusWithTempId(bolus).map { result -> result.updated.size > 0 }
@@ -481,8 +481,7 @@ class PumpSyncImplementation @Inject constructor(
     }
 
     private fun runMethod(timestamp: Long, endPumpId: Long, pumpType: PumpType, pumpSerial: String): Boolean {
-        return persistenceLayer.syncPumpCancelTemporaryBasalIfAny(timestamp, endPumpId, pumpType, pumpSerial).map {
-            result -> result.updated.size > 0 }.blockingGet()
+        return persistenceLayer.syncPumpCancelTemporaryBasalIfAny(timestamp, endPumpId, pumpType, pumpSerial).map { result -> result.updated.size > 0 }.blockingGet()
     }
 
     override fun lastGlucoseValue(): Optional<GV> {
@@ -492,8 +491,8 @@ class PumpSyncImplementation @Inject constructor(
 
     override fun lastTherapyEvent(type: TE.Type): Optional<Double> {
         val event = persistenceLayer.getLastTherapyEvent(type)
-        return event?.let{
-            Optional.of(dateUtil.getTimeZoneOffsetMinutes(it.timestamp)/60.0 )
-        }?: empty()
+        return event?.let {
+            Optional.of(dateUtil.getTimeZoneOffsetMinutes(it.timestamp) / 60.0)
+        } ?: empty()
     }
 }

@@ -230,8 +230,8 @@ class MedLinkStatusParser {
                     }
                     if (bgUpdated) {
                         pumpStatus.sensorDataReading = BgSync.BgHistory.BgValue(
-                            timestamp = pumpStatus.bgReading.timestamp,
-                            value = pumpStatus.bgReading.value,
+                            timestamp = pumpStatus.bgReading!!.timestamp,
+                            value = pumpStatus.bgReading!!.value,
                             noise = 0.0,
                             arrow = BgSync.BgArrow.NONE,
                             isig = pumpStatus.isig,

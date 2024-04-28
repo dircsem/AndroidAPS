@@ -30,7 +30,7 @@ interface MedLinkPumpStatus {
     var pumpRunningState: PumpRunningState
     var sensorAge: Int?
     var isig: Double?
-    var bgReading:  EnliteInMemoryGlucoseValue
+    var bgReading:  EnliteInMemoryGlucoseValue?
     var sensorDataReading: BgSync.BgHistory.BgValue
     var calibrationFactor: Double?
     var nextCalibration: ZonedDateTime?

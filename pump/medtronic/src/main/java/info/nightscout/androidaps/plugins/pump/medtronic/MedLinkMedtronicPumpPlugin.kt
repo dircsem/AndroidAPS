@@ -3376,6 +3376,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             count += 1
 
             val bInfo = DetailedBolusInfo().fromJsonString(bolusJson.toString())
+            bInfo.pumpType = this.pumpType
+            bInfo.bolusPumpId = this.medLinkServiceData.pumpID.toLong()
             aapsLogger.info(LTag.PUMPBTCOMM, lastDetailedBolusInfo?.toJsonString() ?: "")
             aapsLogger.info(LTag.PUMPBTCOMM, bInfo.toJsonString())
             if (minBolusTimestamp < (bInfo.bolusTimestamp ?: bInfo.timestamp)) {

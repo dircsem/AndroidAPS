@@ -36,7 +36,7 @@ open class MedLinkPartialBolus(pumpType: PumpType?) : PumpStatus(pumpType!!), Me
     override var isig: Double?= 0.0
 
     var bgRead: EnliteInMemoryGlucoseValue = EnliteInMemoryGlucoseValue()
-    override lateinit var bgReading: EnliteInMemoryGlucoseValue
+    override var bgReading: EnliteInMemoryGlucoseValue? =null
 
 
     override lateinit var sensorDataReading: BgSync.BgHistory.BgValue
