@@ -68,7 +68,7 @@ class PrepareTreatmentsDataWorker(
 
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, profileUtil, preferences, decimalFormatter) }
-            .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
+            .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB || it.data.type == BS.Type.TBR}
             .forEach {
                 it.y = getNearestBg(data.overviewData, it.x.toLong())
                 filteredTreatments.add(it)
