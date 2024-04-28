@@ -2328,7 +2328,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         var index = 0
         for (value in list) {
             if (!exclusions.contains(index)) {
-                result.add(value + pumpType.bolusSize)
+                result.add(BigDecimal( value + pumpType.bolusSize).setScale(1, RoundingMode.HALF_DOWN).toDouble())
             } else {
                 result.add(value)
             }
