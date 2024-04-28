@@ -28,10 +28,13 @@ class BolusDataPoint(
     override val size = 2f
     override val paintStyle: Paint.Style = Paint.Style.FILL // not used
     override val shape
-        get() = if (data.type == BS.Type.SMB) Shape.SMB else Shape.BOLUS
+        get() = if (data.type == BS.Type.SMB) Shape.SMB
+        else if (data.type == BS.Type.TBR) Shape.TBR_BOLUS
+        else Shape.BOLUS
 
     override fun color(context: Context?): Int =
         if (data.type == BS.Type.SMB) rh.gac(context, app.aaps.core.ui.R.attr.smbColor)
+        else if (data.type == BS.Type.TBR) rh.gac(context, app.aaps.core.ui.R.attr.bolusDataPointColor)
         else if (data.isValid) rh.gac(context, app.aaps.core.ui.R.attr.bolusDataPointColor)
         else rh.gac(context, app.aaps.core.ui.R.attr.alarmColor)
 

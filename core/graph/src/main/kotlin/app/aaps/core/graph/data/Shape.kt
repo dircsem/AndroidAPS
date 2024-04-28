@@ -27,5 +27,6 @@ enum class Shape {
     IOB_PREDICTION,
     BUCKETED_BG,
     HEARTRATE,
-    STEPS
+    STEPS,
+    TBR_BOLUS
 }

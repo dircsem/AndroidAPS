@@ -169,7 +169,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
-                } else if (value.shape == Shape.CARBS) {
+                } else if (value.shape == Shape.TBR_BOLUS) {
+                    mPaint.strokeWidth = 2f
+                    val size = value.size * scaledPxSize
+                    val points = arrayOf(
+                        Point(endX.toInt(), (endY - size).toInt()),
+                        Point((endX + size).toInt(), (endY + size * 0.67).toInt()),
+                        Point((endX - size).toInt(), (endY + size * 0.67).toInt())
+                    )
+                    mPaint.style = Paint.Style.STROKE
+                    drawArrows(points, canvas, mPaint)
+                }
+
+                else if (value.shape == Shape.CARBS) {
                     mPaint.strokeWidth = 0f
                     val points = arrayOf(
                         Point(endX.toInt(), (endY - scaledPxSize).toInt()),
