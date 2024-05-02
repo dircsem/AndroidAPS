@@ -49,7 +49,7 @@ class StatusCallback(
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.reservoirRemainingUnits)
         aapsLogger.info(LTag.PUMPBTCOMM, "status " + medLinkPumpStatus.currentBasal)
         medLinkPumpStatus.setLastCommunicationToNow()
-        aapsLogger.info(LTag.PUMPBTCOMM, "bgreading " + pumpStatus.bgReading)
+        aapsLogger.info(LTag.PUMPBTCOMM, "bgreading " + pumpStatus.bgReading.toString())
         if (pumpStatus.bgReading != null) {
             medLinkPumpPlugin.handleNewSensorData(BgSync.BgHistory(listOf(pumpStatus.sensorDataReading), emptyList(), null))
             medLinkPumpStatus.lastReadingStatus = BGReadingStatus.SUCCESS

@@ -704,12 +704,13 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val func = BGHistoryCallback(this, aapsLogger, false, false)
             val isigFunc = IsigHistoryCallback(injector, this, aapsLogger, false, func)
             val msg = MedLinkPumpMessage<BgSync.BgHistory, BgSync.BgHistory>(
-                MedLinkCommandType.BGHistory,
-                MedLinkCommandType.IsigHistory,  //                        MedLinkCommandType.NoCommand,
+                MedLinkCommandType.BGHistory,   // MedLinkCommandType.IsigHistory,
+                MedLinkCommandType.NoCommand,
                 func,
-                isigFunc,  //                        null,
+                // isigFunc,
                 btSleepTime,
-                BlePartialCommand(aapsLogger, medLinkService!!.medLinkServiceData)
+                BlePartialCommand(aapsLogger, medLinkService!!.medLinkServiceData),
+                CommandPriority.NORMAL
             )
             medLinkService!!.medtronicUIComm?.executeCommandCP(msg)
         }

@@ -67,10 +67,13 @@ class BgSyncImplementation @Inject constructor(
                 // medLinkPlugin.storeBG(jsonObject)
         // dataWorker.storeInputData()
         // medLinkPlugin.MedLinkWorker.storeBG(jsonObject)
-        val bundle = dataWorker.pickupBundle(bundle.getLong(DataWorkerStorage.STORE_KEY, -1))
+        val bd = dataWorker.pickupBundle(bundle.getLong(DataWorkerStorage.STORE_KEY, -1))
+
             // ?: return ListenableWorker.Result.failure(workDataOf("Error" to "missing input data"))
         try {
-            handleGlucoseAndCalibrations(bundle!!)
+            bd.let { aapsLogger.info(LTag.PUMP, it.toString())}
+            aapsLogger.info(LTag.PUMP, bundle.toString())
+            handleGlucoseAndCalibrations(bundle)
             // handleTreatments(bundle)
         } catch (e: Exception) {
             aapsLogger.error("Error while processing intent from Dexcom App", e)
@@ -80,6 +83,7 @@ class BgSyncImplementation @Inject constructor(
 
     private fun handleGlucoseAndCalibrations(bundle: Bundle): ListenableWorker.Result {
         var ret = ListenableWorker.Result.success()
+        aapsLogger.info(LTag.GLUCOSE,"inserting bg")
         val sourceSensor = when (bundle.getString("sensorType") ?: "") {
             "Enlite" -> SourceSensor.MM_ENLITE
             else     -> SourceSensor.UNKNOWN
@@ -103,6 +107,8 @@ class BgSyncImplementation @Inject constructor(
                 }
             }
         }
+        aapsLogger.info(LTag.GLUCOSE,"meters")
+
         val glucoseValuesBundle = bundle.getBundle("glucoseValues")
             ?: return ListenableWorker.Result.failure(workDataOf("Error" to "missing glucoseValues"))
         val glucoseValues = mutableListOf<GV>()
@@ -130,10 +136,11 @@ class BgSyncImplementation @Inject constructor(
             // )
             // xDripBroadcast.send(glucoseValue)
             glucoseValues += GV(
+
                 timestamp = timestamp,
                 value = glucoseValueBundle.getDouble("value"),
                 noise = null,
-                raw = null,
+                raw = 0.0,
                 isig = isig,
                 delta = deltaSinceLastBg,
                 sensorUptime = sensorUptime,
@@ -152,6 +159,8 @@ class BgSyncImplementation @Inject constructor(
         } else {
             null
         }
+
+
         persistenceLayer.insertCgmSourceData(Sources.Enlite, glucoseValues, calibrations, sensorStartTime)
 
             .blockingGet()
@@ -165,7 +174,7 @@ class BgSyncImplementation @Inject constructor(
                     if(lastDbId< it.id){
                         lastDbId=it.id
                     }
-                    aapsLogger.debug(LTag.DATABASE, "Inserted bg $it")
+                    aapsLogger.info(LTag.DATABASE, "Inserted bg $it")
                     DataSyncSelector.PairGlucoseValue(it, it.id)
                     xDripBroadcast.sendToXdrip("bg", DataSyncSelector.PairGlucoseValue(it, it.id, true), "$startId/$lastDbId")
 
@@ -183,7 +192,7 @@ class BgSyncImplementation @Inject constructor(
                     if(lastDbId< it.id){
                         lastDbId=it.id
                     }
-                    aapsLogger.debug(LTag.DATABASE, "Updated bg $it")
+                    aapsLogger.info(LTag.DATABASE, "Updated bg $it")
                     xDripBroadcast.sendToXdrip("bg", DataSyncSelector.PairGlucoseValue(it, it.id, true), "$startId/$lastDbId")
                     DataSyncSelector.PairGlucoseValue(it, it.id)
                 }
