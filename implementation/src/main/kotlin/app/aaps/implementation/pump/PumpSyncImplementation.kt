@@ -161,6 +161,7 @@ class PumpSyncImplementation @Inject constructor(
             timestamp = timestamp,
             amount = amount,
             type = type,
+            isBasalInsulin = (type == BS.Type.TBR),
             ids = IDs(
                 temporaryId = temporaryId,
                 pumpType = pumpType,
@@ -178,6 +179,7 @@ class PumpSyncImplementation @Inject constructor(
             timestamp = timestamp,
             amount = amount,
             type = BS.Type.NORMAL, // not used for update
+            isBasalInsulin = (type == BS.Type.TBR),
             ids = IDs(
                 temporaryId = temporaryId,
                 pumpId = pumpId,
@@ -196,6 +198,7 @@ class PumpSyncImplementation @Inject constructor(
             timestamp = timestamp,
             amount = amount,
             type = type ?: BS.Type.NORMAL,
+            isBasalInsulin = (type == BS.Type.TBR),
             ids = IDs(
                 pumpId = pumpId,
                 pumpType = pumpType,

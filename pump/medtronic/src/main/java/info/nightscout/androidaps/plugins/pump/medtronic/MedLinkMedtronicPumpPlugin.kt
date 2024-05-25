@@ -3406,11 +3406,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 }
                 lastProcessedBolusTimestamp = bInfo.bolusTimestamp?.minus(mod) ?: bInfo.timestamp
                 if (lastProcessedBolusTimestamp < System.currentTimeMillis() + 120000) {
-                    pumpSyncStorage.pumpSync.syncBolusWithTempIdMedLink(
-                        lastProcessedBolusTimestamp, bInfo.insulin,
-                        generateTempId(bInfo.timestamp),
-                        bInfo.bolusType, bInfo.bolusPumpId,
-                        this.pumpType, serialNumber()
+                    pumpSyncStorage.addMedLinkBolusWithTempId(bInfo,true, this
+                        // lastProcessedBolusTimestamp, bInfo.insulin,
+                        // generateTempId(bInfo.timestamp),
+                        // bInfo.bolusType, bInfo.bolusPumpId,
+                        // this.pumpType, serialNumber()
                     )
                 }
             }
