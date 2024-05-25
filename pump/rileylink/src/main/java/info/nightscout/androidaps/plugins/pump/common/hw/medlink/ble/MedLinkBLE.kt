@@ -1053,9 +1053,12 @@ class MedLinkBLE //extends RileyLinkBLE
     @JvmOverloads
     fun close(force: Boolean = false) {
         aapsLogger.info(LTag.PUMPBTCOMM, "closing")
+
         if (currentCommand != null && currentCommand!!.hasFinished() && currentCommand!!.nextFunction() != null) {
             currentCommand!!.nextBleCommand().map { it.applyResponse(this) }
-            removeFirstCommand(true)
+            if(currentCommand!!.getCurrentCommand() != MedLinkCommandType.StopPump && currentCommand!!.getCurrentCommand() != MedLinkCommandType.StartPump){
+                removeFirstCommand(true)
+            }
         } else if (currentCommand != null &&
             currentCommand!!.commandList.any { it -> isBolus(it.command) }
         ) {
@@ -1437,12 +1440,8 @@ class MedLinkBLE //extends RileyLinkBLE
                         commandQueueBusy = false
                     }
                     if (currentCommand != null) {
-                        aapsLogger.info(LTag.PUMPBTCOMM, "command not null")
-                        aapsLogger.info(LTag.PUMPBTCOMM, "" + currentCommand!!.nextBleCommand())
                         val next = currentCommand!!.nextBleCommand()
                         if (next.isPresent) {
-
-                            aapsLogger.info(LTag.PUMPBTCOMM, "blecommand")
                             next.get().characteristicChanged(answer, that, lastCharacteristic)
                         } else {
                             // if (bleCommand != null)
@@ -1534,6 +1533,9 @@ class MedLinkBLE //extends RileyLinkBLE
 
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 super.onConnectionStateChange(gatt, status, newState)
+                if(isCommandConfirmed && currentCommand !=null  && currentCommand!!.getCurrentCommand().actionCommand){
+                    currentCommand!!.clearExecutedCommand()
+                }
                 aapsLogger.error(LTag.PUMPBTCOMM, "Statechange $newState")
                 // https://github.com/NordicSemiconductor/puck-central-android/blob/master/PuckCentral/app/src/main/java/no/nordicsemi/puckcentral/bluetooth/gatt/GattManager.java#L117
                 if (status == 133) {

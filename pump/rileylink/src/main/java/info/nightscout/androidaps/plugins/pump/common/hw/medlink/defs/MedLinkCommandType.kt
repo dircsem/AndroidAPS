@@ -6,7 +6,7 @@ import java.util.*
 /**
  * Created by dirceu on 17/09/2020.
  */
-enum class MedLinkCommandType constructor(command: String, val needActivePump: Boolean = false, val listCommand: Boolean = false) {
+enum class MedLinkCommandType constructor(command: String, val needActivePump: Boolean = false, val listCommand: Boolean = false, val actionCommand: Boolean = false) {
 
     NoCommand(""),
     ReadCharacteristic("\"ReadCharacteristic\"", listCommand = true),
@@ -17,8 +17,8 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
     StopStartPump("A"),
     Bolus("X", true),
     BolusAmount("BOLUS", true),
-    StartPump("START",true),
-    StopPump("STOP",true),
+    StartPump("START",true, actionCommand = true),
+    StopPump("STOP",true, actionCommand = true),
     IsigHistory("I", listCommand = true),
     PreviousIsigHistory("J", listCommand = true),
     BGHistory("C", listCommand = true),
@@ -26,7 +26,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
     BolusHistory("H"),
     ActiveBasalProfile("E", listCommand = true),
     BaseProfile("F", listCommand = true),
-    Calibrate("K", true),
+    Calibrate("K", true,  actionCommand = true),
     CalibrateFrequency("U"),
     CalibrateFrequencyArgument(""),
     CalibrateValue("CAL", true),
