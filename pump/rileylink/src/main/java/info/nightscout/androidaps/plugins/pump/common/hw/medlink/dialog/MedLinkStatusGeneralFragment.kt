@@ -42,14 +42,14 @@ class MedLinkStatusGeneralFragment : DaggerFragment() {
         return inflater.inflate(R.layout.rileylink_status_general, container, false)
     }
 
-    private var _binding: RileylinkStatusGeneralBinding? = null
+    private lateinit var binding: RileylinkStatusGeneralBinding
 
     // This property is only valid between onCreateView and onDestroyView.
-    private val binding get() = _binding!!
+    // private val binding get() = RileylinkStatusGeneralBinding
 
     override fun onResume() {
         super.onResume()
-        refreshData()
+        // refreshData()
     }
 
     private fun refreshData() {
