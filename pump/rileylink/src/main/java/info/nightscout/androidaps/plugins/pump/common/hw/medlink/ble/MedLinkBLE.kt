@@ -1533,7 +1533,12 @@ class MedLinkBLE //extends RileyLinkBLE
 
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 super.onConnectionStateChange(gatt, status, newState)
+                aapsLogger.info(LTag.PUMPBTCOMM, "iscommandconfirmed $isCommandConfirmed")
+                aapsLogger.info(LTag.PUMPBTCOMM, "iscommandconfirmed $currentCommand")
+                if(currentCommand!=null)
+                   aapsLogger.info(LTag.PUMPBTCOMM, "iscommandconfirmed ${currentCommand!!.getCurrentCommand()}")
                 if(isCommandConfirmed && currentCommand !=null  && currentCommand!!.getCurrentCommand().actionCommand){
+                    aapsLogger.info(LTag.PUMPBTCOMM, "Command cleared $newState")
                     currentCommand!!.clearExecutedCommand()
                 }
                 aapsLogger.error(LTag.PUMPBTCOMM, "Statechange $newState")

@@ -196,8 +196,9 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
 
     protected fun applyResponse(pumpResp: String, currentCommand: CommandExecutor<*>?, bleComm: MedLinkBLE) {
         val command = currentCommand!!.getCurrentCommand()
-        aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
         val function: Function<Supplier<Stream<String>>, out MedLinkStandardReturn<*>?>? = currentCommand.nextFunction()
+        aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
+
         bleComm.post {
             try {
                 aapsLogger.info(LTag.PUMPBTCOMM, "posting command")
