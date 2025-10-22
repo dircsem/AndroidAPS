@@ -387,9 +387,10 @@ class MedLinkStatusParser {
                         val reservoirRemaining = matcher.group()
                         val reservoirRemainingDouble = reservoirRemaining.substring(0, reservoirRemaining.length - 1).toDouble()
                         previousReservoirRemaining = pumpStatus.reservoirRemainingUnits
-                        if (reservoirRemainingDouble != 0.0 && pumpStatus.sensorAge != 0) {
+                        if (reservoirRemainingDouble != 0.0 ) {
                             pumpStatus.reservoirRemainingUnits = reservoirRemainingDouble
-                        } else {
+                        }
+                        if (pumpStatus.sensorAge != 0) {
                             pumpStatus.sensorAge = previousAge
                         }
                     }
