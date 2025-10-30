@@ -23,6 +23,7 @@ import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.pump.PumpSync
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Single
@@ -1345,6 +1346,7 @@ interface PersistenceLayer {
     fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int): NE
 
     fun getLastTherapyEvent(eventType: TE.Type): TE?
+    abstract fun getLastNonTBRBolusTime(): PumpSync.PumpState.Bolus?
 
     class TransactionResult<T> {
 

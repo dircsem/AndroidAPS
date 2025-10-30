@@ -10,8 +10,6 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.Base
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser.Companion.parseStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl
 import java.util.*
 import java.util.function.Supplier
 import java.util.regex.Pattern
@@ -39,7 +37,7 @@ class StatusCallback(
             medLinkPumpStatus.lastConnection = Objects.requireNonNull(matcher.group(0)).toLong()
         }
         val pumpStatus = medLinkPumpPlugin.pumpStatusData
-        parseStatus(messages, medLinkPumpStatus, medLinkPumpPlugin.injector)
+        parseStatus(messages, medLinkPumpStatus, medLinkPumpPlugin.injector, aapsLogger)
         aapsLogger.debug("Pumpstatus")
         aapsLogger.debug(pumpStatus.toString())
         medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active

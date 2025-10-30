@@ -14,8 +14,6 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress.t
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
 
 import org.json.JSONObject
 import java.util.function.Supplier

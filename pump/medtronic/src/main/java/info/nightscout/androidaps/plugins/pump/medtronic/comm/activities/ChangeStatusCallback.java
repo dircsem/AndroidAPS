@@ -54,7 +54,12 @@ public class ChangeStatusCallback extends BaseCallback<PumpDriverState, Supplier
 //                }
                 return PumpDriverState.Initialized;
             } else if (f.contains("suspend")) {
-                medLinkMedtronicPumpPlugin.getPumpStatusData().setPumpRunningState(PumpRunningState.Suspended);
+                var tempBasal = medLinkMedtronicPumpPlugin.getTemporaryBasal();
+                if(tempBasal.getDurationInMinutes()>0){
+                    medLinkMedtronicPumpPlugin.getPumpStatusData().setPumpRunningState(PumpRunningState.TempBasalSuspended);
+                }else {
+                    medLinkMedtronicPumpPlugin.getPumpStatusData().setPumpRunningState(PumpRunningState.Suspended);
+                }
                 PumpSync.PumpState.TemporaryBasal tempBasalData = medLinkMedtronicPumpPlugin.getTemporaryBasal();
                 if (tempBasalData != null && tempBasalData.getPlannedRemainingMinutes() > 0) {
                     medLinkMedtronicPumpPlugin.createTemporaryBasalData(tempBasalData.getDurationInMinutes(),

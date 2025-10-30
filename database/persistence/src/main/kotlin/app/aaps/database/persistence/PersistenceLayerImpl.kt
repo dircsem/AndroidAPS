@@ -27,6 +27,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.database.ValueWrapper
 import app.aaps.database.entities.TherapyEvent
@@ -114,7 +115,7 @@ class PersistenceLayerImpl @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val repository: AppRepository,
     private val dateUtil: DateUtil,
-    private val config: Config
+    private val config: Config,
 ) : PersistenceLayer {
 
     @Suppress("unused")
@@ -1757,8 +1758,16 @@ class PersistenceLayerImpl @Inject constructor(
     override fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int): NE =
         repository.collectNewEntriesSince(since, until, limit, offset).fromDb()
 
-
     override fun getLastTherapyEvent(eventType: TE.Type): TE? =
         repository.getLastTherapyRecordUpToNow(eventType.toDb()).blockingGet()?.fromDb()
+
+    override fun getLastNonTBRBolusTime(): PumpSync.PumpState.Bolus? {
+        val bolus = repository.getLastNonTBRBolusRecord()
+        if (bolus != null) {
+            return PumpSync.PumpState.Bolus(bolus.timestamp, bolus.amount)
+        } else {
+            return null
+        }
+    }
 
 }

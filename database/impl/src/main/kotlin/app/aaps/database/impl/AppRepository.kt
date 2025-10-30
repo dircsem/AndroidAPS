@@ -798,6 +798,10 @@ class AppRepository @Inject internal constructor(
         stepsCount = database.stepsCountDao.getNewEntriesSince(since, until, limit, offset),
     )
 
+    fun getLastNonTBRBolusRecord(): Bolus? =
+        database.bolusDao.getLastBolusRecordExcluding(Bolus.Type.TBR)
+
+
 }
 
 @Suppress("USELESS_CAST", "unused")

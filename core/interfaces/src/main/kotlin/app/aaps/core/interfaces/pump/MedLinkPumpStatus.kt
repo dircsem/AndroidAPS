@@ -44,6 +44,7 @@ interface MedLinkPumpStatus {
 enum class PumpRunningState(val status: String) {
     Running("normal"),
     Suspended("suspended"),
+    TempBasalSuspended("tempBasalSuspended"),
     Unknow("unknow");
 }
 

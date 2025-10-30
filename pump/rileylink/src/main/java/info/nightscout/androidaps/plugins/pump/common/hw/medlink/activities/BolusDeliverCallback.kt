@@ -7,8 +7,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
 import java.util.function.Supplier
 import java.util.stream.Stream
 

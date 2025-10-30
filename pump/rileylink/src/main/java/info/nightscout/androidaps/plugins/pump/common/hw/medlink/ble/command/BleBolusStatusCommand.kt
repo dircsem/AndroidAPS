@@ -28,26 +28,29 @@ class BleBolusStatusCommand(
         } else if (answer.contains("ready")) {
             pumpResponse.append(answer)
             val fullResponse = pumpResponse.toString()
-            val responseIterator = fullResponse.substring(fullResponse.indexOf("last")).split("\n").iterator()
-            status = MedLinkStatusParser.parseBolusInfo(
-                responseIterator, status
-            ) as MedLinkPartialBolus
-            if(bleComm.needToCheckOnHold && bleComm.onHoldCommandQueue.isNotEmpty()){
-                val onHoldCommand = bleComm.onHoldCommandQueue.first
-                val firstCommand = onHoldCommand.commandList.first()
-                aapsLogger.info(LTag.PUMPBTCOMM,"onholdcheck")
-                aapsLogger.info(LTag.PUMPBTCOMM,firstCommand.toString())
-                if(firstCommand.command.isSameCommand(MedLinkCommandType.BolusStatus) && firstCommand.parseFunction.isPresent &&
-                    firstCommand.parseFunction.get() is BolusProgressCallback){
-                    aapsLogger.info(LTag.PUMPBTCOMM,"bolusOnHold")
-                    val callback: BolusProgressCallback= firstCommand.parseFunction.get() as BolusProgressCallback
-                    if(callback.detailedBolusInfo.insulin == status.lastBolusAmount){
-                        aapsLogger.info(LTag.PUMPBTCOMM,"remove old bolus")
-                        bleComm.onHoldCommandQueue.removeFirst()
-                        bleComm.needToCheckOnHold = bleComm.onHoldCommandQueue.isNotEmpty()
-                    } else {
-                        aapsLogger.info(LTag.PUMPBTCOMM,"reprocess command")
-                        bleComm.reprocessOnHold()
+            if(fullResponse.contains("last")) {
+                val responseIterator = fullResponse.substring(fullResponse.indexOf("last")).split("\n").iterator()
+                status = MedLinkStatusParser.parseBolusInfo(
+                    responseIterator, status
+                ) as MedLinkPartialBolus
+                if (bleComm.needToCheckOnHold && bleComm.onHoldCommandQueue.isNotEmpty()) {
+                    val onHoldCommand = bleComm.onHoldCommandQueue.first
+                    val firstCommand = onHoldCommand.commandList.first()
+                    aapsLogger.info(LTag.PUMPBTCOMM, "onholdcheck")
+                    aapsLogger.info(LTag.PUMPBTCOMM, firstCommand.toString())
+                    if (firstCommand.command.isSameCommand(MedLinkCommandType.BolusStatus) && firstCommand.parseFunction.isPresent &&
+                        firstCommand.parseFunction.get() is BolusProgressCallback
+                    ) {
+                        aapsLogger.info(LTag.PUMPBTCOMM, "bolusOnHold")
+                        val callback: BolusProgressCallback = firstCommand.parseFunction.get() as BolusProgressCallback
+                        if (callback.detailedBolusInfo.insulin == status.lastBolusAmount) {
+                            aapsLogger.info(LTag.PUMPBTCOMM, "remove old bolus")
+                            bleComm.onHoldCommandQueue.removeFirst()
+                            bleComm.needToCheckOnHold = bleComm.onHoldCommandQueue.isNotEmpty()
+                        } else {
+                            aapsLogger.info(LTag.PUMPBTCOMM, "reprocess command")
+                            bleComm.reprocessOnHold()
+                        }
                     }
                 }
             }

@@ -8,6 +8,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.PumpRunningState
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.utils.pump.ByteUtil
+import app.aaps.core.utils.pump.ThreadUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusProgressCallback
@@ -24,13 +31,6 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkSer
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
-import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.pump.PumpRunningState
-import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
-import app.aaps.core.utils.pump.ByteUtil
-import app.aaps.core.utils.pump.ThreadUtil
 import org.apache.commons.lang3.StringUtils
 import java.nio.charset.StandardCharsets
 import java.util.*
@@ -537,6 +537,7 @@ class MedLinkBLE //extends RileyLinkBLE
         aapsLogger.info(LTag.PUMPBTCOMM, "" + bluetoothConnectionGatt)
         aapsLogger.info(LTag.PUMPBTCOMM, connectionStatus.name)
         aapsLogger.info(LTag.PUMPBTCOMM, "" + msg.btSleepTime)
+        aapsLogger.info(LTag.PUMPBTCOMM, "Command Added "+ msg.commands.map { f -> f.command })
         if ((//connectionStatus == ConnectionStatus.DISCONNECTING ||
                 connectionStatus != ConnectionStatus.CLOSED && connectionStatus != ConnectionStatus.CONNECTED) && System.currentTimeMillis() - connectionStatusChange > 60000) {
             disconnect()
@@ -1424,9 +1425,9 @@ class MedLinkBLE //extends RileyLinkBLE
                     nextCommand()
                     return
                 }
-                if (currentCommand != null) {
-                    aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
-                }
+                // if (currentCommand != null) {
+                //     aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
+                // }
                 //                String[] processed = processCharacteristics(new StringBuffer(previousLine), answer);
 //                previousLine = processed[1];
 //                answer = processed[0];
@@ -1434,6 +1435,7 @@ class MedLinkBLE //extends RileyLinkBLE
                 if (answer.trim { it <= ' ' }.isNotEmpty()) {
                     if (answer.contains("time to powerdown")) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "time to powerdown")
+
                         if (!answer.contains("5")) {
                             isConnected = true
                         }

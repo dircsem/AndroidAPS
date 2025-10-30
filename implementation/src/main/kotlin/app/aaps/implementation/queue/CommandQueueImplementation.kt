@@ -76,6 +76,7 @@ import app.aaps.implementation.queue.commands.MedLinkCommandBasalPercent
 import app.aaps.implementation.queue.commands.MedLinkCommandBolus
 import app.aaps.implementation.queue.commands.MedLinkCommandCancelTempBasal
 import app.aaps.implementation.queue.commands.MedLinkCommandSMBBolus
+import app.aaps.implementation.queue.commands.MedLinkCommandSetProfile
 import dagger.android.HasAndroidInjector
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -327,17 +328,17 @@ class CommandQueueImplementation @Inject constructor(
         if (pump is MedLinkPumpPluginBase) {
             addMedLinkBolus(detailedBolusInfo, callback, type)
         } else
-        if (detailedBolusInfo.bolusType == BS.Type.SMB) {
-            add(CommandSMBBolus(injector, detailedBolusInfo, callback))
-        } else {
-            add(CommandBolus(injector, detailedBolusInfo, callback, type, carbsRunnable))
-            if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
-                // not when the Bolus command is starting. The command closes the dialog upon completion).
-                showBolusProgressDialog(detailedBolusInfo)
-                // Notify Wear about upcoming bolus
-                rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
+            if (detailedBolusInfo.bolusType == BS.Type.SMB) {
+                add(CommandSMBBolus(injector, detailedBolusInfo, callback))
+            } else {
+                add(CommandBolus(injector, detailedBolusInfo, callback, type, carbsRunnable))
+                if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
+                    // not when the Bolus command is starting. The command closes the dialog upon completion).
+                    showBolusProgressDialog(detailedBolusInfo)
+                    // Notify Wear about upcoming bolus
+                    rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
+                }
             }
-        }
         notifyAboutNewCommand()
         return true
     }
@@ -478,7 +479,12 @@ class CommandQueueImplementation @Inject constructor(
         // remove all unfinished
         removeAll(CommandType.BASAL_PROFILE)
         // add new command to queue
-        add(CommandSetProfile(injector, profile, hasNsId, callback))
+        val pump = activePlugin.activePump
+        if (pump is MedLinkPumpPluginBase) {
+            add(MedLinkCommandSetProfile(injector, profile, hasNsId, callback))
+        } else {
+            add(CommandSetProfile(injector, profile, hasNsId, callback))
+        }
         notifyAboutNewCommand()
         return true
     }
@@ -716,4 +722,25 @@ class CommandQueueImplementation @Inject constructor(
             }
         }
     }
+
+    private fun addMedLinkProfile(
+        detailedBolusInfo: DetailedBolusInfo, callback: Callback?,
+        type: CommandType,
+    ) {
+        aapsLogger.info(LTag.EVENTS, "adding mdelinkbolus")
+        if (detailedBolusInfo.bolusType == BS.Type.SMB) {
+            aapsLogger.info(LTag.EVENTS, "bolusing smb")
+            add(MedLinkCommandSMBBolus(injector, detailedBolusInfo, callback))
+        } else {
+            add(MedLinkCommandBolus(injector, detailedBolusInfo, callback))
+            aapsLogger.info(LTag.EVENTS, "bolusing " + type)
+            if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
+                // not when the Bolus command is starting. The command closes the dialog upon completion).
+                showBolusProgressDialog(detailedBolusInfo)
+                // Notify Wear about upcoming bolus
+                rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
+            }
+        }
+    }
+
 }

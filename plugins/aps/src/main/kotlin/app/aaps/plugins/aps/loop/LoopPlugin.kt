@@ -44,6 +44,8 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.queue.Callback
@@ -110,7 +112,7 @@ class LoopPlugin @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val runningConfiguration: RunningConfiguration,
     private val uiInteraction: UiInteraction,
-    private val instantiator: Instantiator
+    private val instantiator: Instantiator,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.LOOP)
@@ -413,6 +415,22 @@ class LoopPlugin @Inject constructor(
                             waiting
                         rxBus.send(EventLoopUpdateGui())
                         fabricPrivacy.logCustom("APSRequest")
+                        if (pump is MedLinkPumpPluginBase) {
+                            aapsLogger.info(LTag.AUTOMATION, resultAfterConstraints.toString())
+                            applySMBRequest(resultAfterConstraints, object : Callback() {
+                                override fun run() {
+                                    // Callback is only called if a bolus was actually requested
+                                    if (result.enacted || result.success) {
+                                        lastRun.smbSetByPump = result
+                                        lastRun.lastSMBRequest = lastRun.lastAPSRun
+                                        lastRun.lastSMBEnact = dateUtil.now()
+                                    } else {
+                                        lastRun.tbrSetByPump = result
+                                        lastRun.lastTBRRequest = lastRun.lastAPSRun
+                                    }
+                                }
+                            })
+                        }
                         // TBR request must be applied first to prevent situation where
                         // SMB was executed and zero TBR afterwards failed
                         applyTBRRequest(resultAfterConstraints, profile, object : Callback() {
@@ -652,7 +670,12 @@ class LoopPlugin @Inject constructor(
             return
         }
         val pump = activePlugin.activePump
-        val lastBolusTime = persistenceLayer.getNewestBolus()?.timestamp ?: 0L
+        val lastBolusTime = if (pump is MedLinkPumpPluginBase) {
+            persistenceLayer.getLastNonTBRBolusTime()?.timestamp  ?: 0L
+        } else {
+            persistenceLayer.getNewestBolus()?.timestamp ?: 0L
+        }
+
         if (lastBolusTime != 0L && lastBolusTime + T.mins(preferences.get(IntKey.ApsMaxSmbFrequency).toLong()).msecs() > dateUtil.now()) {
             aapsLogger.debug(LTag.APS, "SMB requested but still in ${preferences.get(IntKey.ApsMaxSmbFrequency)} min interval")
             callback?.result(
@@ -668,6 +691,11 @@ class LoopPlugin @Inject constructor(
             return
         }
         if (pump.isSuspended()) {
+            aapsLogger.debug(LTag.APS, "applySMBRequest: " + rh.gs(app.aaps.core.ui.R.string.pumpsuspended))
+            callback?.result(instantiator.providePumpEnactResult().comment(app.aaps.core.ui.R.string.pumpsuspended).enacted(false).success(false))?.run()
+            return
+        }
+        if (pump.isSuspended() && pump !is MedLinkPumpPluginBase) {
             aapsLogger.debug(LTag.APS, "applySMBRequest: " + rh.gs(app.aaps.core.ui.R.string.pumpsuspended))
             callback?.result(instantiator.providePumpEnactResult().comment(app.aaps.core.ui.R.string.pumpsuspended).enacted(false).success(false))?.run()
             return
