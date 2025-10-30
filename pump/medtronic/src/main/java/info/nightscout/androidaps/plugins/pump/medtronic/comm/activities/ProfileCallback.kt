@@ -39,6 +39,9 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
                     medLinkMedtronicPumpPlugin.rh.gs(R.string.medtronic_cmd_basal_profile_could_not_be_set)
                 )
             }
+             if (profile != null){
+                 medLinkMedtronicPumpPlugin.initProfile(profile)
+             }
         } catch (e: JSONException) {
             e.printStackTrace()
             result = MedLinkStandardReturn(answer, null, MedLinkStandardReturn.ParsingError.BasalParsingError)
