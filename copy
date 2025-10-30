@@ -1,0 +1,3 @@
+cp pump/rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/MedLinkBLE.kt ../../AndroidAPS/pump/rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/MedLinkBLE.kt
+cp pump/rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/command/BleCommand.kt ../../AndroidAPS/pump/rileylink/src/main/java/info/nightscout/androidaps/plugins/pump/common/hw/medlink/ble/command/BleCommand.kt
+
