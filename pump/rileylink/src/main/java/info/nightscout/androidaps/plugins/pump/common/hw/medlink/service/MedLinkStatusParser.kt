@@ -1,13 +1,12 @@
 package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
 
 import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.BgSync
-import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.PumpRunningState
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.PumpStatus
 
 import java.lang.Exception
 import java.text.ParsePosition
@@ -45,7 +44,7 @@ class MedLinkStatusParser {
         private var bgUpdated = false
 
         @JvmStatic
-        fun parseStatus(pumpAnswer: Array<String>, pumpStatus: MedLinkPumpStatus, injector: HasAndroidInjector): MedLinkPumpStatus {
+        fun parseStatus(pumpAnswer: Array<String>, pumpStatus: MedLinkPumpStatus, injector: HasAndroidInjector, aapsLogger: AAPSLogger): MedLinkPumpStatus {
 
 //        13‑12‑2020 18:36  54%
 //        String ans = "1623436309132\n" +
@@ -79,7 +78,7 @@ class MedLinkStatusParser {
 //        pumpAnswer = ans.split("\n");
             return try {
                 val messageIterator =
-                    Arrays.stream(pumpAnswer).map { f: String -> f.lowercase() }.iterator()
+                    Arrays.stream(pumpAnswer).map{ f: String -> f.replace("\r","")}.map { f: String -> f.lowercase() }.iterator()
                 var message: String? = null
                 while (messageIterator.hasNext()) {
                     message = messageIterator.next().trim { it <= ' ' }
@@ -112,7 +111,7 @@ class MedLinkStatusParser {
                 val reservoirStatus = parseReservoir(messageIterator, batteryStatus)
 
 //        18:36:49.907 Reservoir:  66.12u
-                val basalStatus = parseCurrentBasal(messageIterator, reservoirStatus)
+                val basalStatus = parseCurrentBasal(messageIterator, reservoirStatus, aapsLogger)
                 //        18:36:49.982 Basal scheme: STD
 //        moveIterator(messageIterator);
 //        18:36:49.983 Basal: 0.600u/h
@@ -355,14 +354,17 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseCurrentBasal(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseCurrentBasal(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus, aapsLogger: AAPSLogger): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 var currentLine = messageIterator.next()
+                aapsLogger.info(LTag.EVENTS, "Current Basal Line "+currentLine)
                 //        18:36:49.983 Basal: 0.600u/h
+
                 if (currentLine.contains("basal scheme:")) {
                     val basalScheme = currentLine.split(":".toRegex()).toTypedArray()
                     pumpStatus.activeProfileName = basalScheme[1].trim { it <= ' ' }
                     currentLine = messageIterator.next()
+                    aapsLogger.info(LTag.EVENTS, "Current Basal Line "+currentLine)
                     if (currentLine.contains("basal:")) {
                         val reservoirPattern = Pattern.compile("\\d+\\.\\d+u/h")
                         val matcher = reservoirPattern.matcher(currentLine)
