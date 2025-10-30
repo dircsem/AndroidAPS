@@ -76,6 +76,7 @@ import app.aaps.pump.insight.InsightPlugin
 import app.aaps.pump.virtual.VirtualPumpPlugin
 import dagger.android.support.AndroidSupportInjection
 import info.nightscout.androidaps.plugins.pump.eopatch.EopatchPumpPlugin
+import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.MedtronicPumpPlugin
 import info.nightscout.pump.combov2.ComboV2Plugin
 import info.nightscout.pump.diaconn.DiaconnG8Plugin
@@ -109,6 +110,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @Inject lateinit var loopPlugin: LoopPlugin
     @Inject lateinit var insightPlugin: InsightPlugin
     @Inject lateinit var medtronicPumpPlugin: MedtronicPumpPlugin
+    @Inject lateinit var medlinkMedtronicPumpPlugin: MedLinkMedtronicPumpPlugin
     @Inject lateinit var nsClientPlugin: NSClientPlugin
     @Inject lateinit var nsClientV3Plugin: NSClientV3Plugin
     @Inject lateinit var openAPSAMAPlugin: OpenAPSAMAPlugin
@@ -228,6 +230,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             addPreferencesFromResourceIfEnabled(insightPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(combov2Plugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(medtronicPumpPlugin, rootKey, config.PUMPDRIVERS)
+            addPreferencesFromResourceIfEnabled(medlinkMedtronicPumpPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(diaconnG8Plugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(eopatchPumpPlugin, rootKey, config.PUMPDRIVERS)
             addPreferencesFromResourceIfEnabled(medtrumPlugin, rootKey, config.PUMPDRIVERS)
