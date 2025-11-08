@@ -9,6 +9,7 @@ import android.os.HandlerThread
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import app.aaps.core.data.time.T
 import dagger.android.support.DaggerFragment
 import info.nightscout.androidaps.plugins.pump.common.events.EventMedLinkDeviceStatusChange
@@ -18,7 +19,6 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkSer
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.dialog.MedLinkStatusActivity
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
-import info.nightscout.androidaps.plugins.pump.medtronic.databinding.MedlinkMedtronicFragmentBinding
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.BatteryType
 import info.nightscout.androidaps.plugins.pump.medtronic.dialog.MedLinkMedtronicHistoryActivity
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
@@ -45,6 +45,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.ui.dialogs.OKDialog
 import info.nightscout.androidaps.plugins.pump.common.extensions.stringResource
+import info.nightscout.androidaps.plugins.pump.medtronic.databinding.MedlinkMedtronicFragmentBinding
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.*
@@ -413,7 +414,13 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         }
 
         // isig
-        val pumpStatus = medtronicPumpStatus
+        if(!activePlugin.activeBgSource.isMedLink){
+            binding.medtronicIsigLayout.isVisible = false
+            binding.medtronicIsigView.isVisible = false
+            binding.medtronicNextCalibrationLayout.isVisible = false
+            binding.medtronicNextCalibrationView.isVisible = false
+
+        } else
         if (medtronicPumpStatus.isig != null && medtronicPumpStatus.isig == 0.0) {
             binding.medtronicIsig.text = rh.gs(info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R.string.sensor_lost)
             binding.medtronicIsig.setTextColor(Color.RED)

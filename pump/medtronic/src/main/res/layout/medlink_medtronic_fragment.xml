@@ -328,6 +328,7 @@
                 </LinearLayout>
 
                 <View
+                    android:id="@+id/medtronic_next_calibration_view"
                     android:layout_width="fill_parent"
                     android:layout_height="2dip"
                     android:layout_marginLeft="20dp"
@@ -337,6 +338,7 @@
                     android:background="@color/list_delimiter" />
 
                 <LinearLayout
+                    android:id="@+id/medtronic_next_calibration_layout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
@@ -374,6 +376,7 @@
 
 
                 <View
+                    android:id="@+id/medtronic_isig_view"
                     android:layout_width="fill_parent"
                     android:layout_height="2dip"
                     android:layout_marginLeft="20dp"
@@ -383,6 +386,7 @@
                     android:background="@color/list_delimiter" />
 
                 <LinearLayout
+                    android:id="@+id/medtronic_isig_layout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
