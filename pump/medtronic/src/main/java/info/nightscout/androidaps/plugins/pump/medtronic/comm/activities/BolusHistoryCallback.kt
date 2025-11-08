@@ -243,7 +243,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
     //23:39:18.053
     private fun processBolusData(answers: Iterator<String>, bolusKey: String): Double {
         val bolusData = answers.next()
-        if (bolusData.contains(bolusKey)) {
+        if (bolusData.contains(bolusKey) && bolusData.count{ it == '.' }==1) {
             val bolusPattern = Pattern.compile("\\d{1,2}\\.\\d{3}")
             val bolusMatcher = bolusPattern.matcher(bolusData)
             if (bolusMatcher.find()) {
