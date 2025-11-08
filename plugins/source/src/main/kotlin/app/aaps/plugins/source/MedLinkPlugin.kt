@@ -455,4 +455,6 @@ class MedLinkPlugin @Inject constructor(
     //             return result.inserted.size > 0
     //         }
     // }
+    override val isMedLink: Boolean
+        get() = true
 }

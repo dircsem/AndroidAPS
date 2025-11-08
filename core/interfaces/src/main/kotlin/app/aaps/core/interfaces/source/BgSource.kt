@@ -16,4 +16,7 @@ interface BgSource {
      */
     val sensorBatteryLevel: Int
         get() = -1
+
+    val isMedLink : Boolean
+        get() = false
 }

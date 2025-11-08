@@ -7,6 +7,7 @@ import java.util.Date
 
 interface MedLinkPumpStatus {
 
+    var readProfile: Long
     val lastBolusInfo: DetailedBolusInfo?
     var lastReadingStatus: BGReadingStatus
     var pumpDeviceState: PumpDeviceState

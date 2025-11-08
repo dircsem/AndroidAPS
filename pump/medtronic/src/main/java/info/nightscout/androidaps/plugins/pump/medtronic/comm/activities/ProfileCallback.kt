@@ -46,6 +46,7 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
             e.printStackTrace()
             result = MedLinkStandardReturn(answer, null, MedLinkStandardReturn.ParsingError.BasalParsingError)
         }
+        medLinkMedtronicPumpPlugin.lastProfileRead = System.currentTimeMillis()
         //        errorMessage = new ArrayList<>();
 //        aapsLogger.info(LTag.PUMP,"apply command");
 //        aapsLogger.info(LTag.PUMP,resp.get().collect(Collectors.joining()));

@@ -324,6 +324,8 @@ class MedLinkStatusParser {
                         val totalInsulinToday = matcher.group()
                         pumpStatus.yesterdayTotalUnits = totalInsulinToday.substring(0, totalInsulinToday.length - 1).toDouble()
                     }
+                } else {
+                    pumpStatus.readProfile = System.currentTimeMillis()
                 }
             }
             return pumpStatus

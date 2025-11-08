@@ -226,7 +226,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var pumpTimeDelta = 0L
     private var lastDetailedBolusInfo: DetailedBolusInfo? = null
     private var late1Min = false
-    private var lastProfileRead: Long = 0
+    var lastProfileRead: Long = 0
     override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
         return absoluteRate // TODO("Evaluate")
     }
@@ -983,6 +983,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 }
             }
         }
+        if (pumpStatusData.readProfile > 0 && System.currentTimeMillis() - pumpStatusData.readProfile > 240000 && profile == null) {
+            aapsLogger.info(LTag.PUMP,"reading profile")
+            readPumpProfile()
+        }
         if (statusRefreshMap.isEmpty() || System.currentTimeMillis() - lastTryToConnect >= 600000) {
             val additionalMillis = if (statusRefreshMap.isEmpty()) {
                 300000L
@@ -1381,6 +1385,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     private fun readPumpProfile() {
+        pumpStatusData.readProfile = 0
         lastProfileRead = System.currentTimeMillis()
         aapsLogger.info(LTag.PUMPBTCOMM, "get basal profiles")
         val basalCallback: Function<Supplier<Stream<String>>,
@@ -1605,15 +1610,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             aapsLogger.info(LTag.EVENTS, "extendbasaltreatment")
             extendBasalTreatment(durationInMinutes, callback)
         } else {
-            if (absoluteRate == medLinkPumpStatus.currentBasal ||
-                Math.abs(absoluteRate - medLinkPumpStatus.currentBasal) < pumpDescription.bolusStep
-            ) {
-                aapsLogger.info(LTag.EVENTS, "clearing temp basal")
-                aapsLogger.info(LTag.EVENTS, "" + baseBasalRate)
-                aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
-                aapsLogger.info(LTag.EVENTS, "" + pumpDescription.bolusStep)
-                clearTempBasal()
-            } else if (absoluteRate < medLinkPumpStatus.currentBasal) {
+            if (absoluteRate < medLinkPumpStatus.currentBasal) {
                 aapsLogger.info(LTag.EVENTS, "suspending")
                 aapsLogger.info(LTag.EVENTS, "" + baseBasalRate)
                 aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
@@ -1624,7 +1621,15 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     absoluteRate,
                     PumpTempBasalType.Absolute
                 )!!
-            } else {
+            } else if (absoluteRate == medLinkPumpStatus.currentBasal ||
+                Math.abs(absoluteRate - medLinkPumpStatus.currentBasal) < pumpDescription.bolusStep
+            ) {
+                aapsLogger.info(LTag.EVENTS, "clearing temp basal")
+                aapsLogger.info(LTag.EVENTS, "" + baseBasalRate)
+                aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
+                aapsLogger.info(LTag.EVENTS, "" + pumpDescription.bolusStep)
+                clearTempBasal()
+            } else  {
                 aapsLogger.info(LTag.EVENTS, "bolusingbasal")
                 aapsLogger.info(LTag.EVENTS, "" + baseBasalRate)
                 aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
@@ -2548,12 +2553,18 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     override fun extendBasalTreatment(duration: Int, callback: Function1<PumpEnactResult, *>): PumpEnactResult {
         //TODO implement
         val result = instantiator.providePumpEnactResult().success(true).enacted(true).comment(rh.gs(app.aaps.core.ui.R.string.let_temp_basal_run))
+        createTemporaryBasalData(duration,0.0);
         val reactivateOper = tempBasalMicrobolusOperations.operations.stream().filter { f: TempBasalMicroBolusPair ->
             f.operationType ==
                 TempBasalMicroBolusPair.OperationType.REACTIVATE
         }.findFirst()
         if (reactivateOper.isPresent) {
             reactivateOper.get().setReleaseTime(duration)
+            if(medLinkPumpStatus.runningTBR!=null) {
+                medLinkPumpStatus.runningTBR?.durationInSeconds = duration * 60
+                pumpSyncStorage.pumpSyncStorageTBR.add(medLinkPumpStatus.runningTBR!!)
+                pumpSyncStorage.saveStorageTBR()
+            }
             callback.invoke(result)
         }
         return result
@@ -2998,7 +3009,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 firstOperation.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND
             ) {
                 PumpRunningState.Running
-            } else if (temporaryBasal?.rate!! != 100.0) {
+            } else if (temporaryBasal?.rate!! >= 100.0) {
+                PumpRunningState.Running
+            } else if (temporaryBasal?.rate!! < 100.0) {
                 PumpRunningState.TempBasalSuspended
             } else {
                 PumpRunningState.Suspended
@@ -3574,9 +3587,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             readBolusHistory()
         }
         lastReservoirLevel = pumpStatusData.reservoirRemainingUnits
-
-        //        pumpSync.
-        //        pumpSync.createOrUpdateTotalDailyDose()
     }
 
     var previousSensorUpTime: Int = -1
@@ -3751,6 +3761,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         get() {
             if (!tempBasalMicrobolusOperations.operations.isEmpty()) {
 
+                val rate = if (tempBasalMicrobolusOperations.absoluteRate == 0.0) {
+                        0.0
+                    } else {
+                        baseBasalRate
+                    }
+
                 // tempBasal.date(tempBasalMicrobolusOperations.operations.first.releaseTime.toDate().time)
                 // tempBasal.duration(
                 //     tempBasalMicrobolusOperations.durationInMinutes
@@ -3765,7 +3781,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     timestamp = tempBasalMicrobolusOperations.operations.first.releaseTime.toDate().time,
                     duration = tempBasalMicrobolusOperations.durationInMinutes * 60 * 1000L,
                     isAbsolute = false,
-                    rate = baseBasalRate,
+                    rate = rate,
                     type = PumpSync.TemporaryBasalType.NORMAL,
                     desiredRate = tempBasalMicrobolusOperations.absoluteRate,
                     id = 0L,

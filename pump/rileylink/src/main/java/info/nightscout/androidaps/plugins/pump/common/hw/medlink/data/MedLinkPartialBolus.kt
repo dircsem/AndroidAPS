@@ -13,6 +13,8 @@ import java.util.Date
 
 open class MedLinkPartialBolus(pumpType: PumpType?) : PumpStatus(pumpType!!), MedLinkPumpStatus {
 
+    override var readProfile: Long = 0
+
     override var lastBolusInfo: DetailedBolusInfo?= DetailedBolusInfo()
         get() {
             val result = DetailedBolusInfo()
