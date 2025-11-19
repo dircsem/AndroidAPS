@@ -116,6 +116,7 @@ class PumpSyncStorage @Inject constructor(
 
     fun addBolusWithTempId(detailedBolusInfo: DetailedBolusInfo, writeToInternalHistory: Boolean, creator: PumpSyncEntriesCreator): Boolean {
         val temporaryId = creator.generateTempId(detailedBolusInfo.timestamp)
+
         val result = pumpSync.addBolusWithTempId(
             detailedBolusInfo.timestamp,
             detailedBolusInfo.insulin,
@@ -124,7 +125,10 @@ class PumpSyncStorage @Inject constructor(
             creator.model(),
             creator.serialNumber()
         )
-
+        if (detailedBolusInfo.carbs>0){
+            val carbsTimestamp = detailedBolusInfo.carbsTimestamp?: temporaryId
+            pumpSync.syncCarbsWithTimestamp(carbsTimestamp, detailedBolusInfo.carbs, detailedBolusInfo.bolusPumpId, detailedBolusInfo.pumpType!!, detailedBolusInfo.pumpSerial!!)
+        }
         aapsLogger.debug(
             LTag.PUMP, "addBolusWithTempId [date=${detailedBolusInfo.timestamp}, temporaryId=$temporaryId, " +
                 "insulin=${detailedBolusInfo.insulin}, type=${detailedBolusInfo.bolusType}, pumpSerial=${creator.serialNumber()}] - " +

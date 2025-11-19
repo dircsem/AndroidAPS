@@ -19,7 +19,7 @@ import javax.inject.Inject
 class MedLinkCommandBolus(
     injector: HasAndroidInjector,
     private val detailedBolusInfo: DetailedBolusInfo,
-    override val callback: Callback?,
+    override val callback: Callback?, val carbsRunnable: Runnable
 ) : Command {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -43,6 +43,7 @@ class MedLinkCommandBolus(
                 // rxBus.send(EventDismissBolusProgressIfRunning(r))
                 aapsLogger.info(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
                 callback?.result(r)?.run()
+                carbsRunnable.run()
                 Unit
         }
 

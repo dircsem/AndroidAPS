@@ -326,7 +326,8 @@ class CommandQueueImplementation @Inject constructor(
 
         val pump = activePlugin.activePump
         if (pump is MedLinkPumpPluginBase) {
-            addMedLinkBolus(detailedBolusInfo, callback, type)
+            addMedLinkBolus(detailedBolusInfo, callback, type, carbsRunnable)
+            carbsRunnable.run()
         } else
             if (detailedBolusInfo.bolusType == BS.Type.SMB) {
                 add(CommandSMBBolus(injector, detailedBolusInfo, callback))
@@ -705,14 +706,14 @@ class CommandQueueImplementation @Inject constructor(
 
     private fun addMedLinkBolus(
         detailedBolusInfo: DetailedBolusInfo, callback: Callback?,
-        type: CommandType,
+        type: CommandType, carbsRunnable: Runnable
     ) {
         aapsLogger.info(LTag.EVENTS, "adding mdelinkbolus")
         if (detailedBolusInfo.bolusType == BS.Type.SMB) {
             aapsLogger.info(LTag.EVENTS, "bolusing smb")
             add(MedLinkCommandSMBBolus(injector, detailedBolusInfo, callback))
         } else {
-            add(MedLinkCommandBolus(injector, detailedBolusInfo, callback))
+            add(MedLinkCommandBolus(injector, detailedBolusInfo, callback, carbsRunnable))
             aapsLogger.info(LTag.EVENTS, "bolusing " + type)
             if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
                 // not when the Bolus command is starting. The command closes the dialog upon completion).
@@ -723,24 +724,24 @@ class CommandQueueImplementation @Inject constructor(
         }
     }
 
-    private fun addMedLinkProfile(
-        detailedBolusInfo: DetailedBolusInfo, callback: Callback?,
-        type: CommandType,
-    ) {
-        aapsLogger.info(LTag.EVENTS, "adding mdelinkbolus")
-        if (detailedBolusInfo.bolusType == BS.Type.SMB) {
-            aapsLogger.info(LTag.EVENTS, "bolusing smb")
-            add(MedLinkCommandSMBBolus(injector, detailedBolusInfo, callback))
-        } else {
-            add(MedLinkCommandBolus(injector, detailedBolusInfo, callback))
-            aapsLogger.info(LTag.EVENTS, "bolusing " + type)
-            if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
-                // not when the Bolus command is starting. The command closes the dialog upon completion).
-                showBolusProgressDialog(detailedBolusInfo)
-                // Notify Wear about upcoming bolus
-                rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
-            }
-        }
-    }
+    // private fun addMedLinkProfile(
+    //     detailedBolusInfo: DetailedBolusInfo, callback: Callback?,
+    //     type: CommandType,
+    // ) {
+    //     aapsLogger.info(LTag.EVENTS, "adding mdelinkbolus")
+    //     if (detailedBolusInfo.bolusType == BS.Type.SMB) {
+    //         aapsLogger.info(LTag.EVENTS, "bolusing smb")
+    //         add(MedLinkCommandSMBBolus(injector, detailedBolusInfo, callback))
+    //     } else {
+    //         add(MedLinkCommandBolus(injector, detailedBolusInfo, callback))
+    //         aapsLogger.info(LTag.EVENTS, "bolusing " + type)
+    //         if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
+    //             // not when the Bolus command is starting. The command closes the dialog upon completion).
+    //             showBolusProgressDialog(detailedBolusInfo)
+    //             // Notify Wear about upcoming bolus
+    //             rxBus.send(EventMobileToWear(EventData.BolusProgress(percent = 0, status = rh.gs(app.aaps.core.ui.R.string.goingtodeliver, detailedBolusInfo.insulin))))
+    //         }
+    //     }
+    // }
 
 }

@@ -282,6 +282,8 @@ class MedLinkStatusParser {
                         pumpStatus.pumpRunningState = PumpRunningState.Running
                     } else if (status.contains("suspend")) {
                         pumpStatus.pumpRunningState = PumpRunningState.Suspended
+                    } else {
+                        pumpStatus.pumpRunningState = PumpRunningState.Unknow
                     }
                     break
                 } else if (currentLine.contains("eomeom") || currentLine.contains("ready")) {
