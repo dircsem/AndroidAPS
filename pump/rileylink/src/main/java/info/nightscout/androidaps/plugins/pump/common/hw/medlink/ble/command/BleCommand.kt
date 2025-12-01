@@ -196,6 +196,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
 
     protected fun applyResponse(pumpResp: String, currentCommand: CommandExecutor<*>?, bleComm: MedLinkBLE) {
         val command = currentCommand!!.getCurrentCommand()
+        currentCommand.applyCommand()
         val function: Function<Supplier<Stream<String>>, out MedLinkStandardReturn<*>?>? = currentCommand.nextFunction()
         aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
 
@@ -204,6 +205,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
                 aapsLogger.info(LTag.PUMPBTCOMM, "posting command")
                 val sup = Supplier { Arrays.stream(pumpResp.split("\n".toRegex()).toTypedArray()) } //.filter(f -> f != "\n");
                 if (function != null) {
+                    currentCommand!!.applyCommand()
                     // val lastResult: MedLinkStandardReturn<Stream<String>>? = null
                     if (command == MedLinkCommandType.IsigHistory) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "posting isig")

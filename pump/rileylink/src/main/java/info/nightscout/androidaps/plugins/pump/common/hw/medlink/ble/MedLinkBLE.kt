@@ -455,6 +455,9 @@ class MedLinkBLE //extends RileyLinkBLE
                             commandQueueBusy = false
                             //                                break;
                         } else {
+                            if(isConnected && commands[0].command == MedLinkCommandType.Connect){
+                                removeFirstCommand(true)
+                            }
                             needRetry = false
                             aapsLogger.info(LTag.PUMPBTCOMM, String.format("writing <%s> to characteristic <%s>", commands[0].command.code, chara.uuid))
                         }
@@ -501,6 +504,9 @@ class MedLinkBLE //extends RileyLinkBLE
                             commandQueueBusy = false
                             //                                break;
                         } else {
+                            if(isConnected && commands[0].command == MedLinkCommandType.Connect){
+                                removeFirstCommand(true)
+                            }
                             needRetry = false
                             aapsLogger.info(
                                 LTag.PUMPBTCOMM,

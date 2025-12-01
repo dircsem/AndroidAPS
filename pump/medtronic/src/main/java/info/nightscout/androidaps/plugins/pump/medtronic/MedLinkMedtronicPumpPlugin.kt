@@ -253,7 +253,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             // context.startActivity(i)
             return
         }
-        if ((currentPumpStatus === PumpRunningState.Unknow || PumpRunningState.Suspended != medLinkPumpStatus.pumpRunningState || medLinkPumpStatus.pumpRunningState == PumpRunningState.TempBasalSuspended)) {
+        if ((PumpRunningState.Suspended != medLinkPumpStatus.pumpRunningState || medLinkPumpStatus.pumpRunningState == PumpRunningState.TempBasalSuspended)) {
             val function = ChangeStatusCallback(
                 aapsLogger,
                 ChangeStatusCallback.OperationType.STOP, this
@@ -1605,7 +1605,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             instantiator.providePumpEnactResult().enacted(true).success(true)
         } else if (temporaryBasal != null && temporaryBasal!!.desiredRate == absoluteRate && absoluteRate == 0.0) {
             aapsLogger.info(LTag.EVENTS, "extendbasaltreatment")
-            if (medLinkPumpStatus.pumpRunningState === PumpRunningState.Running) {
+            if (medLinkPumpStatus.pumpRunningState === PumpRunningState.Running || medLinkPumpStatus.pumpRunningState === PumpRunningState.Unknow) {
                 stopPump(object : Callback() {
                     override fun run() {
                         aapsLogger.info(LTag.PUMP, "Stopping unstopped pump")

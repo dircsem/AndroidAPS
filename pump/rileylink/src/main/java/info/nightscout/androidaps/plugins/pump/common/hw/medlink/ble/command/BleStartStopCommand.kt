@@ -15,7 +15,7 @@ open class BleStartStopCommand(
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
         aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
-        if (answer.contains("set pump state tim")) {
+        if (answer.contains("set pump state tim") || answer.contains("time to powerdown")) {
             bleComm.currentCommand?.clearExecutedCommand()
             bleComm.retryCommand()
         } else {

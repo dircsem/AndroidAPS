@@ -7,10 +7,12 @@ import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLink
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.queue.Callback
 
-class BleStartCommand(aapsLogger: AAPSLogger,
-                      medLinkServiceData: MedLinkServiceData,
-                      medLinkPumpPluginAbstract: MedLinkPumpPluginBase
+class BleStartCommand(
+    aapsLogger: AAPSLogger,
+    medLinkServiceData: MedLinkServiceData,
+    val medLinkPumpPluginAbstract: MedLinkPumpPluginBase,
 ) :
     BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
@@ -23,23 +25,32 @@ class BleStartCommand(aapsLogger: AAPSLogger,
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
         aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
         when {
-            answer.contains("pump is bolusing st")  ||
-            answer.contains("pump normal state")  -> {
+            answer.contains("pump is bolusing st") ||
+                answer.contains("pump normal state") -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "status command")
                 aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
+
                 pumpResponse.append(answer)
-                if(bleComm.currentCommand?.nextCommand()==MedLinkCommandType.NoCommand) {
+                if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.NoCommand || bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
                     applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
+                    if(bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump){
+                        bleComm.currentCommand?.commandExecuted()
+                    }
                 }
+                medLinkPumpPluginAbstract.cancelTempBasal(true, object : Callback() {
+                    override fun run() {
+                        aapsLogger.info(LTag.PUMPBTCOMM, "tbr cancelled")
+                    }
+                })
                 pumpResponse = StringBuffer()
                 bleComm.completedCommand(true)
             }
 
-            answer.contains("pump suspend state") -> {
+            answer.contains("pump suspend state")    -> {
                 bleComm.completedCommand()
             }
 
-            else                                  -> {
+            else                                     -> {
                 super.characteristicChanged(answer, bleComm, lastCharacteristic)
             }
         }

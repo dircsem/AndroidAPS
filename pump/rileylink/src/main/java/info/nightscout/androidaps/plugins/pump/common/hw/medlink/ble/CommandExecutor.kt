@@ -109,8 +109,7 @@ abstract class CommandExecutor<B> protected constructor(
     open fun hasFinished(): Boolean {
         aapsLogger.info(LTag.PUMPBTCOMM, commandList.joinToString())
         aapsLogger.info(LTag.PUMPBTCOMM, "" + commandPosition)
-        return (commandPosition >= commandList.size || nextCommand() == MedLinkCommandType.NoCommand
-            )
+        return (applied&&(commandPosition >= commandList.size || nextCommand() == MedLinkCommandType.NoCommand))
     }
 
     fun commandExecuted() {
@@ -127,6 +126,7 @@ abstract class CommandExecutor<B> protected constructor(
         commandPosition = 0
         functionPosition = 0
         isConfirmed = false
+        applied = false
     }
 
     override fun toString(): String {
@@ -196,5 +196,11 @@ abstract class CommandExecutor<B> protected constructor(
 
     fun commandFailed() {
 
+    }
+
+    private var applied = false
+    fun hasApplied() = applied
+    fun applyCommand() {
+        applied = true
     }
 }

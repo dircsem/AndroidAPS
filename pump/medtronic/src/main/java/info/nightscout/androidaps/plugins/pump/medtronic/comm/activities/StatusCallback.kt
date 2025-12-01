@@ -56,8 +56,7 @@ class StatusCallback(
             medLinkPumpStatus.lastReadingStatus = BGReadingStatus.FAILED
         }
         medLinkPumpPlugin.sendPumpUpdateEvent()
-        if (f.getAnswer().anyMatch { m -> m.contains("eomeomeom") || m.contains("ready") }) {
-        } else if (messages[messages.size - 1].lowercase(Locale.getDefault()) == "ready") {
+        if (f.getAnswer().anyMatch { m -> m.contains("eomeomeom") || m.contains("ready") } || messages[messages.size - 1].lowercase(Locale.getDefault()) == "ready") {
             medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active
         } else {
             aapsLogger.debug("Apply last message" + messages[messages.size - 1])

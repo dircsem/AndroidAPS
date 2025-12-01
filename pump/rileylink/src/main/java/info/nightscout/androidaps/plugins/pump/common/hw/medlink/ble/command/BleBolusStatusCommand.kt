@@ -23,7 +23,7 @@ class BleBolusStatusCommand(
 
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
-        if (answer.contains("time to powerdown 5")) {
+        if(bleComm.currentCommand!!.hasFinished() || answer.contains("time to powerdown 5")) {
             bleComm.nextCommand()
         } else if (answer.contains("ready")) {
             pumpResponse.append(answer)
