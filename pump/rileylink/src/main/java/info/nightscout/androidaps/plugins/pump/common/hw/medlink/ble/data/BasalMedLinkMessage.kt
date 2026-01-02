@@ -23,7 +23,7 @@ class BasalMedLinkMessage<B>(
                                     btSleepSize, bleCommand,
                                     CommandPriority.NORMAL) {
     init {
-        this.supplementalCommands = mutableListOf(
+        this.supplementaryCommands = mutableListOf(
             CommandStructure(MedLinkCommandType.BaseProfile, Optional.of(profileCallback), Optional.of(bleCommand), CommandPriority.NORMAL)
         )
     }

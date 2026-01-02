@@ -107,8 +107,6 @@ abstract class CommandExecutor<B> protected constructor(
     }
 
     open fun hasFinished(): Boolean {
-        aapsLogger.info(LTag.PUMPBTCOMM, commandList.joinToString())
-        aapsLogger.info(LTag.PUMPBTCOMM, "" + commandPosition)
         return (applied&&(commandPosition >= commandList.size || nextCommand() == MedLinkCommandType.NoCommand))
     }
 

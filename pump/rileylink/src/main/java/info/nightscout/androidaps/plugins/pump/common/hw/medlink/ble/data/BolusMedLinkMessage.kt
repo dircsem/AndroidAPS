@@ -26,7 +26,7 @@ class BolusMedLinkMessage(
                              if(bolusAmount>=10) " $bolusAmount" else "  ${(bolusAmount * 100.0).roundToInt()/100.0}") {
 
     init {
-        bolusProgressMessage?.let { supplementalCommands.addAll(it.commands) }
+        bolusProgressMessage?.let { supplementaryCommands.addAll(it.commands) }
     }
 
     companion object {

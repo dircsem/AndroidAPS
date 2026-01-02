@@ -30,13 +30,13 @@ class BleStopCommand(aapsLogger: AAPSLogger,
                 pumpResponse.append(answer)
                 super.applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
                 pumpResponse = StringBuffer()
-                bleComm.completedCommand(true)
+                bleComm.completedCommand(true, waitNextIteration = true)
             }
             answer.contains("pump normal state")   -> {
                 bleComm.completedCommand()
             }
             answer.contains("pump bolusing state") -> {
-                SystemClock.sleep(5000)
+                SystemClock.sleep(15000)
                 bleComm.currentCommand?.clearExecutedCommand()
                 bleComm.retryCommand()
             }

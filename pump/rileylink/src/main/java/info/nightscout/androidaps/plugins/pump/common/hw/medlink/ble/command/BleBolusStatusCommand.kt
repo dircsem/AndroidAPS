@@ -60,7 +60,6 @@ class BleBolusStatusCommand(
                 status.bolusDeliveredAmount!! < status.lastBolusAmount!!
             ) {
                 bleComm.clearExecutedCommand()
-                bleComm.postponeCurrentCommand()
             } else {
                 applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
                 bleComm.completedCommand()

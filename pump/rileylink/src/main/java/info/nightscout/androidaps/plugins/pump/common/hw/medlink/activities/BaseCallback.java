@@ -11,17 +11,6 @@ public abstract class BaseCallback<B,A> implements Function<A, MedLinkStandardRe
     public BaseCallback(){
     }
 
-    //    protected List<Function<String, B>> functions = new ArrayList<>();
-
-//    public void addResult(Function<String, B> toBeAdded ) {
-//        functions.add(toBeAdded);
-//    }
-
-//    public boolean hasFinished() {
-//        return false;
-//    }
-
-
     @Override public MedLinkStandardReturn<B> apply(A streamSupplier) {
 
         return null;

@@ -22,10 +22,11 @@ import java.util.stream.Stream
  */
 open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLinkServiceData: MedLinkServiceData) {
 
+    private var lastInvalidCommand = 0L
     private val handler: Handler? = null
     protected var pumpResponse = StringBuffer()
     open fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
-        // aapsLogger.info(LTag.PUMPBTCOMM, answer)
+        aapsLogger.info(LTag.PUMPBTCOMM, answer)
         // aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
         if (answer.trim { it <= ' ' }.isEmpty()) {
             pumpResponse = StringBuffer()
@@ -42,18 +43,26 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             pumpResponse = StringBuffer()
         }
         pumpResponse.append(answer)
-        if (answer.startsWith("invalid command")) {
+        if (answer.contains("invalid command")) {
+
             bleComm.setConfirmedCommand(false)
             if (currentCommand != null && currentCommand.getCurrentCommand() != MedLinkCommandType.NoCommand) {
                 aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.getCurrentCommand().code!!)
-                if (currentCommand.isInitialized) {
+                if (currentCommand.hasFinished() || System.currentTimeMillis() - lastInvalidCommand < 20000) {
+                    bleComm.removeFirstCommand(false)
+                    lastInvalidCommand = 0L
+                } else
+                // if (currentCommand.isInitialized)
+                {
                     currentCommand.clearExecutedCommand()
+                    lastInvalidCommand = System.currentTimeMillis()
                 }
                 pumpResponse = StringBuffer()
                 //                if ((!bleComm.isBolus(currentCommand.getCurrentCommand()))) {
 //                    bleComm.retryCommand();
 //                }
             }
+
         }
         if (answer.trim { it <= ' ' }.contains("%") && lastCharacteristic.trim { it <= ' ' }.contains("med-link battery")) {
             val batteryPattern = Pattern.compile("\\d+")
@@ -78,20 +87,24 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
                 aapsLogger.info(LTag.PUMPBTCOMM, "" + currentCommand.getCurrentCommand())
             }
             if (currentCommand != null && currentCommand.getCurrentCommand() != MedLinkCommandType.NoCommand) {
-                if (partialBolus(pumpResponse.toString())) {
-                    bleComm.reExecuteCommand(currentCommand)
-                } else if (!bleComm.isCommandConfirmed || currentCommand is ContinuousCommandExecutor<*>
-                    || currentCommand.firstCommand() === MedLinkCommandType.BolusStatus
-                ) {
-                    bleComm.retryCommand()
-                    //                } else if (bleComm.partialCommand()) {
+                val fullAnswer = (lastCharacteristic + answer).trim { it <= ' ' }
+                if (currentCommand.getCurrentCommand() == MedLinkCommandType.Connect && (fullAnswer.contains("20s") || fullAnswer.contains("15s") || fullAnswer.contains("10s"))) {
+                    bleComm.completedCommand()
+                } else
+                    if (partialBolus(pumpResponse.toString())) {
+                        bleComm.reExecuteCommand(currentCommand)
+                    } else if (!bleComm.isCommandConfirmed || currentCommand is ContinuousCommandExecutor<*>
+                        || currentCommand.firstCommand() === MedLinkCommandType.BolusStatus
+                    ) {
+                        bleComm.retryCommand()
+                        //                } else if (bleComm.partialCommand()) {
 //                    applyResponse(pumpResponse.toString(), currentCommand, bleComm);
 //                    bleComm.nextCommand();
 //                    return;
-                } else {
-                    bleComm.removeFirstCommand(true)
-                    bleComm.nextCommand()
-                }
+                    } else {
+                        bleComm.removeFirstCommand(true)
+                        bleComm.nextCommand()
+                    }
             } else {
                 bleComm.nextCommand()
             }
@@ -145,7 +158,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
             //            medLinkServiceData
 //            medtronicUtil.dismissNotification(MedtronicNotificationType.PumpUnreachable, rxBus);
-            if (currentCommand != null && currentCommand.nextFunction() != null && !(answer + lastCharacteristic).contains(
+            if (currentCommand?.nextFunction() != null && !(answer + lastCharacteristic).contains(
                     "invalid"
                 ) && currentCommand.isConfirmed
             ) {
@@ -162,8 +175,12 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             aapsLogger.info(LTag.PUMPBTCOMM, "completing command")
             aapsLogger.info(LTag.PUMPBTCOMM, answer)
             if (currentCommand != null && !currentCommand.contains(MedLinkCommandType.BolusStatus)) {
-                SystemClock.sleep(700)
-                bleComm.completedCommand()
+                if(bleComm.isBolus(currentCommand.firstCommand())){
+                    bleComm.completedCommand(true, false)
+                }else {
+                    SystemClock.sleep(700)
+                    bleComm.completedCommand()
+                }
             }
             pumpResponse = StringBuffer()
             medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
@@ -205,7 +222,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
                 aapsLogger.info(LTag.PUMPBTCOMM, "posting command")
                 val sup = Supplier { Arrays.stream(pumpResp.split("\n".toRegex()).toTypedArray()) } //.filter(f -> f != "\n");
                 if (function != null) {
-                    currentCommand!!.applyCommand()
+                    currentCommand.applyCommand()
                     // val lastResult: MedLinkStandardReturn<Stream<String>>? = null
                     if (command == MedLinkCommandType.IsigHistory) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "posting isig")

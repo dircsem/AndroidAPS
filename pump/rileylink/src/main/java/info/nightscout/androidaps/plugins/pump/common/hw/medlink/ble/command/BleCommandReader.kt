@@ -28,6 +28,7 @@ open class BleCommandReader(
         }
 
         if ((lastCharacteristic + answer).contains("medtronic")) {
+            bleComm.setIsConnected(false)
             if ((lastCharacteristic + answer).contains("veo")) {
                 //TODO need to get better model information
                 medLinkPumpPluginAbstract?.setMedtronicPumpModel("754")

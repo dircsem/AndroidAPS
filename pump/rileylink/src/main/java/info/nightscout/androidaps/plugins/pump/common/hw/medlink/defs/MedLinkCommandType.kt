@@ -33,7 +33,8 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
     BolusStatus("M"),
     SMBBolus("X", true),
     TBRBolus("X", true),
-    PreviousBolusHistory("G", listCommand = true);
+    PreviousBolusHistory("G", listCommand = true),
+    RemoveStopCommand("");
 
     @JvmField val code: String?
     var config: Iterator<String>? = null
@@ -85,7 +86,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
         return when {
             (this == BolusAmount) -> {
                 super.toString() +
-                    "bolusAmount: $insulinAmount"
+                    " bolusAmount: $insulinAmount"
             }
             (this == CalibrateFrequencyArgument) -> {
                 super.toString() +
