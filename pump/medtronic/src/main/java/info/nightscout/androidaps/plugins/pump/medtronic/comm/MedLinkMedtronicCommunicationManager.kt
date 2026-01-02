@@ -517,6 +517,15 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
         return false
     }
 
+    fun <B, C> removeStopCommand(pumpMessage: MedLinkPumpMessage<B, C>): Boolean {
+        try {
+            runCommandWithArgs(pumpMessage)
+        } catch (e: RileyLinkCommunicationException) {
+            e.printStackTrace()
+        }
+        return false
+    }
+
     private fun addPostProcessCommand(
         callback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<*>>?,
     ): Function<Supplier<Stream<String>>, MedLinkStandardReturn<*>>? {

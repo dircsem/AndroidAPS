@@ -63,19 +63,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
         when (pumpMessage.firstCommand()) {
             MedLinkCommandType.BolusStatus                                                                                                                                            -> {
                 run { communicationManager.setCommand(pumpMessage) }
-                run {
-//                pumpMessage.getBaseCallback().andThen(f -> {
-//                    medtronicPumpStatus.getBatteryLevel();
-//                    BatteryStatusDTO batteryStatus = new BatteryStatusDTO();
-//                    batteryStatus.setBatteryStatusType(
-//                            BatteryStatusDTO.BatteryStatusType.Unknown);
-//                    batteryStatus.setVoltage(medtronicPumpStatus.getBatteryVoltage());
-//                    medtronicPumpStatus.setBatteryLevel(
-//                            batteryStatus.getCalculatedPercent(medtronicPumpStatus.getBatteryType()));
-//                    return f;
-//                });
-//                     communicationManager.getStatusData(pumpMessage)
-                }
+
             }
 
             MedLinkCommandType.GetState                                                                                                                                               -> {
@@ -96,6 +84,10 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
 
             MedLinkCommandType.PreviousBolusHistory, MedLinkCommandType.BolusHistory                                                                                                  -> {
                 result = communicationManager.getBolusHistory(pumpMessage)
+            }
+
+            MedLinkCommandType.RemoveStopCommand                                                                                                  -> {
+                result = communicationManager.removeStopCommand(pumpMessage)
             }
 
             MedLinkCommandType.TBRBolus, MedLinkCommandType.SMBBolus, MedLinkCommandType.Bolus                                                                                        -> {
