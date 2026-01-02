@@ -57,8 +57,10 @@ public class ChangeStatusCallback extends BaseCallback<PumpDriverState, Supplier
                 var tempBasal = medLinkMedtronicPumpPlugin.getTemporaryBasal();
                 if(tempBasal.getDurationInMinutes()>0){
                     medLinkMedtronicPumpPlugin.getPumpStatusData().setPumpRunningState(PumpRunningState.TempBasalSuspended);
+                    aapsLogger.info(LTag.PUMPBTCOMM,"pump temp basal suspend");
                 }else {
                     medLinkMedtronicPumpPlugin.getPumpStatusData().setPumpRunningState(PumpRunningState.Suspended);
+                    aapsLogger.info(LTag.PUMPBTCOMM,"pump suspend");
                 }
                 PumpSync.PumpState.TemporaryBasal tempBasalData = medLinkMedtronicPumpPlugin.getTemporaryBasal();
                 if (tempBasalData != null && tempBasalData.getPlannedRemainingMinutes() > 0) {
@@ -71,6 +73,7 @@ public class ChangeStatusCallback extends BaseCallback<PumpDriverState, Supplier
                 return PumpDriverState.Suspended;
 
             } else {
+                aapsLogger.info(LTag.PUMPBTCOMM,"pump busy");
                 medLinkMedtronicPumpPlugin.changeStatusTime(System.currentTimeMillis());
                 return PumpDriverState.Busy;
             }

@@ -33,7 +33,7 @@ class MedLinkCommandCancelTempBasal(
         val pump = activePlugin.activePump
         aapsLogger.info(LTag.PUMPQUEUE, "cancelling temp basal: ")
         if(pump is MedLinkPumpPluginBase){
-            pump.cancelTempBasal(enforceNew, callback)
+            pump.cancelTempBasal(false, enforceNew, callback)
         }else {
             val r = activePlugin.activePump.cancelTempBasal(enforceNew)
             aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")

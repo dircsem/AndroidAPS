@@ -41,7 +41,7 @@ interface MedLinkPumpPluginBase {
         enforceNew: Boolean,
         callback: Function1<PumpEnactResult, *>
     )
- fun cancelTempBasal(enforceNew: Boolean, callback: Callback?): PumpEnactResult
+ fun cancelTempBasal(isStartCommand:Boolean, enforceNew: Boolean, callback: Callback?): PumpEnactResult
 
   fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo, func: (PumpEnactResult) -> Unit)
     fun calibrate(bg: Double)
@@ -52,5 +52,5 @@ interface MedLinkPumpPluginBase {
     abstract fun isInitialized(): Boolean
     abstract fun setMedtronicPumpModel(s: String)
     fun postInit()
-
+    fun reDeliverBolus(detailedBolusInfo: DetailedBolusInfo)
 }

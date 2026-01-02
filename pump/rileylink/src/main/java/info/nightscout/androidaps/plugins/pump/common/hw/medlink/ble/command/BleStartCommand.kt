@@ -33,17 +33,17 @@ class BleStartCommand(
                 pumpResponse.append(answer)
                 if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.NoCommand || bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
                     applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
-                    if(bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump){
+                    if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
                         bleComm.currentCommand?.commandExecuted()
                     }
                 }
-                medLinkPumpPluginAbstract.cancelTempBasal(true, object : Callback() {
+                medLinkPumpPluginAbstract.cancelTempBasal(true, true, object : Callback() {
                     override fun run() {
                         aapsLogger.info(LTag.PUMPBTCOMM, "tbr cancelled")
                     }
                 })
                 pumpResponse = StringBuffer()
-                bleComm.completedCommand(true)
+                bleComm.completedCommand(force = true, waitNextIteration = true)
             }
 
             answer.contains("pump suspend state")    -> {

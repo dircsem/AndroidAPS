@@ -210,6 +210,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
+    fun cancelTempBasal(isstartCommand:Boolean, enforceNew: Boolean): PumpEnactResult {
+        aapsLogger.debug(LTag.PUMP, "cancelTempBasal [PumpPluginAbstract] - Not implemented.")
+        return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
+    }
     override fun cancelExtendedBolus(): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "cancelExtendedBolus [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
@@ -377,5 +381,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
             pumpDescription.fillFor(pumpType)
         }
         this.pumpType = pumpType
+    }
+
+    override fun reDeliverBolus(detailedBolusInfo: DetailedBolusInfo) {
+        aapsLogger.info(LTag.PUMP, "redelivering bolus ")
+        deliverBolus(detailedBolusInfo)
     }
 }
