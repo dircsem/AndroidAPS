@@ -7,7 +7,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.Pump
-import com.google.gson.Gson
+import app.aaps.core.utils.receivers.BundleLogger
 import dagger.android.DaggerBroadcastReceiver
 import java.util.Date
 import java.util.TimeZone
@@ -17,13 +17,8 @@ class TimeDateOrTZChangeReceiver : DaggerBroadcastReceiver() {
 
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var activePlugin: ActivePlugin
-    val gson: Gson = Gson()
 
-    private var isDST = false
-
-    init {
-        isDST = calculateDST()
-    }
+    private var isDST = calculateDST()
 
     private fun calculateDST(): Boolean {
         val timeZone = TimeZone.getDefault()

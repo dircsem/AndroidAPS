@@ -60,6 +60,7 @@ interface OverviewData {
     var absoluteBasalGraphSeries: SeriesData
 
     var temporaryTargetSeries: SeriesData
+    var runningModesSeries: SeriesData
 
     var maxIAValue: Double
     val actScale: Scale
@@ -98,6 +99,11 @@ interface OverviewData {
     var minRatioValueFound: Double
     val ratioScale: Scale
     var ratioSeries: SeriesData
+
+    var maxVarSensValueFound: Double
+    var minVarSensValueFound: Double
+    val varSensScale: Scale
+    var varSensSeries: SeriesData
 
     var maxFromMaxValueFound: Double
     var maxFromMinValueFound: Double

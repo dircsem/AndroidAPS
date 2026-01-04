@@ -1,7 +1,9 @@
+import kotlin.math.min
+
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
     id("kotlin-android")
-    id("kotlin-kapt")
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
@@ -10,7 +12,7 @@ plugins {
 android {
     namespace = "app.aaps.shared.impl"
     defaultConfig {
-        minSdk = Versions.wearMinSdk  // for wear
+        minSdk = min(Versions.minSdk, Versions.wearMinSdk)
     }
 }
 
@@ -18,17 +20,18 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:interfaces"))
     implementation(project(":core:keys"))
+    implementation(project(":core:utils"))
 
     //Logger
-    api(Libs.Logging.slf4jApi)
-    api(Libs.Logging.logbackAndroid)
+    api(libs.org.slf4j.api)
+    api(libs.com.github.tony19.logback.android)
 
-    api(Libs.androidSvg)
+    api(libs.com.caverock.androidsvg)
 
-    api(Libs.Rx.rxAndroid)
-    api(Libs.jodaTimeAndroid)
+    api(libs.io.reactivex.rxjava3.rxandroid)
+    api(libs.net.danlew.android.joda)
 
-    api(Libs.Dagger.androidSupport)
-    kapt(Libs.Dagger.compiler)
-    kapt(Libs.Dagger.androidProcessor)
+    api(libs.com.google.dagger.android.support)
+    ksp(libs.com.google.dagger.compiler)
+    ksp(libs.com.google.dagger.android.processor)
 }

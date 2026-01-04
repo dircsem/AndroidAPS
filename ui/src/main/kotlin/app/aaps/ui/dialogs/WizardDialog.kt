@@ -33,7 +33,6 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
@@ -41,7 +40,7 @@ import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.objects.extensions.round
@@ -54,22 +53,20 @@ import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.ui.R
 import app.aaps.ui.databinding.DialogWizardBinding
-import dagger.android.HasAndroidInjector
 import dagger.android.support.DaggerDialogFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.text.DecimalFormat
 import javax.inject.Inject
+import javax.inject.Provider
 import kotlin.math.abs
 
 class WizardDialog : DaggerDialogFragment() {
 
-    @Inject lateinit var injector: HasAndroidInjector
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var constraintChecker: ConstraintsChecker
     @Inject lateinit var ctx: Context
-    @Inject lateinit var sp: SP
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var fabricPrivacy: FabricPrivacy
@@ -82,12 +79,12 @@ class WizardDialog : DaggerDialogFragment() {
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var protectionCheck: ProtectionCheck
     @Inject lateinit var decimalFormatter: DecimalFormatter
-
+    @Inject lateinit var bolusWizardProvider: Provider<BolusWizard>
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
     private var queryingProtection = false
     private var wizard: BolusWizard? = null
-    private var calculatedPercentage = 100.0
+    private var calculatedPercentage = 100
     private var calculatedCorrection = 0.0
     private var usePercentage = false
     private var carbsPassedIntoWizard = 0.0
@@ -180,20 +177,20 @@ class WizardDialog : DaggerDialogFragment() {
 
         // If there is no BG using % lower that 100% leads to high BGs
         // because loop doesn't add missing insulin
-        var percentage = preferences.get(IntKey.OverviewBolusPercentage).toDouble()
+        var percentage = preferences.get(IntKey.OverviewBolusPercentage)
         val time = preferences.get(IntKey.OverviewResetBolusPercentageTime).toLong()
         persistenceLayer.getLastGlucoseValue().let {
             // if last value is older or there is no bg
             if (it != null) {
                 if (it.timestamp < dateUtil.now() - T.mins(time).msecs())
-                    percentage = 100.0
-            } else percentage = 100.0
+                    percentage = 100
+            } else percentage = 100
         }
 
         if (usePercentage) {
             calculatedPercentage = percentage
-            binding.correctionInput.setParams(calculatedPercentage, 10.0, 200.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher)
-            binding.correctionInput.value = calculatedPercentage
+            binding.correctionInput.setParams(calculatedPercentage.toDouble(), 10.0, 200.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher)
+            binding.correctionInput.value = calculatedPercentage.toDouble()
             binding.correctionUnit.text = "%"
         } else {
             binding.correctionInput.setParams(
@@ -214,9 +211,9 @@ class WizardDialog : DaggerDialogFragment() {
                 ?: 0.0, -60.0, 60.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, timeTextWatcher
         )
         handler.post { initDialog() }
-        calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage).toDouble()
+        calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
-        binding.percentUsed.visibility = (calculatedPercentage != 100.0 || usePercentage).toVisibility()
+        binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
         // ok button
         binding.okcancel.ok.setOnClickListener {
             if (okClicked) {
@@ -249,13 +246,13 @@ class WizardDialog : DaggerDialogFragment() {
         binding.bgTrendCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
         binding.sbCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
 
-        val showCalc = sp.getBoolean(R.string.key_wizard_calculation_visible, false)
+        val showCalc = preferences.get(BooleanKey.WizardCalculationVisible)
         binding.delimiter.visibility = showCalc.toVisibility()
         binding.result.visibility = showCalc.toVisibility()
         binding.calculationCheckbox.isChecked = showCalc
         binding.calculationCheckbox.setOnCheckedChangeListener { _, isChecked ->
             run {
-                sp.putBoolean(rh.gs(R.string.key_wizard_calculation_visible), isChecked)
+                preferences.put(BooleanKey.WizardCalculationVisible, isChecked)
                 binding.delimiter.visibility = isChecked.toVisibility()
                 binding.result.visibility = isChecked.toVisibility()
                 processEnabledIcons()
@@ -266,11 +263,11 @@ class WizardDialog : DaggerDialogFragment() {
 
         binding.correctionPercent.setOnCheckedChangeListener { _, isChecked ->
             run {
-                sp.putBoolean(rh.gs(R.string.key_wizard_correction_percent), isChecked)
+                preferences.put(BooleanKey.WizardCorrectionPercent, isChecked)
                 binding.correctionUnit.text = if (isChecked) "%" else rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
                 usePercentage = binding.correctionPercent.isChecked
                 if (usePercentage) {
-                    binding.correctionInput.setParams(calculatedPercentage, 10.0, 200.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher)
+                    binding.correctionInput.setParams(calculatedPercentage.toDouble(), 10.0, 200.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher)
                     binding.correctionInput.customContentDescription = rh.gs(R.string.a11_correction_percentage)
                 } else {
                     binding.correctionInput.setParams(
@@ -281,7 +278,7 @@ class WizardDialog : DaggerDialogFragment() {
                     binding.correctionInput.customContentDescription = rh.gs(R.string.a11_correction_units)
                 }
                 binding.correctionInput.updateA11yDescription()
-                binding.correctionInput.value = if (usePercentage) calculatedPercentage else Round.roundTo(calculatedCorrection, bolusStep)
+                binding.correctionInput.value = if (usePercentage) calculatedPercentage.toDouble() else Round.roundTo(calculatedCorrection, bolusStep)
             }
         }
         // profile
@@ -301,14 +298,24 @@ class WizardDialog : DaggerDialogFragment() {
         binding.carbTimeInputLabel.labelFor = binding.carbTimeInput.editTextId
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacksAndMessages(null)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
         disposable.clear()
         handler.removeCallbacksAndMessages(null)
+        handler.looper.quitSafely()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
         _binding = null
     }
 
-    private fun onCheckedChanged(buttonView: CompoundButton, @Suppress("UNUSED_PARAMETER") state: Boolean) {
+    private fun onCheckedChanged(buttonView: CompoundButton, @Suppress("unused") state: Boolean) {
         saveCheckedStates()
         binding.ttCheckbox.isEnabled = binding.bgCheckbox.isChecked && persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null
         binding.ttCheckboxIcon.visibility = binding.ttCheckbox.isEnabled.toVisibility()
@@ -354,15 +361,15 @@ class WizardDialog : DaggerDialogFragment() {
     }
 
     private fun saveCheckedStates() {
-        sp.putBoolean(R.string.key_wizard_include_cob, binding.cobCheckbox.isChecked)
-        sp.putBoolean(R.string.key_wizard_include_trend_bg, binding.bgTrendCheckbox.isChecked)
-        sp.putBoolean(R.string.key_wizard_correction_percent, binding.correctionPercent.isChecked)
+        preferences.put(BooleanKey.WizardIncludeCob, binding.cobCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardIncludeTrend, binding.bgTrendCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardCorrectionPercent, binding.correctionPercent.isChecked)
     }
 
     private fun loadCheckedStates() {
-        binding.bgTrendCheckbox.isChecked = sp.getBoolean(R.string.key_wizard_include_trend_bg, false)
-        binding.cobCheckbox.isChecked = sp.getBoolean(R.string.key_wizard_include_cob, false)
-        usePercentage = sp.getBoolean(R.string.key_wizard_correction_percent, false)
+        binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
+        binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
+        usePercentage = preferences.get(BooleanKey.WizardCorrectionPercent)
         binding.correctionPercent.isChecked = usePercentage
     }
 
@@ -425,7 +432,7 @@ class WizardDialog : DaggerDialogFragment() {
             specificProfile = profileFunction.getProfile()
             profileName = profileFunction.getProfileName()
         } else
-            specificProfile = profileStore.getSpecificProfile(profileName)?.let { ProfileSealed.Pure(it) }
+            specificProfile = profileStore.getSpecificProfile(profileName)?.let { ProfileSealed.Pure(it, activePlugin) }
 
         if (specificProfile == null) return
 
@@ -441,10 +448,10 @@ class WizardDialog : DaggerDialogFragment() {
         } else
             0.0
         val percentageCorrection = if (usePercentage) {
-            if (Round.roundTo(calculatedPercentage, 1.0) == SafeParse.stringToDouble(binding.correctionInput.text))
+            if (calculatedPercentage == SafeParse.stringToInt(binding.correctionInput.text))
                 calculatedPercentage
             else
-                SafeParse.stringToDouble(binding.correctionInput.text)
+                SafeParse.stringToInt(binding.correctionInput.text)
         } else
             preferences.get(IntKey.OverviewBolusPercentage).toDouble()
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
@@ -466,7 +473,7 @@ class WizardDialog : DaggerDialogFragment() {
 
         val carbTime = SafeParse.stringToInt(binding.carbTimeInput.text)
 
-        wizard = BolusWizard(injector).doCalc(
+        wizard = bolusWizardProvider.get().doCalc(
             specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, preferences.get(IntKey.OverviewBolusPercentage),
             binding.bgCheckbox.isChecked,
             binding.cobCheckbox.isChecked,
@@ -479,7 +486,7 @@ class WizardDialog : DaggerDialogFragment() {
             binding.notesLayout.notes.text.toString(),
             carbTime,
             usePercentage = usePercentage,
-            totalPercentage = percentageCorrection
+            totalPercentage = percentageCorrection.toDouble()
         )
 
         wizard?.let { wizard ->
@@ -489,7 +496,7 @@ class WizardDialog : DaggerDialogFragment() {
             binding.carbs.text = rh.gs(R.string.format_carbs_ic, carbs.toDouble(), wizard.ic)
             binding.carbsInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromCarbs)
 
-            binding.iobInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromBolusIOB + wizard.insulinFromBasalIOB)
+            binding.iobInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, -wizard.insulinFromBolusIOB - wizard.insulinFromBasalIOB)
 
             binding.correctionInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromCorrection)
 

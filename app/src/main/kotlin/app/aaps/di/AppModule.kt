@@ -1,6 +1,8 @@
 package app.aaps.di
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.preference.PreferenceManager
 import app.aaps.MainApp
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.objects.Instantiator
@@ -17,6 +19,7 @@ import dagger.Binds
 import dagger.Lazy
 import dagger.Module
 import dagger.Provides
+import dagger.Reusable
 import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
@@ -25,7 +28,8 @@ import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDe
 @Suppress("unused")
 @Module(
     includes = [
-        AppModule.AppBindings::class
+        AppModule.AppBindings::class,
+        AppModule.Provide::class
     ]
 )
 open class AppModule {
@@ -43,9 +47,17 @@ open class AppModule {
         val plugins = allConfigs.toMutableMap()
         if (config.PUMPDRIVERS) plugins += pumpDrivers.get()
         if (config.APS) plugins += aps.get()
-        if (!config.NSCLIENT) plugins += notNsClient.get()
+        if (!config.AAPSCLIENT) plugins += notNsClient.get()
         //if (config.isUnfinishedMode()) plugins += unfinished.get()
         return plugins.toList().sortedBy { it.first }.map { it.second }
+    }
+
+    @Module
+    open class Provide {
+
+        @Reusable
+        @Provides
+        fun providesDefaultSharedPreferences(context: Context): SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     }
 
     @Module

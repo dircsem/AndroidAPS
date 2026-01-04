@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
     id("kotlin-android")
-    id("kotlin-kapt")
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
@@ -28,15 +28,17 @@ dependencies {
     testImplementation(project(":pump:virtual"))
     testImplementation(project(":shared:tests"))
 
-    api(Libs.AndroidX.appCompat)
-    api(Libs.AndroidX.swipeRefreshLayout)
-    api(Libs.AndroidX.gridLayout)
+    api(libs.androidx.appcompat)
+    api(libs.androidx.swiperefreshlayout)
+    api(libs.androidx.gridlayout)
+    api(kotlin("reflect"))
 
-    // APS
-    api(Libs.Mozilla.rhino)
+    // APS (it should be androidTestImplementation but it doesn't work)
+    api(libs.org.mozilla.rhino)
 
     //Logger
-    api(Libs.Logging.slf4jApi)
+    api(libs.org.slf4j.api)
 
-    kapt(Libs.Dagger.androidProcessor)
+    testImplementation("io.mockk:mockk:1.13.8")
+    ksp(libs.com.google.dagger.android.processor)
 }

@@ -29,20 +29,13 @@
     <string name="tube_changed">Slange byttet</string>
     <string name="insightpump_shortname">Sight</string>
     <string name="insight_alert_notification_channel">Insight pumpe varsler</string>
-    <string name="disable_vibration">Slå av vibrasjoner på manuell bolus</string>
+    <string name="disable_vibration">Slå av vibrasjoner ved levering av manuell bolus</string>
     <string name="disable_vibration_summary">For bolus og forlenget bolus (bare tilgjengelig med Insight firmware 3.x)</string>
-    <string name="disable_vibration_auto">Slå av vibrasjoner ved automatisk bolus</string>
+    <string name="disable_vibration_auto">Slå av vibrasjoner ved levering av automatisk bolus</string>
     <string name="disable_vibration_auto_summary">For SMB og midlertidig basal med TBR emulering (bare tilgjengelig med Insight firmware 3.x)</string>
     <string name="timeout_during_handshake">En timeout oppstod i paringsprosessen - restart Bluetooth</string>
     <string name="pump_stopped">Pumpen stoppet</string>
     <string name="pump_started">Pumpen startet</string>
-    <string name="short_status_last_connected">Siste tilkobling: %1$d min siden</string>
-    <string name="short_status_tbr">TBR: %1$d%% i %2$d / %3$d min</string>
-    <string name="short_status_extended">Forlenget: %1$.2f / %2$.2f E i %3$d min</string>
-    <string name="short_status_multiwave">Kombinasjon: %1$.2f / %2$.2f E i %3$d min</string>
-    <string name="short_status_tdd">TDD: %1$.2f</string>
-    <string name="short_status_reservoir">Ampull: %1$.2f E</string>
-    <string name="short_status_battery">Batt.: %1$d%%</string>
     <string name="release_software_version">Programvare versjon</string>
     <string name="ui_processor_software_version">UI prosessor programvare versjon</string>
     <string name="pc_processor_software_version">PC prosessor programvare versjon</string>
@@ -66,6 +59,5 @@
     <string name="min_recovery_duration">Min pause mellom tilkoblingsforsøk [s]</string>
     <string name="pump_alert">Pumpe varsling</string>
     <string name="pairing_information">Tilkoblingsinformasjon</string>
-    <string name="insight_refresh_button" comment="26 characters max for translation">Insight oppdateringsknapp</string>
     <string name="last_connection">%1$s (%2$s)</string>
 </resources>

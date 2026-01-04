@@ -8,16 +8,14 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 
 class InMemoryGlucoseValueDataPoint(
     val data: InMemoryGlucoseValue,
     private val preferences: Preferences,
     private val profileFunction: ProfileFunction,
-    private val profileUtil: ProfileUtil,
     private val rh: ResourceHelper
 ) : DataPointWithLabelInterface {
 

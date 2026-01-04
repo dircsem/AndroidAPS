@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.os.Bundle
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
@@ -16,8 +15,10 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.BolusProgressData
+import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.receivers.Intents
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -28,10 +29,9 @@ import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventLoopUpdateGui
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.durationInMinutes
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.toStringFull
@@ -61,7 +61,7 @@ class TizenPlugin @Inject constructor(
     private var receiverStatusStore: ReceiverStatusStore,
     private val config: Config,
     private val glucoseStatusProvider: GlucoseStatusProvider,
-    private val decimalFormatter: DecimalFormatter
+    private val pumpStatusProvider: PumpStatusProvider
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -101,9 +101,9 @@ class TizenPlugin @Inject constructor(
         basalStatus(bundle)
         pumpStatus(bundle)
 
-        if (event is EventOverviewBolusProgress && !event.isSMB()) {
-            bundle.putInt("progressPercent", event.percent)
-            bundle.putString("progressStatus", event.status)
+        if (event is EventOverviewBolusProgress && !BolusProgressData.isSMB) {
+            bundle.putInt("progressPercent", BolusProgressData.percent)
+            bundle.putString("progressStatus", BolusProgressData.status)
         }
     }
 
@@ -181,16 +181,16 @@ class TizenPlugin @Inject constructor(
             bundle.putLong("tempBasalDurationInMinutes", it.durationInMinutes)
             if (it.isAbsolute) bundle.putDouble("tempBasalAbsolute", it.rate) // U/h for absolute TBR
             else bundle.putInt("tempBasalPercent", it.rate.toInt()) // % for percent type TBR
-            bundle.putString("tempBasalString", it.toStringFull(profile, dateUtil, decimalFormatter)) // user friendly string
+            bundle.putString("tempBasalString", it.toStringFull(profile, dateUtil, rh)) // user friendly string
         }
     }
 
     private fun pumpStatus(bundle: Bundle) {
         val pump = activePlugin.activePump
-        bundle.putLong("pumpTimeStamp", pump.lastDataTime())
-        bundle.putInt("pumpBattery", pump.batteryLevel)
+        bundle.putLong("pumpTimeStamp", pump.lastDataTime)
+        pump.batteryLevel?.let { bundle.putInt("pumpBattery", it) }
         bundle.putDouble("pumpReservoir", pump.reservoirLevel)
-        bundle.putString("pumpStatus", pump.shortStatus(false))
+        bundle.putString("pumpStatus", pumpStatusProvider.shortStatus(false))
     }
 
     private fun sendBroadcast(intent: Intent) {

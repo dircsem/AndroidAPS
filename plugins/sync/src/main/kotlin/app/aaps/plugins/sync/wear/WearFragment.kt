@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.wear
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -15,7 +16,6 @@ import app.aaps.core.interfaces.rx.events.EventWearUpdateGui
 import app.aaps.core.interfaces.rx.weardata.CwfData
 import app.aaps.core.interfaces.rx.weardata.CwfMetadataKey
 import app.aaps.core.interfaces.rx.weardata.EventData
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.ui.extensions.toVisibility
@@ -38,7 +38,6 @@ class WearFragment : DaggerFragment() {
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var importExportPrefs: ImportExportPrefs
-    @Inject lateinit var sp: SP
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var aapsLogger: AAPSLogger
 
@@ -67,9 +66,9 @@ class WearFragment : DaggerFragment() {
                 importExportPrefs.importCustomWatchface(this)
             }
         }
-        binding.defaultCustom.setOnClickListener {
-            rxBus.send(EventMobileToWear(EventData.ActionrequestSetDefaultWatchface(dateUtil.now())))
-            updateGui()
+        binding.moreCustom.setOnClickListener {
+            val intent = Intent().apply { action = Intent.ACTION_VIEW; data = Uri.parse(rh.gs(R.string.wear_link_to_more_cwf_doc)) }
+            startActivity(intent)
         }
         binding.exportCustom.setOnClickListener {
             rxBus.send(EventMobileToWear(EventData.ActionrequestCustomWatchface(true)))

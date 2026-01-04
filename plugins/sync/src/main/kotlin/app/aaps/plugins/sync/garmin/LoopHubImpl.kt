@@ -4,14 +4,17 @@ import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.HR
-import app.aaps.core.data.model.OE
+import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -21,13 +24,16 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.queue.CommandQueue
-import app.aaps.core.keys.Preferences
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.extensions.convertedToPercent
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.time.Clock
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,7 +51,9 @@ class LoopHubImpl @Inject constructor(
     private val profileUtil: ProfileUtil,
     private val persistenceLayer: PersistenceLayer,
     private val userEntryLogger: UserEntryLogger,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val processedTbrEbData: ProcessedTbrEbData,
+    private val dateUtil: DateUtil
 ) : LoopHub {
 
     val disposable = CompositeDisposable()
@@ -77,7 +85,7 @@ class LoopHubImpl @Inject constructor(
        get() = iobCobCalculator.getCobInfo("LoopHubImpl").displayCob
 
     /** Returns true if the pump is connected. */
-    override val isConnected: Boolean get() = !loop.isDisconnected
+    override val isConnected: Boolean get() = loop.runningMode != RM.Mode.DISCONNECTED_PUMP
 
     /** Returns true if the current profile is set of a limited amount of time. */
     override val isTemporaryProfile: Boolean
@@ -89,8 +97,10 @@ class LoopHubImpl @Inject constructor(
     /** Returns the factor by which the basal rate is currently raised (> 1) or lowered (< 1). */
     override val temporaryBasal: Double
         get() {
-            val apsResult = loop.lastRun?.constraintsProcessed
-            return if (apsResult == null) Double.NaN else apsResult.percent / 100.0
+            return currentProfile?.let {
+                val tb = processedTbrEbData.getTempBasalIncludingConvertedExtended(clock.millis())
+                tb?.convertedToPercent(clock.millis(), it)?.div(100.0)
+            } ?: Double.NaN
         }
 
     override val lowGlucoseMark get() = profileUtil.convertToMgdl(
@@ -101,18 +111,18 @@ class LoopHubImpl @Inject constructor(
 
     /** Tells the loop algorithm that the pump is physically connected. */
     override fun connectPump() {
-        disposable += persistenceLayer.cancelCurrentOfflineEvent(clock.millis(), Action.RECONNECT, Sources.Garmin).subscribe()
-        commandQueue.cancelTempBasal(true, null)
+        disposable += persistenceLayer.cancelCurrentRunningMode(clock.millis(), Action.RECONNECT, Sources.Garmin).subscribe()
+        commandQueue.cancelTempBasal(enforceNew = true, callback = null)
     }
 
     /** Tells the loop algorithm that the pump will be physically disconnected
      *  for the given number of minutes. */
     override fun disconnectPump(minutes: Int) {
         currentProfile?.let { p ->
-            loop.goToZeroTemp(
+            loop.handleRunningModeChange(
                 durationInMinutes = minutes,
                 profile = p,
-                reason = OE.Reason.DISCONNECT_PUMP,
+                newRM = RM.Mode.DISCONNECTED_PUMP,
                 action = Action.DISCONNECT,
                 source = Sources.Garmin,
                 listValues = listOf(ValueWithUnit.Minute(minutes))
@@ -144,6 +154,54 @@ class LoopHubImpl @Inject constructor(
         commandQueue.bolus(detailedBolusInfo, null)
     }
 
+    // mod Bolus and temp target
+    /** Triggers a bolus. */
+    override fun postBolus(bolus: Double) {
+        aapsLogger.info(LTag.GARMIN, "trigger a bolus of $bolus U")
+        userEntryLogger.log(
+            action = Action.BOLUS,
+            source = Sources.Garmin,
+            note = null,
+            ValueWithUnit.Insulin(bolus)
+        )
+        val detailedBolusInfo = DetailedBolusInfo().apply {
+            eventType = TE.Type.SNACK_BOLUS
+            insulin = bolus
+        }
+        commandQueue.bolus(detailedBolusInfo, null)
+    }
+
+    override fun postTempTarget(target: Double, duration: Int) {
+        if (target == 0.0 || duration == 0) {
+            disposable += persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                timestamp = dateUtil.now(),
+                action = Action.TT,
+                source = Sources.TTDialog,
+                note = null,
+                listValues = listOf()
+            ).subscribe()
+        } else {
+            disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+                temporaryTarget = TT(
+                    timestamp = dateUtil.now(),
+                    duration = TimeUnit.MINUTES.toMillis(duration.toLong()),
+                    reason = TT.Reason.WEAR,
+                    lowTarget = profileUtil.convertToMgdl(target, profileUtil.units),
+                    highTarget = profileUtil.convertToMgdl(target, profileUtil.units)
+                ),
+                action = Action.TT,
+                source = Sources.Garmin,
+                note = null,
+                listValues = listOf(
+                    ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                    ValueWithUnit.Mgdl(target),
+                    ValueWithUnit.Minute(duration)
+                ).filterNotNull()
+            ).subscribe()
+        }
+    }
+    // end mod
+
     /** Stores hear rate readings that a taken and averaged of the given interval. */
     override fun storeHeartRate(
         samplingStart: Instant, samplingEnd: Instant,
@@ -158,5 +216,31 @@ class LoopHubImpl @Inject constructor(
             device = device ?: "Garmin",
         )
         disposable += persistenceLayer.insertOrUpdateHeartRate(hr).subscribe()
+    }
+
+    override fun storeStepsCount(
+        samplingStart: Instant,
+        samplingEnd: Instant,
+        steps5min: Int,
+        steps10min: Int,
+        steps15min: Int,
+        steps30min: Int,
+        steps60min: Int,
+        steps180min: Int,
+        device: String?,
+    ) {
+        val sc = SC(
+            duration = samplingEnd.toEpochMilli() - samplingStart.toEpochMilli(),
+            timestamp = samplingEnd.toEpochMilli(),
+            steps5min = steps5min,
+            steps10min = steps10min,
+            steps15min = steps15min,
+            steps30min = steps30min,
+            steps60min = steps60min,
+            steps180min = steps180min,
+            device = device ?: "Garmin",
+            dateCreated = clock.millis(),
+        )
+        disposable += persistenceLayer.insertOrUpdateStepsCount(sc).subscribe()
     }
 }

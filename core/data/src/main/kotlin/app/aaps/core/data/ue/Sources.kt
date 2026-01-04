@@ -13,6 +13,7 @@ enum class Sources {
     TempBasalDialog,
     CalibrationDialog,
     FillDialog,
+    SiteRotationDialog,
     BgCheck,
     SensorInsert,
     BatteryChange,
@@ -20,6 +21,7 @@ enum class Sources {
     Exercise,
     Question,
     Announcement,
+    SettingsExport,
     Actions,            //From Actions plugin
     Automation,         //From Automation plugin
     Autotune,           //From Autotune plugin
@@ -35,6 +37,10 @@ enum class Sources {
     Glunovo,
     Intelligo,
     Xdrip,
+    Ottai,              //From Ottai Plugin
+    SyaiTag,
+    SiBionic,
+    Sino,
     LocalProfile,       //From LocalProfile plugin
     Loop,               //From Loop plugin
     Maintenance,        //From Maintenance plugin
@@ -56,6 +62,7 @@ enum class Sources {
     OmnipodEros,
     OmnipodDash,        //No entry currently
     EOPatch2,
+    Equil,
     Medtrum,
     MDI,
     VirtualPump,
@@ -66,10 +73,11 @@ enum class Sources {
     Food,               //From Food plugin
     ConfigBuilder,      //From ConfigBuilder Plugin
     Overview,           //From OverViewPlugin
-    Stats,               //From Stat Activity
+    Stats,              //From Stat Activity
     Aaps,               // MainApp
     BgFragment,
     Garmin,
+    Database,           // for PersistenceLayer
     Unknown,    //if necessary
     Enlite
     ;

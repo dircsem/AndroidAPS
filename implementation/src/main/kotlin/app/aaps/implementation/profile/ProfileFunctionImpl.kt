@@ -1,5 +1,6 @@
 package app.aaps.implementation.profile
 
+import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.time.T
@@ -21,8 +22,8 @@ import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -46,7 +47,8 @@ class ProfileFunctionImpl @Inject constructor(
     private val processedDeviceStatusData: ProcessedDeviceStatusData
 ) : ProfileFunction {
 
-    private var cache = ConcurrentHashMap<Long, Profile?>()
+    @VisibleForTesting
+    val cache = ConcurrentHashMap<Long, Profile?>()
 
     private val disposable = CompositeDisposable()
 
@@ -102,7 +104,7 @@ class ProfileFunctionImpl @Inject constructor(
         }
         val ps = persistenceLayer.getEffectiveProfileSwitchActiveAt(time)
         if (ps != null) {
-            val sealed = ProfileSealed.EPS(ps)
+            val sealed = ProfileSealed.EPS(ps, activePlugin)
             synchronized(cache) {
                 cache.put(rounded, sealed)
             }
@@ -112,10 +114,10 @@ class ProfileFunctionImpl @Inject constructor(
         // Try to get it from device status
         // Remove this code after switch to api v3
         // ps == null
-        if (config.NSCLIENT) {
+        if (config.AAPSCLIENT) {
             processedDeviceStatusData.pumpData?.activeProfileName?.let { activeProfile ->
                 activePlugin.activeProfileSource.profile?.getSpecificProfile(activeProfile)?.let { ap ->
-                    val sealed = ProfileSealed.Pure(ap)
+                    val sealed = ProfileSealed.Pure(ap, activePlugin)
                     synchronized(cache) {
                         cache.put(rounded, sealed)
                     }
@@ -136,7 +138,7 @@ class ProfileFunctionImpl @Inject constructor(
     override fun isProfileChangePending(): Boolean {
         val requested = getRequestedProfile() ?: return false
         val running = getProfile() ?: return true
-        return !ProfileSealed.PS(requested).isEqual(running)
+        return !ProfileSealed.PS(requested, activePlugin).isEqual(running)
     }
 
     override fun getUnits(): GlucoseUnit =
@@ -164,7 +166,7 @@ class ProfileFunctionImpl @Inject constructor(
 
     override fun createProfileSwitch(
         profileStore: ProfileStore, profileName: String, durationInMinutes: Int, percentage: Int, timeShiftInHours: Int, timestamp: Long,
-        action: Action, source: Sources, note: String?, listValues: List<ValueWithUnit?>
+        action: Action, source: Sources, note: String?, listValues: List<ValueWithUnit>
     ): Boolean {
         val ps = buildProfileSwitch(profileStore, profileName, durationInMinutes, percentage, timeShiftInHours, timestamp) ?: return false
         disposable += persistenceLayer.insertOrUpdateProfileSwitch(ps, action, source, note, listValues).subscribe()
@@ -173,12 +175,12 @@ class ProfileFunctionImpl @Inject constructor(
 
     override fun createProfileSwitch(
         durationInMinutes: Int, percentage: Int, timeShiftInHours: Int,
-        action: Action, source: Sources, note: String?, listValues: List<ValueWithUnit?>
+        action: Action, source: Sources, note: String?, listValues: List<ValueWithUnit>
     ): Boolean {
         val profile = persistenceLayer.getPermanentProfileSwitchActiveAt(dateUtil.now()) ?: return false
         val profileStore = activePlugin.activeProfileSource.profile ?: return false
         val ps = buildProfileSwitch(profileStore, profile.profileName, durationInMinutes, percentage, timeShiftInHours, dateUtil.now()) ?: return false
-        val validity = ProfileSealed.PS(ps).isValid(
+        val validity = ProfileSealed.PS(ps, activePlugin).isValid(
             rh.gs(app.aaps.core.ui.R.string.careportal_profileswitch),
             activePlugin.activePump,
             config,

@@ -4,14 +4,14 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import app.aaps.core.data.aps.AutosensData
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.objects.Instantiator
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profiling.Profiler
@@ -24,14 +24,14 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.DoubleKey
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
-import dagger.android.HasAndroidInjector
 import kotlinx.coroutines.Dispatchers
 import java.util.Calendar
 import java.util.GregorianCalendar
 import javax.inject.Inject
+import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -53,11 +53,11 @@ class IobCobOref1Worker(
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var dataWorkerStorage: DataWorkerStorage
-    @Inject lateinit var instantiator: Instantiator
+    @Inject lateinit var autosensDataProvider: Provider<AutosensData>
     @Inject lateinit var decimalFormatter: DecimalFormatter
+    @Inject lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
 
     class IobCobOref1WorkerData(
-        val injector: HasAndroidInjector,
         val iobCobCalculator: IobCobCalculator, // cannot be injected : HistoryBrowser uses different instance
         val reason: String,
         val end: Long,
@@ -112,8 +112,7 @@ class IobCobOref1Worker(
                     continue  // profile not set yet
                 }
                 aapsLogger.debug(LTag.AUTOSENS, "Processing calculation thread: ${data.reason} ($i/${bucketedData.size})")
-                val sens = profile.getIsfMgdl(bgTime)
-                val autosensData = instantiator.provideAutosensDataObject()
+                val autosensData = autosensDataProvider.get()
                 autosensData.time = bgTime
                 if (previous != null) autosensData.activeCarbsList = previous.cloneCarbsList() else autosensData.activeCarbsList = ArrayList()
 
@@ -128,6 +127,7 @@ class IobCobOref1Worker(
                 autosensData.bg = bg
                 delta = bg - bucketedData[i + 1].recalculated
                 avgDelta = (bg - bucketedData[i + 3].recalculated) / 3
+                val sens = profile.getIsfMgdlForCarbs(bgTime, "iobCobOref1Worker", config, processedDeviceStatusData)
                 val iob = data.iobCobCalculator.calculateFromTreatmentsAndTemps(bgTime, profile)
                 val bgi = -iob.activity * sens * 5
                 val deviation = delta - bgi
@@ -148,7 +148,7 @@ class IobCobOref1Worker(
 //                        try {
                         while (past < 12) {
                             val ad = autosensDataTable.valueAt(initialIndex + past)
-                            aapsLogger.debug(LTag.AUTOSENS) { ">>>>> past=" + past + " ad=" + ad?.toString() }
+                            aapsLogger.debug(LTag.AUTOSENS) { ">>>>> past=$past ad=$ad" }
                             /*
                                                             if (ad == null) {
                                                                 aapsLogger.debug(LTag.AUTOSENS, {autosensDataTable.toString()})
@@ -191,7 +191,11 @@ class IobCobOref1Worker(
                 for (recentCarbTreatment in recentCarbTreatments) {
                     autosensData.carbsFromBolus += recentCarbTreatment.amount
                     val isAAPSOrWeighted = activePlugin.activeSensitivity.isMinCarbsAbsorptionDynamic
-                    autosensData.activeCarbsList.add(fromCarbs(recentCarbTreatment, isAAPSOrWeighted, profileFunction, aapsLogger, dateUtil, preferences))
+                    if (recentCarbTreatment.amount > 0) {
+                        val sens = profile.getIsfMgdlForCarbs(recentCarbTreatment.timestamp, "fromCarbs", config, processedDeviceStatusData)
+                        val ic = profile.getIc(recentCarbTreatment.timestamp)
+                        autosensData.activeCarbsList.add(fromCarbs(recentCarbTreatment, isOref1 = true, isAAPSOrWeighted, sens, ic, aapsLogger, dateUtil, preferences))
+                    }
                     autosensData.pastSensitivity += "[" + decimalFormatter.to0Decimal(recentCarbTreatment.amount) + "g]"
                 }
 
@@ -204,9 +208,9 @@ class IobCobOref1Worker(
                     // but always assume at least 3mg/dL/5m (default) absorption per active treatment
                     val ci = max(deviation, totalMinCarbsImpact)
                     if (ci != deviation) autosensData.failOverToMinAbsorptionRate = true
-                    autosensData.absorbed = ci * profile.getIc(bgTime) / sens
+                    autosensData.this5MinAbsorption = ci * profile.getIc(bgTime) / sens
                     // and add that to the running total carbsAbsorbed
-                    autosensData.cob = max(previous.cob - autosensData.absorbed, 0.0)
+                    autosensData.cob = max(previous.cob - autosensData.this5MinAbsorption, 0.0)
                     autosensData.mealCarbs = previous.mealCarbs
                     autosensData.deductAbsorbedCarbs()
                     autosensData.usedMinCarbsImpact = totalMinCarbsImpact
@@ -217,10 +221,11 @@ class IobCobOref1Worker(
                 }
                 val isAAPSOrWeighted = activePlugin.activeSensitivity.isMinCarbsAbsorptionDynamic
                 autosensData.removeOldCarbs(bgTime, isAAPSOrWeighted)
-                autosensData.cob += autosensData.carbsFromBolus
+                autosensData.cob = max(autosensData.cob + autosensData.carbsFromBolus, 0.0)
                 autosensData.mealCarbs += autosensData.carbsFromBolus
                 autosensData.deviation = deviation
                 autosensData.bgi = bgi
+                autosensData.sens = sens
                 autosensData.delta = delta
                 autosensData.avgDelta = avgDelta
                 autosensData.avgDeviation = avgDeviation

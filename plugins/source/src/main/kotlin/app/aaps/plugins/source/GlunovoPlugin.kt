@@ -5,24 +5,26 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
+import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.source.BgSource
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.source.keys.GlunovoLongKey
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,28 +33,32 @@ import javax.inject.Singleton
 class GlunovoPlugin @Inject constructor(
     resourceHelper: ResourceHelper,
     aapsLogger: AAPSLogger,
-    private val sp: SP,
+    preferences: Preferences,
     private val context: Context,
     private val persistenceLayer: PersistenceLayer,
     private val dateUtil: DateUtil,
     private val fabricPrivacy: FabricPrivacy
-) : PluginBase(
+) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
         .fragmentClass(BGSourceFragment::class.java.name)
         .pluginIcon(app.aaps.core.objects.R.drawable.ic_glunovo)
-        .preferencesId(R.xml.pref_bgsource)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .pluginName(R.string.glunovo)
         .shortName(R.string.glunovo)
         .preferencesVisibleInSimpleMode(false)
         .description(R.string.description_source_glunovo),
-    aapsLogger, resourceHelper
+    ownPreferences = listOf(GlunovoLongKey::class.java),
+    aapsLogger, resourceHelper, preferences
 ), BgSource {
 
-    private val handler = Handler(HandlerThread(this::class.java.simpleName + "Handler").also { it.start() }.looper)
-    private lateinit var refreshLoop: Runnable
+    @VisibleForTesting
+    var handler: Handler? = null
 
-    private val contentUri: Uri = Uri.parse("content://$AUTHORITY/$TABLE_NAME")
+    @VisibleForTesting
+    var refreshLoop: Runnable
+
+    private val contentUri: Uri = "content://$AUTHORITY/$TABLE_NAME".toUri()
 
     init {
         refreshLoop = Runnable {
@@ -62,9 +68,9 @@ class GlunovoPlugin @Inject constructor(
                 fabricPrivacy.logException(e)
                 aapsLogger.error("Error while processing data", e)
             }
-            val lastReadTimestamp = sp.getLong(R.string.key_last_processed_glunovo_timestamp, 0L)
+            val lastReadTimestamp = preferences.get(GlunovoLongKey.LastProcessedTimestamp)
             val differenceToNow = INTERVAL - (dateUtil.now() - lastReadTimestamp) % INTERVAL + T.secs(10).msecs()
-            handler.postDelayed(refreshLoop, differenceToNow)
+            handler?.postDelayed(refreshLoop, differenceToNow)
         }
     }
 
@@ -72,17 +78,21 @@ class GlunovoPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
-        handler.postDelayed(refreshLoop, T.secs(30).msecs()) // do not start immediately, app may be still starting
+        handler = Handler(HandlerThread(this::class.java.simpleName + "Handler").also { it.start() }.looper)
+        handler?.postDelayed(refreshLoop, T.secs(30).msecs()) // do not start immediately, app may be still starting
     }
 
     override fun onStop() {
         super.onStop()
-        handler.removeCallbacks(refreshLoop)
+        handler?.removeCallbacksAndMessages(null)
+        handler?.looper?.quit()
+        handler = null
         disposable.clear()
     }
 
     @SuppressLint("CheckResult")
-    private fun handleNewData() {
+    @VisibleForTesting
+    fun handleNewData() {
         if (!isEnabled()) return
 
         try {
@@ -97,7 +107,7 @@ class GlunovoPlugin @Inject constructor(
                     val curr = cr.getDouble(2)
 
                     // bypass already processed
-                    if (timestamp < sp.getLong(R.string.key_last_processed_glunovo_timestamp, 0L)) {
+                    if (timestamp < preferences.get(GlunovoLongKey.LastProcessedTimestamp)) {
                         cr.moveToNext()
                         continue
                     }
@@ -108,7 +118,7 @@ class GlunovoPlugin @Inject constructor(
                         continue
                     }
 
-                    if (value < 2 || value > 25) {
+                    if (value !in 2.0..25.0) {
                         aapsLogger.error(LTag.BGSOURCE, "Error in received data value (value out of bounds) $value")
                         cr.moveToNext()
                         continue
@@ -131,14 +141,13 @@ class GlunovoPlugin @Inject constructor(
                                 glucoseUnit = GlucoseUnit.MMOL
                             )
                         )
-                    sp.putLong(R.string.key_last_processed_glunovo_timestamp, timestamp)
+                    preferences.put(GlunovoLongKey.LastProcessedTimestamp, timestamp)
                     cr.moveToNext()
                 }
                 cr.close()
 
                 if (glucoseValues.isNotEmpty() || calibrations.isNotEmpty())
-                    persistenceLayer.insertCgmSourceData(Sources.Glunovo, glucoseValues, calibrations, null)
-                        .blockingGet()
+                    persistenceLayer.insertCgmSourceData(Sources.Glunovo, glucoseValues, calibrations, null).blockingGet()
             }
         } catch (e: SecurityException) {
             aapsLogger.error(LTag.CORE, "Exception", e)

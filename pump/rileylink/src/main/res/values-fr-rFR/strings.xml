@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="medlink_scanner_title">MedLink Skan</string>
+    <string name="medlink_status">Estado MedLink</string>
     <!-- PumpDeviceState -->
     <string name="pump_status_never_contacted">Jamais contacté</string>
     <string name="pump_status_sleeping">En veille</string>
@@ -9,9 +11,10 @@
     <string name="pump_status_timeout_comm">Délai de communication dépassé</string>
     <string name="pump_status_pump_unreachable">Pompe inaccessible</string>
     <string name="pump_status_invalid_config">Configuration invalide</string>
-    <!-- RL keys -->
-    <string name="medlink_scanner_title">Scanner MedLink</string>
-    <string name="medlink_status">État du MedLink</string>
+    <string name="medtronic_pump_encoding_4b6b_local">Encodage logiciel 4b6b</string>
+    <string name="medtronic_pump_encoding_4b6b_rileylink">Encodage matériel 4b6b</string>
+    <string name="medtronic_pump_frequency_us_ca">États-Unis &amp; Canada (916 MHz)</string>
+    <string name="medtronic_pump_frequency_worldwide">Mondial (868 Mhz)</string>
     <!-- RL BLE Config -->
     <string name="riley_link_ble_config_button_scan_start">Rechercher</string>
     <string name="riley_link_ble_config_scan_stop">Arrêter</string>
@@ -74,8 +77,6 @@
     <!-- RileyLink - Common -->
     <string name="rileylink_target_device_medtronic">Pompe Medtronic</string>
     <string name="rileylink_target_device_omnipod">Omnipod (Eros)</string>
-    <string name="riley_link_common_yes">Oui</string>
-    <string name="riley_link_common_no">Non</string>
     <!-- RileyLink - Preferences -->
     <string name="riley_link_show_battery_level">Afficher le niveau de batterie transmis par OrangeLink/EmaLink/DiaLink</string>
     <string name="riley_link_show_battery_level_summary">NE FONCTIONNE PAS avec le RileyLink original. Peut ne pas fonctionner avec d\'autres versions de RileyLink.</string>

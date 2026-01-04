@@ -2,8 +2,9 @@ package app.aaps.implementation.pump
 
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.resources.ResourceHelper
+import javax.inject.Inject
 
-class PumpEnactResultObject(private val rh: ResourceHelper) : PumpEnactResult {
+class PumpEnactResultObject @Inject constructor(private val rh: ResourceHelper) : PumpEnactResult {
 
     override var success = false // request was processed successfully (but possible no change was needed)
     override var enacted = false // request was processed successfully and change has been made
@@ -19,6 +20,9 @@ class PumpEnactResultObject(private val rh: ResourceHelper) : PumpEnactResult {
     // Result of treatment delivery
     override var bolusDelivered = 0.0 // real value of delivered insulin
     override var queued = false
+
+    override fun toString() =
+        "PumpEnactResultObject(success=$success,enacted=$enacted,comment=$comment,duration=$duration,absolute=$absolute,percent=$percent,isPercent=$isPercent,isTempCancel=$isTempCancel,bolusDelivered=$bolusDelivered,queued=$queued)"
 
     override fun success(success: Boolean): PumpEnactResultObject = this.also { this.success = success }
     override fun enacted(enacted: Boolean): PumpEnactResultObject = this.also { it.enacted = enacted }

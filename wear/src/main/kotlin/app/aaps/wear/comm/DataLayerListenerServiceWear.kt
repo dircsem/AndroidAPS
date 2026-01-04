@@ -18,13 +18,13 @@ import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.shared.impl.weardata.ZipWatchfaceFormat
 import app.aaps.wear.R
+import app.aaps.wear.events.EventWearPreferenceChange
+import app.aaps.wear.heartrate.HeartRateListener
 import app.aaps.wear.interaction.ConfigurationActivity
-import app.aaps.wear.interaction.utils.Persistence
+import app.aaps.wear.wearStepCount.StepCountListener
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
-import com.google.android.gms.wearable.DataEvent
-import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
@@ -47,7 +47,6 @@ import javax.inject.Inject
 class DataLayerListenerServiceWear : WearableListenerService() {
 
     @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var persistence: Persistence
     @Inject lateinit var sp: SP
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var aapsSchedulers: AapsSchedulers
@@ -61,6 +60,8 @@ class DataLayerListenerServiceWear : WearableListenerService() {
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
     private val disposable = CompositeDisposable()
+    private var heartRateListener: HeartRateListener? = null
+    private var stepCountListener: StepCountListener? = null
 
     private val rxPath get() = getString(app.aaps.core.interfaces.R.string.path_rx_bridge)
     private val rxDataPath get() = getString(app.aaps.core.interfaces.R.string.path_rx_data_bridge)
@@ -69,6 +70,7 @@ class DataLayerListenerServiceWear : WearableListenerService() {
     override fun onCreate() {
         AndroidInjection.inject(this)
         super.onCreate()
+        startForegroundService()
         handler.post { updateTranscriptionCapability() }
         disposable += rxBus
             .toObservable(EventWearToMobile::class.java)
@@ -82,6 +84,16 @@ class DataLayerListenerServiceWear : WearableListenerService() {
             .subscribe {
                 sendMessage(rxDataPath, it.payload.serializeByte())
             }
+        disposable += rxBus
+            .toObservable(EventWearPreferenceChange::class.java)
+            .observeOn(aapsSchedulers.main)
+            .subscribe { event: EventWearPreferenceChange ->
+                if (event.changedKey == getString(R.string.key_heart_rate_sampling)) updateHeartRateListener()
+                if (event.changedKey == getString(R.string.key_steps_sampling)) updateStepsCountListener()
+            }
+
+        updateHeartRateListener()
+        updateStepsCountListener()
     }
 
     override fun onCapabilityChanged(p0: CapabilityInfo) {
@@ -92,31 +104,12 @@ class DataLayerListenerServiceWear : WearableListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        handler.removeCallbacksAndMessages(null)
+        handler.looper.quitSafely()
         scope.cancel()
         disposable.clear()
     }
 
-    override fun onDataChanged(dataEvents: DataEventBuffer) {
-        //aapsLogger.debug(LTag.WEAR, "onDataChanged")
-
-        dataEvents.forEach { event ->
-            if (event.type == DataEvent.TYPE_CHANGED) {
-                val path = event.dataItem.uri.path
-
-                aapsLogger.debug(LTag.WEAR, "onDataChanged: Path: $path, EventDataItem=${event.dataItem}")
-                try {
-                    @Suppress("ControlFlowWithEmptyBody", "UNUSED_EXPRESSION")
-                    when (path) {
-                    }
-                } catch (exception: Exception) {
-                    aapsLogger.error(LTag.WEAR, "onDataChanged failed", exception)
-                }
-            }
-        }
-        super.onDataChanged(dataEvents)
-    }
-
-    @ExperimentalSerializationApi
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
 
@@ -144,17 +137,6 @@ class DataLayerListenerServiceWear : WearableListenerService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        createNotificationChannel()
-        val notificationIntent = Intent(this, ConfigurationActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Data Layer Foreground Service")
-            .setContentText(null)
-            .setSmallIcon(R.drawable.ic_icon)
-            .setContentIntent(pendingIntent)
-            .build()
-        startForeground(FOREGROUND_NOTIF_ID, notification)
-
         when (intent?.action) {
 
             INTENT_CANCEL_BOLUS        -> {
@@ -170,10 +152,58 @@ class DataLayerListenerServiceWear : WearableListenerService() {
         return START_STICKY
     }
 
+    private fun startForegroundService() {
+        createNotificationChannel()
+        val notificationIntent = Intent(this, ConfigurationActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.datalayer_notification_title))
+            .setContentText(getString(R.string.datalayer_notification_text))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSmallIcon(R.drawable.ic_icon)
+            .setContentIntent(pendingIntent)
+            .build()
+        startForeground(FOREGROUND_NOTIF_ID, notification)
+    }
+
+    private fun updateHeartRateListener() {
+        if (sp.getBoolean(R.string.key_heart_rate_sampling, false)) {
+            if (heartRateListener == null) {
+                heartRateListener = HeartRateListener(
+                    this, aapsLogger, sp, aapsSchedulers
+                ).also { hrl -> disposable += hrl }
+            }
+        } else {
+            heartRateListener?.let { hrl ->
+                disposable.remove(hrl)
+                heartRateListener = null
+            }
+        }
+    }
+
+    private fun updateStepsCountListener() {
+        if (sp.getBoolean(R.string.key_steps_sampling, false)) {
+            if (stepCountListener == null) {
+                stepCountListener = StepCountListener(
+                    this, aapsLogger, aapsSchedulers
+                ).also { scl -> disposable += scl }
+            }
+        } else {
+            stepCountListener?.let { scl ->
+                disposable.remove(scl)
+                stepCountListener = null
+            }
+        }
+    }
+
     @Suppress("PrivatePropertyName")
     private val CHANNEL_ID: String = "DataLayerForegroundServiceChannel"
     private fun createNotificationChannel() {
-        val serviceChannel = NotificationChannel(CHANNEL_ID, "Data Layer Foreground Service Channel", NotificationManager.IMPORTANCE_DEFAULT)
+        val serviceChannel = NotificationChannel(CHANNEL_ID, "Data Layer Foreground Service Channel", NotificationManager.IMPORTANCE_LOW)
+        serviceChannel.setShowBadge(false)
+        serviceChannel.enableLights(false)
+        serviceChannel.enableVibration(false)
+        serviceChannel.setSound(null, null)
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(serviceChannel)
     }

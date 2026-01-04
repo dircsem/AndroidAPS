@@ -1,19 +1,18 @@
 package app.aaps.plugins.main.iob.iobCobCalculator
 
 import androidx.collection.LongSparseArray
-import app.aaps.core.data.aps.AutosensData
-import app.aaps.core.data.aps.AutosensResult
 import app.aaps.core.data.aps.BasalData
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.iob.CobInfo
-import app.aaps.core.data.iob.IobTotal
-import app.aaps.core.data.iob.MealData
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TB
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
+import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.IobTotal
+import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -22,6 +21,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -33,8 +33,8 @@ import app.aaps.core.interfaces.rx.events.EventConfigBuilderChange
 import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventNewBG
 import app.aaps.core.interfaces.rx.events.EventNewHistoryData
-import app.aaps.core.interfaces.rx.events.EventOfflineChange
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
+import app.aaps.core.interfaces.rx.events.EventRunningModeChange
 import app.aaps.core.interfaces.rx.events.EventTherapyEventChange
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -43,11 +43,11 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.combine
 import app.aaps.core.objects.extensions.convertedToAbsolute
-import app.aaps.core.objects.extensions.copy
 import app.aaps.core.objects.extensions.iobCalc
 import app.aaps.core.objects.extensions.plus
 import app.aaps.core.objects.extensions.round
@@ -56,6 +56,7 @@ import app.aaps.plugins.main.iob.iobCobCalculator.data.AutosensDataStoreObject
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -83,7 +84,7 @@ class IobCobCalculatorPlugin @Inject constructor(
     PluginDescription()
         .mainType(PluginType.GENERAL)
         .pluginName(R.string.iob_cob_calculator)
-        .showInList(false)
+        .showInList { false }
         .neverVisible(true)
         .alwaysEnabled(true),
     aapsLogger, rh
@@ -120,23 +121,23 @@ class IobCobCalculatorPlugin @Inject constructor(
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
-                           if (event.isChanged(rh.gs(IntKey.AutosensPeriod.key)) ||
-                               event.isChanged(rh.gs(StringKey.SafetyAge.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.AbsorptionMaxTime.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.ApsAmaMin5MinCarbsImpact.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.ApsSmbMin5MinCarbsImpact.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.AbsorptionCutOff.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.AutosensMax.key)) ||
-                               event.isChanged(rh.gs(DoubleKey.AutosensMin.key)) ||
-                               event.isChanged(rh.gs(app.aaps.core.utils.R.string.key_insulin_oref_peak))
+                           if (event.isChanged(IntKey.AutosensPeriod.key) ||
+                               event.isChanged(StringKey.SafetyAge.key) ||
+                               event.isChanged(DoubleKey.AbsorptionMaxTime.key) ||
+                               event.isChanged(DoubleKey.ApsAmaMin5MinCarbsImpact.key) ||
+                               event.isChanged(DoubleKey.ApsSmbMin5MinCarbsImpact.key) ||
+                               event.isChanged(DoubleKey.AbsorptionCutOff.key) ||
+                               event.isChanged(DoubleKey.AutosensMax.key) ||
+                               event.isChanged(DoubleKey.AutosensMin.key) ||
+                               event.isChanged(IntKey.InsulinOrefPeak.key)
                            ) {
                                resetDataAndRunCalculation("onEventPreferenceChange", event)
                            }
-                           if (event.isChanged(rh.gs(StringKey.GeneralUnits.key))) {
+                           if (event.isChanged(StringKey.GeneralUnits.key)) {
                                overviewData.reset()
                                rxBus.send(EventNewHistoryData(0, false))
                            }
-                           if (event.isChanged(rh.gs(app.aaps.core.utils.R.string.key_rangetodisplay))) {
+                           if (event.isChanged(IntNonKey.RangeToDisplay.key)) {
                                overviewData.initRange()
                                calculationWorkflow.runOnScaleChanged(this, overviewData)
                                rxBus.send(EventNewHistoryData(0, false))
@@ -152,7 +153,7 @@ class IobCobCalculatorPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribe({ calculationWorkflow.runOnEventTherapyEventChange(overviewData) }, fabricPrivacy::logException)
         disposable += rxBus
-            .toObservable(EventOfflineChange::class.java)
+            .toObservable(EventRunningModeChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ calculationWorkflow.runOnEventTherapyEventChange(overviewData) }, fabricPrivacy::logException)
         disposable += rxBus
@@ -172,11 +173,13 @@ class IobCobCalculatorPlugin @Inject constructor(
                 },
                 fabricPrivacy::logException
             )
-
+        historyWorker = Executors.newSingleThreadScheduledExecutor()
     }
 
     override fun onStop() {
         disposable.clear()
+        historyWorker?.shutdown()
+        historyWorker = null
         super.onStop()
     }
 
@@ -320,7 +323,7 @@ class IobCobCalculatorPlugin @Inject constructor(
             aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA is waiting for calculation thread: $reason")
             try {
                 thread?.join(5000)
-            } catch (ignored: InterruptedException) {
+            } catch (_: InterruptedException) { // ignore
             }
             aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA finished waiting for calculation thread: $reason")
         }
@@ -337,8 +340,10 @@ class IobCobCalculatorPlugin @Inject constructor(
         if (autosensData != null) {
             displayCob = autosensData.cob
             carbs.forEach { carb ->
-                if (carb.timestamp > autosensData.time && carb.timestamp <= now)
-                    displayCob += carb.amount
+                if (carb.timestamp > autosensData.time && carb.timestamp <= now) {
+                    displayCob = displayCob!! + carb.amount
+                    displayCob = max(displayCob, 0.0)
+                }
             }
             timestamp = autosensData.time
         }
@@ -354,7 +359,7 @@ class IobCobCalculatorPlugin @Inject constructor(
         val absorptionTimeAgo = now - (maxAbsorptionHours * T.hours(1).msecs()).toLong()
         persistenceLayer.getCarbsFromTimeToTimeExpanded(absorptionTimeAgo + 1, now, true)
             .forEach {
-                if (it.amount > 0) {
+                if (it.amount != 0.0) {
                     result.carbs += it.amount
                     if (it.timestamp > result.lastCarbTime) result.lastCarbTime = it.timestamp
                 }
@@ -410,7 +415,7 @@ class IobCobCalculatorPlugin @Inject constructor(
     }
 
     // Limit rate of EventNewHistoryData
-    private val historyWorker = Executors.newSingleThreadScheduledExecutor()
+    private var historyWorker: ScheduledExecutorService? = null
     private var scheduledHistoryPost: ScheduledFuture<*>? = null
     private var scheduledEvent: EventNewHistoryData? = null
 
@@ -426,7 +431,7 @@ class IobCobCalculatorPlugin @Inject constructor(
                 event.reloadBgData = event.reloadBgData || it.reloadBgData
             }
             scheduledEvent = event
-            scheduledHistoryPost = historyWorker.schedule(
+            scheduledHistoryPost = historyWorker?.schedule(
                 {
                     synchronized(this) {
                         aapsLogger.debug(LTag.AUTOSENS, "Running newHistoryData")

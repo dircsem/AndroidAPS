@@ -1,304 +1,302 @@
 package app.aaps.plugins.aps.openAPSAIMI
 
-import kotlin.math.max
+import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.math.sign
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-class aimiNeuralNetwork(private val inputSize: Int, private val hiddenSize: Int, private val outputSize: Int) {
+class AimiNeuralNetwork(
+    private val inputSize: Int,
+    private val hiddenSize: Int,
+    private val outputSize: Int,
+    private val config: TrainingConfig = TrainingConfig(),
+    private val regularizationLambda: Double = 0.01 // L2 reg (optionnel)
+) {
 
-    private val weightsInputHidden = Array(inputSize) { heInitialization(hiddenSize) }
-    private val biasHidden = DoubleArray(hiddenSize) { 0.01 }// Petite valeur constante
-    private val weightsHiddenOutput = Array(hiddenSize) { heInitialization(outputSize) }
-    private val biasOutput = DoubleArray(outputSize) { 0.01 }  // Petite valeur constante
-    var lastTrainingException: Exception? = null
-    var trainingLossHistory: MutableList<Double> = mutableListOf()
-    private fun heInitialization(size: Int): DoubleArray {
-        val scale = sqrt(6.0 / (inputSize + size))
-        return DoubleArray(size) { Random.nextDouble(-scale, scale) }
+    // Poids et biais
+    private var weightsInputHidden = Array(inputSize) {
+        DoubleArray(hiddenSize) { Random.nextDouble(-sqrt(2.0 / inputSize), sqrt(2.0 / inputSize)) }
     }
-    private fun applyDropout(layer: DoubleArray, dropoutRate: Double): DoubleArray {
-        return layer.map { if (Random.nextDouble() > dropoutRate) it else 0.0 }.toDoubleArray()
+    private var biasHidden = DoubleArray(hiddenSize) { 0.01 }
+
+    private var weightsHiddenOutput = Array(hiddenSize) {
+        DoubleArray(outputSize) { Random.nextDouble(-sqrt(2.0 / hiddenSize), sqrt(2.0 / hiddenSize)) }
     }
+    private var biasOutput = DoubleArray(outputSize) { 0.01 }
 
-    private fun relu(x: Double) = max(0.0, x)
+    // Historique pour debug ou tracking
+    private val trainingLossHistory = mutableListOf<Double>()
+    private var bestValLoss = Double.MAX_VALUE
 
-    // Création d'une nouvelle caractéristique
-    fun createNewFeature(inputData: List<FloatArray>): List<FloatArray> {
-        return inputData.map { originalFeatures ->
-            val newFeature = originalFeatures[0] * originalFeatures[1] // Par exemple, produit de deux caractéristiques
-            originalFeatures + newFeature // Ajoute la nouvelle caractéristique à la fin de l'array
-        }
-    }
-
-    // Normalisation Z-score
-    private fun zScoreNormalization(inputData: List<FloatArray>): List<FloatArray> {
-        if (inputData.isEmpty()) {
-            // Retourner une liste vide ou gérer le cas d'une liste vide d'une manière appropriée
-            return emptyList()
-        }
-        val means = FloatArray(inputData.first().size) { 0f }
-        val stdDevs = FloatArray(inputData.first().size) { 0f }
-
-        // Accumuler la somme et la somme des carrés pour chaque caractéristique
-        inputData.forEach { features ->
-            features.forEachIndexed { index, value ->
-                means[index] += value
-                stdDevs[index] += value * value
-            }
-        }
-
-        // Calcul de la moyenne et de l'écart-type
-        means.indices.forEach { i ->
-            means[i] /= inputData.size.toFloat()
-            stdDevs[i] = sqrt(stdDevs[i] / inputData.size - means[i] * means[i])
-        }
-
-        // Application de la normalisation Z-score
-        return inputData.map { features ->
-            FloatArray(features.size) { index ->
-                if (stdDevs[index] != 0.0f) {
-                    (features[index] - means[index]) / stdDevs[index]
-                } else {
-                    features[index] - means[index] // Si l'écart-type est 0, on soustrait simplement la moyenne
-                }
-            }
-        }
+    // Fonctions d'activation et normalisation
+    private fun leakyRelu(x: Double, alpha: Double = config.leakyReluAlpha): Double {
+        return if (x >= 0) x else alpha * x
     }
 
+    private fun batchNormalization(values: DoubleArray): DoubleArray {
+        val mean = values.average()
+        val variance = values.map { (it - mean).pow(2.0) }.average()
+        return values.map { (it - mean) / sqrt(variance + 1e-8) }.toDoubleArray()
+    }
 
-
-    private fun forwardPass(input: FloatArray): Pair<DoubleArray, DoubleArray> {
-        val hidden = DoubleArray(hiddenSize) { i ->
-            var sum = 0.0
-            for (j in input.indices) {
-                sum += input[j] * weightsInputHidden[j][i]
-            }
-            relu(sum + biasHidden[i])
-        }
-        // Application du Dropout sur la première couche cachée
-        val hiddenWithDropout = applyDropout(hidden, 0.5) // Taux de Dropout de 50%
-
-        // Calcul des activations de la deuxième couche cachée
-        val hidden2 = DoubleArray(hiddenSize) { i ->
-            var sum = 0.0
-            for (j in hiddenWithDropout.indices) {
-                sum += hiddenWithDropout[j] * weightsInputHidden[j][i]
-            }
-            relu(sum + biasHidden[i])
-        }
-
-        val output = DoubleArray(outputSize) { i ->
-            var sum = 0.0
-            for (j in hidden.indices) {
-                sum += hidden[j] * weightsHiddenOutput[j][i]
-            }
-            sum + biasOutput[i]
-        }
-
-        return Pair(hidden2, output)
+    private fun applyDropout(values: DoubleArray, dropoutRate: Double): DoubleArray {
+        return values.map { if (Random.nextDouble() < dropoutRate) 0.0 else it }.toDoubleArray()
     }
 
     fun predict(input: FloatArray): DoubleArray {
-        return forwardPass(input).second
+         return forwardPass(input, inferenceMode = true).second
     }
-    private fun DoubleArray.clipInPlace(min: Double, max: Double) {
-        for (i in indices) {
-            this[i] = this[i].coerceIn(min, max)
+    private fun forwardPass(
+        input: FloatArray,
+        inferenceMode: Boolean = false
+    ): Pair<DoubleArray, DoubleArray> {
+        // Calcul de la couche cachée : somme pondérée + biais
+        val hidden = DoubleArray(hiddenSize)
+        for (h in 0 until hiddenSize) {
+            var sum = 0.0
+            for (i in input.indices) {
+                sum += input[i] * weightsInputHidden[i][h]
+            }
+            hidden[h] = sum + biasHidden[h]
         }
+
+        // Activation LeakyReLU in place
+        for (h in 0 until hiddenSize) {
+            val v = hidden[h]
+            hidden[h] = if (v >= 0) v else config.leakyReluAlpha * v
+        }
+
+        // Batch normalization (in place) si activée et pas en mode inférence
+        if (!inferenceMode && config.useBatchNorm) {
+            var sum = 0.0
+            for (h in 0 until hiddenSize) {
+                sum += hidden[h]
+            }
+            val mean = sum / hiddenSize
+
+            var sumSq = 0.0
+            for (h in 0 until hiddenSize) {
+                val diff = hidden[h] - mean
+                sumSq += diff * diff
+            }
+            val variance = sumSq / hiddenSize
+            val denom = sqrt(variance + 1e-8)
+            for (h in 0 until hiddenSize) {
+                hidden[h] = (hidden[h] - mean) / denom
+            }
+        }
+
+        // Application du dropout (in place) si activé et pas en mode inférence
+        if (!inferenceMode && config.useDropout) {
+            for (h in 0 until hiddenSize) {
+                if (Random.nextDouble() < config.dropoutRate) {
+                    hidden[h] = 0.0
+                }
+            }
+        }
+
+        // Calcul de la couche de sortie
+        val output = DoubleArray(outputSize)
+        for (o in 0 until outputSize) {
+            var sum = 0.0
+            for (h in 0 until hiddenSize) {
+                sum += hidden[h] * weightsHiddenOutput[h][o]
+            }
+            output[o] = sum + biasOutput[o]
+        }
+
+        return hidden to output
     }
 
-    private fun backpropagation(input: FloatArray, target: DoubleArray, learningRate: Double, regularizationLambda: Double) {
-        val (hidden, output) = forwardPass(input)
 
-        // Gradient de la perte par rapport à la sortie prédite
-        val gradLossOutput = DoubleArray(outputSize) { i -> 2.0 * (output[i] - target[i]) }
-        //val clipValue = 1.0 // This is an example value; adjust as necessary
-        //gradLossOutput.clipInPlace(-clipValue, clipValue)
+    // Loss and regularization
+    private fun hybridLoss(output: DoubleArray, target: DoubleArray): Double {
+        val alpha = 0.3 // Vous pouvez ajuster ce coefficient selon vos besoins
+        val mae = maeLoss(output, target)
+        val mse = output.zip(target).sumOf { (o, t) -> (o - t).pow(2.0) } / output.size
 
-        // Mise à jour des poids et biais de la couche de sortie
-        for (i in 0 until outputSize) {
-            for (j in 0 until hiddenSize) {
-                weightsHiddenOutput[j][i] -= learningRate * (gradLossOutput[i] * hidden[j] + regularizationLambda * weightsHiddenOutput[j][i])
-            }
-            biasOutput[i] -= learningRate * gradLossOutput[i]
-        }
-
-        // Mise à jour des poids et biais de la couche cachée
-        for (i in 0 until inputSize) {
-            for (j in 0 until hiddenSize) {
-                val gradRelu = if (hidden[j] > 0) 1 else 0.001
-                var gradLossHidden = 0.0
-                for (k in 0 until outputSize) {
-                    gradLossHidden += gradLossOutput[k] * weightsHiddenOutput[j][i]
-                }
-                gradLossHidden *= gradRelu
-
-                weightsInputHidden[i][j] -= learningRate * (gradLossHidden * input[i] + regularizationLambda * weightsInputHidden[i][j])
-            }
-        }
-
-        // Mise à jour du biais de la couche cachée
-        for (j in 0 until hiddenSize) {
-            val gradRelu = if (hidden[j] > 0) 1 else 0.001
-            var gradLossHidden = 0.0
-            for (k in 0 until outputSize) {
-                gradLossHidden += gradLossOutput[k] * weightsHiddenOutput[j][k]
-            }
-            gradLossHidden *= gradRelu
-
-            biasHidden[j] -= learningRate * gradLossHidden
-        }
+        return alpha * mae + (1 - alpha) * mse
     }
-    /*fun train(
-        inputs: List<FloatArray>, targets: List<DoubleArray>,
-        validationInputs: List<FloatArray>, validationTargets: List<DoubleArray>,
-        epochs: Int, initialLearningRate: Double,
-        patience: Int = 10, // pour early stopping
-        regularizationLambda: Double = 0.01) { // lambda pour régularisation L2
-        var learningRate = initialLearningRate
-        var bestLoss = Double.MAX_VALUE
-        var epochsWithoutImprovement = 0
 
-        for (epoch in 1..epochs) {
-            var totalLoss = 0.0
-            try {
-                for ((input, target) in inputs.zip(targets)) {
-                    val output = forwardPass(input).second
-                    totalLoss += mseLoss(output, target) + l2Regularization(regularizationLambda)
-                    backpropagation(input, target, learningRate)
-                }
-                val averageLoss = totalLoss / inputs.size
-                trainingLossHistory.add(averageLoss)
+    private fun maeLoss(output: DoubleArray, target: DoubleArray): Double {
+        var sumAbs = 0.0
+        for (i in output.indices) {
+            sumAbs += abs(output[i] - target[i])
+        }
+        return sumAbs / output.size
+    }
 
-                // Validation de l'Époque
-                val validationLoss = validate(validationInputs, validationTargets)
-                println("Epoch $epoch, Training Loss: $averageLoss, Validation Loss: $validationLoss")
+    private fun l2Regularization(): Double {
+        var reg = 0.0
+        weightsInputHidden.forEach { row -> row.forEach { w -> reg += w.pow(2.0) } }
+        weightsHiddenOutput.forEach { row -> row.forEach { w -> reg += w.pow(2.0) } }
+        return reg * regularizationLambda
+    }
 
-                // Early Stopping
-                if (validationLoss < bestLoss) {
-                    bestLoss = validationLoss
-                    epochsWithoutImprovement = 0
-                } else {
-                    epochsWithoutImprovement++
-                    if (epochsWithoutImprovement >= patience) {
-                        println("Early stopping triggered at epoch $epoch")
-                        break
-                    }
-                }
+    // Backpropagation + ADAM
+    private fun backpropagation(input: FloatArray, target: DoubleArray): Pair<Array<DoubleArray>, Array<DoubleArray>> {
+        val (hidden, output) = forwardPass(input, inferenceMode = false)
 
-                // Ajustement Dynamique du Taux d'Apprentissage
-                learningRate = learningRate * 0.95 // Réduction du taux d'apprentissage de 5% par époque, par exemple
+        val gradOutput = DoubleArray(outputSize) { i ->
+            sign(output[i] - target[i])
+        }
 
-            } catch (e: Exception) {
-                lastTrainingException = e
-                println("Exception during training at epoch $epoch: ${e.message}")
-                break // Sortie anticipée de la boucle d'entraînement en cas d'exception
+        val gradHiddenOutput = Array(hiddenSize) { h ->
+            DoubleArray(outputSize) { o ->
+                gradOutput[o] * hidden[h]
             }
         }
-    }*/
-    fun train(
-        inputs: List<FloatArray>, targets: List<DoubleArray>,
-        validationRawInputs: List<FloatArray>, validationTargets: List<DoubleArray>,
-        epochs: Double, initialLearningRate: Double,
-        batchSize: Int = 32, // Taille du lot pour l'entraînement par lots
-        patience: Int = 10, // pour early stopping
-        regularizationLambda: Double = 0.01 // lambda pour régularisation L2
+
+        val gradHidden = DoubleArray(hiddenSize) { h ->
+            val sum = gradOutput.indices.sumOf { o -> gradOutput[o] * weightsHiddenOutput[h][o] }
+            if (hidden[h] >= 0) sum else sum * config.leakyReluAlpha
+        }
+
+        val gradInputHidden = Array(inputSize) { i ->
+            DoubleArray(hiddenSize) { h ->
+                gradHidden[h] * input[i]
+            }
+        }
+
+        return gradInputHidden to gradHiddenOutput
+    }
+
+    private val mInputHidden = Array(inputSize) { DoubleArray(hiddenSize) { 0.0 } }
+    private val vInputHidden = Array(inputSize) { DoubleArray(hiddenSize) { 0.0 } }
+    private val mHiddenOutput = Array(hiddenSize) { DoubleArray(outputSize) { 0.0 } }
+    private val vHiddenOutput = Array(hiddenSize) { DoubleArray(outputSize) { 0.0 } }
+    private var adamStep = 0
+
+    private fun adamUpdate(
+        weights: Array<DoubleArray>,
+        grads: Array<DoubleArray>,
+        m: Array<DoubleArray>,
+        v: Array<DoubleArray>
     ) {
-        var learningRate = initialLearningRate
-        var bestLoss = Double.MAX_VALUE
+        adamStep++
+        val beta1 = config.beta1
+        val beta2 = config.beta2
+        val eps = config.epsilon
+        for (i in weights.indices) {
+            for (j in weights[i].indices) {
+                m[i][j] = beta1 * m[i][j] + (1 - beta1) * grads[i][j]
+                v[i][j] = beta2 * v[i][j] + (1 - beta2) * grads[i][j] * grads[i][j]
+
+                val mHat = m[i][j] / (1 - beta1.pow(adamStep.toDouble()))
+                val vHat = v[i][j] / (1 - beta2.pow(adamStep.toDouble()))
+
+                weights[i][j] -= config.learningRate * (mHat / (sqrt(vHat) + eps))
+
+                // L2 weight decay (optionnel)
+                weights[i][j] -= config.weightDecay * weights[i][j]
+            }
+        }
+    }
+
+    fun trainWithValidation(
+        trainInputs: List<FloatArray>,
+        trainTargets: List<DoubleArray>,
+        valInputs: List<FloatArray>,
+        valTargets: List<DoubleArray>
+    ) {
+        if (trainInputs.isEmpty()) {
+            println("No training data - aborting.")
+            return
+        }
+
+        // Reset de l'historique
+        trainingLossHistory.clear()
+        bestValLoss = Double.MAX_VALUE
+        adamStep = 0
+
+        val totalEpochs = if (config.epochs <= 0) 1000 else config.epochs
+        val batchSize = if (config.batchSize <= 0) 32 else config.batchSize
         var epochsWithoutImprovement = 0
-        val preparedInputs = createNewFeature(inputs)
-        val normalizedInputs = zScoreNormalization(preparedInputs)
-        val preparedValidationInputs = createNewFeature(validationRawInputs)
-        val normalizedValidationInputs = zScoreNormalization(preparedValidationInputs)
 
-
-        for (epoch in 1..epochs.toInt()) {
+        for (epoch in 1..totalEpochs) {
+            val indices = trainInputs.indices.shuffled()
             var totalLoss = 0.0
-            try {
-                normalizedInputs.chunked(batchSize).zip(targets.chunked(batchSize)).forEach { (batchInputs, batchTargets) ->
-                    batchInputs.zip(batchTargets).forEach { (input, target) ->
-                        val output = forwardPass(input).second
-                        totalLoss += mseLoss(output, target) + l2Regularization(regularizationLambda)
-                        backpropagation(input, target, learningRate, regularizationLambda)
-                    }
+
+            // mini-batch
+            indices.chunked(batchSize).forEach { batchIdx ->
+                batchIdx.forEach { idx ->
+                    val input = trainInputs[idx]
+                    val target = trainTargets[idx]
+                    val (gradIH, gradHO) = backpropagation(input, target)
+
+                    // Update input->hidden
+                    adamUpdate(weightsInputHidden, gradIH, mInputHidden, vInputHidden)
+                    // Update hidden->output
+                    adamUpdate(weightsHiddenOutput, gradHO, mHiddenOutput, vHiddenOutput)
+
+                    // recalc pour la loss
+                    val out = forwardPass(input, inferenceMode = false).second
+                    totalLoss += hybridLoss(out, target)
                 }
+            }
 
-                val averageLoss = totalLoss / normalizedInputs.size
-                trainingLossHistory.add(averageLoss)
+            val avgTrainLoss = totalLoss / trainInputs.size
+            trainingLossHistory.add(avgTrainLoss)
 
-                // Validation de l'Époque
-                val validationLoss = validate(normalizedValidationInputs, validationTargets)
-                println("Epoch $epoch, Training Loss: $averageLoss, Validation Loss: $validationLoss")
+            // Validation
+            val valLoss = validate(valInputs, valTargets)
+            println("Epoch $epoch/$totalEpochs - trainLoss=$avgTrainLoss - valLoss=$valLoss")
 
-                // Early Stopping
-                if (validationLoss < bestLoss) {
-                    bestLoss = validationLoss
-                    epochsWithoutImprovement = 0
-                } else {
-                    epochsWithoutImprovement++
-                    if (epochsWithoutImprovement >= patience) {
-                        println("Early stopping triggered at epoch $epoch")
-                        break
-                    }
+            if (valLoss < bestValLoss) {
+                bestValLoss = valLoss
+                epochsWithoutImprovement = 0
+                // Optionnel : sauvegarder les poids
+            } else {
+                epochsWithoutImprovement++
+                if (epochsWithoutImprovement >= config.patience) {
+                    println("Early stopping at epoch $epoch (no improvement).")
+                    break
                 }
-
-                // Ajustement Dynamique du Taux d'Apprentissage
-                learningRate = learningRate * 0.95 // Réduction du taux d'apprentissage de 5% par époque, par exemple
-
-            } catch (e: Exception) {
-                lastTrainingException = e
-                println("Exception during training at epoch $epoch: ${e.message}")
-                break // Sortie anticipée de la boucle d'entraînement en cas d'exception
             }
         }
     }
 
 
-    private fun l2Regularization(lambda: Double): Double {
-        var regularizationLoss = 0.0
+    fun validate(valInputs: List<FloatArray>, valTargets: List<DoubleArray>): Double {
+        if (valInputs.isEmpty()) return 0.0
 
-        // Calculer la régularisation pour les poids entre l'entrée et la couche cachée
-        for (layerWeights in weightsInputHidden) {
-            for (weight in layerWeights) {
-                regularizationLoss += weight * weight
+        var totalLoss = 0.0
+        for (i in valInputs.indices) {
+            val out = forwardPass(valInputs[i], inferenceMode = true).second
+            totalLoss += hybridLoss(out, valTargets[i])
+        }
+        totalLoss += l2Regularization()
+        return totalLoss / valInputs.size
+    }
+
+    companion object {
+
+        fun refineSMB(smb: Float, nn: AimiNeuralNetwork, input: DoubleArray?): Float {
+            if (input == null) return smb
+            val floatInput = input.map { it.toFloat() }.toFloatArray()
+            val prediction = nn.predict(floatInput)[0]
+            return smb + prediction.toFloat()
+        }
+    }
+
+    fun copyWeightsFrom(other: AimiNeuralNetwork) {
+        for (i in weightsInputHidden.indices) {
+            for (j in weightsInputHidden[i].indices) {
+                weightsInputHidden[i][j] = other.weightsInputHidden[i][j]
             }
         }
-
-        // Calculer la régularisation pour les poids entre la couche cachée et la sortie
-        for (layerWeights in weightsHiddenOutput) {
-            for (weight in layerWeights) {
-                regularizationLoss += weight * weight
+        for (i in biasHidden.indices) {
+            biasHidden[i] = other.biasHidden[i]
+        }
+        for (i in weightsHiddenOutput.indices) {
+            for (j in weightsHiddenOutput[i].indices) {
+                weightsHiddenOutput[i][j] = other.weightsHiddenOutput[i][j]
             }
         }
-
-        return lambda * regularizationLoss / 2.0
-    }
-
-    fun validate(validationInputs: List<FloatArray>, validationTargets: List<DoubleArray>): Double {
-        var totalValidationLoss = 0.0
-        for ((input, target) in validationInputs.zip(validationTargets)) {
-            val output = forwardPass(input).second
-            totalValidationLoss += mseLoss(output, target)
+        for (i in biasOutput.indices) {
+            biasOutput[i] = other.biasOutput[i]
         }
-        return totalValidationLoss / validationInputs.size
     }
 
-
-    // Fonction d'erreur quadratique moyenne
-    private fun mseLoss(output: DoubleArray, target: DoubleArray): Double {
-        return output.zip(target).sumOf { (o, t) -> (o - t).pow(2) } / output.size
-    }
-}
-
-
-
-private operator fun Double.timesAssign(gradRelu: Number) {
-
-}
-
-fun refineSMB(smb: Float, neuralNetwork: aimiNeuralNetwork, input: FloatArray): Float {
-    val prediction = neuralNetwork.predict(input)
-    return smb + prediction[0].toFloat()
 }

@@ -15,10 +15,10 @@ import java.util.TimeZone
 fun PS.getCustomizedName(decimalFormatter: DecimalFormatter): String {
     var name: String = profileName
     if (Constants.LOCAL_PROFILE == name) {
-        name = decimalFormatter.to2Decimal(ProfileSealed.PS(this).percentageBasalSum()) + "U "
+        name = decimalFormatter.to2Decimal(ProfileSealed.PS(value = this, activePlugin = null).percentageBasalSum()) + "U "
     }
     if (timeshift != 0L || percentage != 100) {
-        name += "($percentage%"
+        name += " ($percentage%"
         if (timeshift != 0L) name += "," + T.msecs(timeshift).hours() + "h"
         name += ")"
     }

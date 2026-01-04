@@ -17,9 +17,8 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.dialogs.ChooseTriggerDialog
 import app.aaps.plugins.automation.events.EventTriggerChanged
@@ -38,7 +37,6 @@ abstract class Trigger(val injector: HasAndroidInjector) {
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var profileUtil: ProfileUtil
-    @Inject lateinit var sp: SP
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var locationDataContainer: LastLocationDataContainer
     @Inject lateinit var persistenceLayer: PersistenceLayer
@@ -94,6 +92,13 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerBg::class.java.simpleName                 -> TriggerBg(injector).fromJSON(data.toString())
                 TriggerBolusAgo::class.java.simpleName           -> TriggerBolusAgo(injector).fromJSON(data.toString())
                 TriggerBTDevice::class.java.simpleName           -> TriggerBTDevice(injector).fromJSON(data.toString())
+                TriggerSensorAge::class.java.simpleName          -> TriggerSensorAge(injector).fromJSON(data.toString())
+                TriggerCannulaAge::class.java.simpleName         -> TriggerCannulaAge(injector).fromJSON(data.toString())
+                TriggerPodChange::class.java.simpleName          -> TriggerPodChange(injector).fromJSON(data.toString())
+                TriggerInsulinAge::class.java.simpleName         -> TriggerInsulinAge(injector).fromJSON(data.toString())
+                TriggerReservoirLevel::class.java.simpleName     -> TriggerReservoirLevel(injector).fromJSON(data.toString())
+                TriggerPumpBatteryAge::class.java.simpleName     -> TriggerPumpBatteryAge(injector).fromJSON(data.toString())
+                TriggerPumpBatteryLevel::class.java.simpleName   -> TriggerPumpBatteryLevel(injector).fromJSON(data.toString())
                 TriggerIob::class.java.simpleName                -> TriggerIob(injector).fromJSON(data.toString())
                 TriggerCOB::class.java.simpleName                -> TriggerCOB(injector).fromJSON(data.toString())
                 TriggerConnector::class.java.simpleName          -> TriggerConnector(injector).fromJSON(data.toString())
@@ -109,11 +114,12 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerTime::class.java.simpleName               -> TriggerTime(injector).fromJSON(data.toString())
                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
+                TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
 
                 else                                             -> TriggerConnector(injector)
             }
         } catch (e: Exception) {
-            aapsLogger.error(LTag.AUTOMATION, "Error parsing $obj")
+            aapsLogger.error(LTag.AUTOMATION, "Error parsing $obj : $e")
         }
         return TriggerConnector(injector)
     }

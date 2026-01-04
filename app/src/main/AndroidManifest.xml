@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission
-        android:name="android.permission.BLUETOOTH"
-        tools:remove="android:maxSdkVersion" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -19,7 +15,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="com.dexcom.cgm.EXTERNAL_PERMISSION" />
@@ -37,6 +32,7 @@
     <uses-permission android:name="com.microtechmd.cgms.aidex.permissions.RECEIVE_BG_ESTIMATE" />
 
     <application
+        android:requestLegacyExternalStorage="true"
         android:name="app.aaps.MainApp"
         android:allowBackup="true"
         android:backupAgent="app.aaps.utils.SPBackupAgent"
@@ -47,7 +43,7 @@
         android:roundIcon="${appIconRound}"
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Launcher">
-
+        <profileable android:shell="true" />
 
         <meta-data
             android:name="com.google.android.gms.version"
@@ -80,6 +76,15 @@
             android:name="app.aaps.activities.HistoryBrowseActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />
+        <activity
+            android:name="app.aaps.activities.DashboardPreviewActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+        <activity
+            android:name="app.aaps.activities.ComparatorActivity"
+            android:label="@string/comparator_title"
+            android:parentActivityName="app.aaps.MainActivity"
+            android:theme="@style/AppTheme" />
         <!-- Receive new BG readings from other local apps -->
         <receiver
             android:name="app.aaps.receivers.DataReceiver"
@@ -101,6 +106,16 @@
                 <action android:name="com.fanqies.tomatofn.BgEstimate" />
                 <!-- Receiver from GlucoRx Aidex -->
                 <action android:name="com.microtechmd.cgms.aidex.action.BgEstimate" />
+                <!-- Receiver from patched Ottai app (International) -->
+                <action android:name="info.nightscout.androidaps.action.OTTAI_APP" />
+                <!-- Receiver from patched Syai Tag app -->
+                <action android:name="info.nightscout.androidaps.action.SYAI_TAG_APP" />
+                <!-- Receiver from patched Ottai app (China) -->
+                <action android:name="cn.diyaps.sharing.OT_APP" />
+                <!-- Receiver from patched SI app -->
+                <action android:name="cn.diyaps.sharing.SI_APP" />
+                <!-- Receiver from patched Sino app -->
+                <action android:name="cn.diyaps.sharing.SINO_APP" />
             </intent-filter>
         </receiver>
 

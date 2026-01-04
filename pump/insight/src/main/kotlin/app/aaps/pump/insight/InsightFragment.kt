@@ -2,8 +2,6 @@ package app.aaps.pump.insight
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,12 +13,15 @@ import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
-import app.aaps.pump.insight.descriptors.*
+import app.aaps.pump.insight.databinding.LocalInsightFragmentBinding
+import app.aaps.pump.insight.descriptors.ActiveBolus
+import app.aaps.pump.insight.descriptors.BolusType
+import app.aaps.pump.insight.descriptors.InsightState
+import app.aaps.pump.insight.descriptors.OperatingMode
 import app.aaps.pump.insight.events.EventLocalInsightUpdateGUI
 import dagger.android.support.DaggerFragment
-import info.nightscout.androidaps.insight.R
-import info.nightscout.androidaps.insight.databinding.LocalInsightFragmentBinding
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import javax.inject.Inject
 
@@ -76,6 +77,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
 
     @Synchronized override fun onDestroyView() {
         super.onDestroyView()
+        _binding = null
     }
 
     override fun onClick(v: View) {
@@ -85,7 +87,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
                     binding.operatingModeButton.isEnabled = false
                     operatingModeCallback = object : Callback() {
                         override fun run() {
-                            Handler(Looper.getMainLooper()).post {
+                            runOnUiThread {
                                 operatingModeCallback = null
                                 updateGUI()
                             }
@@ -94,7 +96,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
                     when (insightPlugin.operatingMode) {
                         OperatingMode.PAUSED, OperatingMode.STOPPED -> commandQueue.startPump(operatingModeCallback)
                         OperatingMode.STARTED                       -> commandQueue.stopPump(operatingModeCallback)
-                        null                                        -> Unit
+                        else                                        -> Unit
                     }
                 }
             }
@@ -105,7 +107,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
                     binding.tbrOverNotification.isEnabled = false
                     tbrOverNotificationCallback = object : Callback() {
                         override fun run() {
-                            Handler(Looper.getMainLooper()).post {
+                            runOnUiThread {
                                 tbrOverNotificationCallback = null
                                 updateGUI()
                             }
@@ -119,7 +121,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
                 binding.refresh.isEnabled = false
                 refreshCallback = object : Callback() {
                     override fun run() {
-                        Handler(Looper.getMainLooper()).post {
+                        runOnUiThread {
                             refreshCallback = null
                             updateGUI()
                         }
@@ -130,7 +132,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
         }
     }
 
-    protected fun updateGUI() {
+    fun updateGUI() {
         _binding ?: return
         binding.statusItemContainer.removeAllViews()
         if (!insightPlugin.isInitialized()) {
@@ -239,7 +241,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
                 string = app.aaps.core.ui.R.string.paused
             }
 
-            null                  -> Unit
+            else                  -> Unit
         }
         binding.operatingModeLine.visibility = View.VISIBLE
         binding.operatingMode.text = rh.gs(string)
@@ -298,7 +300,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
     }
 
     private fun getLastBolusItem() {
-        if (insightPlugin.lastBolusAmount.equals(0.0) || insightPlugin.lastBolusTimestamp.equals(0L)) {
+        if (insightPlugin.lastBolusAmount.equals(0.0) || insightPlugin.lastBolusTimestamp == 0L) {
             binding.lastBolusLine.visibility = View.GONE
             return
         }
@@ -306,8 +308,7 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
         val agoMsc = System.currentTimeMillis() - insightPlugin.lastBolusTimestamp
         val bolusMinAgo = agoMsc / 60.0 / 1000.0
         val unit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
-        val ago: String
-        ago = if (bolusMinAgo < 60) {
+        val ago: String = if (bolusMinAgo < 60) {
             dateUtil.minAgo(rh, insightPlugin.lastBolusTimestamp)
         } else {
             dateUtil.hourAgo(insightPlugin.lastBolusTimestamp, rh)
@@ -317,8 +318,8 @@ class InsightFragment : DaggerFragment(), View.OnClickListener {
 
     private fun getBolusItems() {
         insightPlugin.activeBoluses?.let { activeBoluses ->
-            binding.extendedBolus1Line.visibility = (activeBoluses.size > 0).toVisibility()
-            if (activeBoluses.size > 0)
+            binding.extendedBolus1Line.visibility = activeBoluses.isNotEmpty().toVisibility()
+            if (activeBoluses.isNotEmpty())
                 updateBolusItemView(binding.extendedBolus1, binding.extendedBolus1Label, activeBoluses[0])
             binding.extendedBolus2Line.visibility = (activeBoluses.size > 1).toVisibility()
             if (activeBoluses.size > 1)

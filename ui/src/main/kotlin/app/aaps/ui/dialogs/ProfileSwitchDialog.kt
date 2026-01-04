@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.dialogs.OKDialog
@@ -120,7 +121,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
             val profileList = ArrayList<CharSequence>()
             for (profileName in profileListToCheck) {
                 val profileToCheck = activePlugin.activeProfileSource.profile?.getSpecificProfile(profileName.toString())
-                if (profileToCheck != null && ProfileSealed.Pure(profileToCheck).isValid("ProfileSwitch", activePlugin.activePump, config, rh, rxBus, hardLimits, false).isValid)
+                if (profileToCheck != null && ProfileSealed.Pure(profileToCheck, activePlugin).isValid("ProfileSwitch", activePlugin.activePump, config, rh, rxBus, hardLimits, false).isValid)
                     profileList.add(profileName)
             }
             if (profileList.isEmpty()) {
@@ -193,7 +194,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
 
         activity?.let { activity ->
             val ps = profileFunction.buildProfileSwitch(profileStore, profileName, duration, percent, timeShift, eventTime) ?: return@let
-            val validity = ProfileSealed.PS(ps).isValid(rh.gs(app.aaps.core.ui.R.string.careportal_profileswitch), activePlugin.activePump, config, rh, rxBus, hardLimits, false)
+            val validity = ProfileSealed.PS(ps, activePlugin).isValid(rh.gs(app.aaps.core.ui.R.string.careportal_profileswitch), activePlugin.activePump, config, rh, rxBus, hardLimits, false)
             if (validity.isValid)
                 OKDialog.showConfirmation(activity, rh.gs(app.aaps.core.ui.R.string.careportal_profileswitch), HtmlHelper.fromHtml(Joiner.on("<br/>").join(actions)), {
                     if (profileFunction.createProfileSwitch(
@@ -212,14 +213,14 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                                 ValueWithUnit.Percent(percent),
                                 ValueWithUnit.Hour(timeShift).takeIf { timeShift != 0 },
                                 ValueWithUnit.Minute(duration).takeIf { duration != 0 }
-                            )
+                            ).filterNotNull()
                         )
                     ) {
-                        if (percent == 90 && duration == 10) sp.putBoolean(app.aaps.core.utils.R.string.key_objectiveuseprofileswitch, true)
+                        if (percent == 90 && duration == 10) preferences.put(BooleanNonKey.ObjectivesProfileSwitchUsed, true)
                         if (isTT) {
                             disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
                                 TT(
-                                    timestamp = eventTime,
+                                    timestamp = eventTime + 10000, // Add ten secs for proper NSCv1 sync
                                     duration = TimeUnit.MINUTES.toMillis(duration.toLong()),
                                     reason = TT.Reason.ACTIVITY,
                                     lowTarget = profileUtil.convertToMgdl(target, profileFunction.getUnits()),
@@ -233,7 +234,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                                     ValueWithUnit.TETTReason(TT.Reason.ACTIVITY),
                                     ValueWithUnit.fromGlucoseUnit(target, units),
                                     ValueWithUnit.Minute(duration)
-                                )
+                                ).filterNotNull()
                             ).subscribe()
                         }
                     }

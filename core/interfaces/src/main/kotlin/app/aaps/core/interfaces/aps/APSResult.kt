@@ -1,29 +1,32 @@
 package app.aaps.core.interfaces.aps
 
 import android.text.Spanned
-import app.aaps.core.data.iob.IobTotal
 import app.aaps.core.data.model.GV
 import app.aaps.core.interfaces.constraints.Constraint
 import org.json.JSONObject
 
 interface APSResult {
 
+    fun with(result: RT): APSResult
+
     var date: Long
-    var json: JSONObject?
     var reason: String
     var rate: Double
     var percent: Int
     var duration: Int
     var smb: Double
-    var iob: IobTotal?
     var usePercent: Boolean
     var carbsReq: Int
     var carbsReqWithin: Int
     var deliverAt: Long
     var targetBG: Double
     var hasPredictions: Boolean
+    var variableSens: Double?
+    var isfMgdlForCarbs: Double? // used only to pass to AAPS client
+    var scriptDebug: List<String>?
+    var isHypoRisk: Boolean
 
-    val predictions: MutableList<GV>
+    val predictionsAsGv: MutableList<GV>
     val latestPredictionsTime: Long
     val isChangeRequested: Boolean
     var isTempBasalRequested: Boolean
@@ -37,27 +40,33 @@ interface APSResult {
     var percentConstraint: Constraint<Int>?
     var smbConstraint: Constraint<Double>?
 
-    fun toSpanned(): Spanned
+    // Inputs
+    var algorithm: Algorithm
+    var autosensResult: AutosensResult?
+    var iobData: Array<IobTotal>?
+    var glucoseStatus: GlucoseStatus?
+    var currentTemp: CurrentTemp?
+    var oapsProfile: OapsProfile?
+    var oapsProfileAutoIsf: OapsProfileAutoIsf?
+    var oapsProfileAimi: OapsProfileAimi?
+    var mealData: MealData?
+
+    val iob: IobTotal? get() = iobData?.get(0)
+
+    fun resultAsString(): String
+    fun resultAsSpanned(): Spanned
     fun newAndClone(): APSResult
     fun json(): JSONObject?
+    fun predictions(): Predictions?
+    fun rawData(): Any
 
-    fun doClone(newResult: APSResult) {
-        newResult.date = date
-        newResult.reason = reason
-        newResult.rate = rate
-        newResult.duration = duration
-        newResult.isTempBasalRequested = isTempBasalRequested
-        newResult.iob = iob
-        newResult.json = JSONObject(json.toString())
-        newResult.hasPredictions = hasPredictions
-        newResult.smb = smb
-        newResult.deliverAt = deliverAt
-        newResult.rateConstraint = rateConstraint
-        newResult.smbConstraint = smbConstraint
-        newResult.percent = percent
-        newResult.usePercent = usePercent
-        newResult.carbsReq = carbsReq
-        newResult.carbsReqWithin = carbsReqWithin
-        newResult.targetBG = targetBG
+    enum class Algorithm {
+        UNKNOWN,
+        AMA,
+        SMB,
+        AIMI,
+        AUTO_ISF
     }
 }
+
+

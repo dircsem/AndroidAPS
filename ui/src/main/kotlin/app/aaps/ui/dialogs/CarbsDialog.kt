@@ -7,6 +7,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -30,6 +31,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -41,13 +43,13 @@ import app.aaps.core.utils.HtmlHelper
 import app.aaps.ui.R
 import app.aaps.ui.databinding.DialogCarbsBinding
 import com.google.common.base.Joiner
-import dagger.android.HasAndroidInjector
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.text.DecimalFormat
 import java.util.LinkedList
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.math.ceil
 import kotlin.math.max
 
 class CarbsDialog : DialogFragmentWithDate() {
@@ -65,7 +67,6 @@ class CarbsDialog : DialogFragmentWithDate() {
     @Inject lateinit var protectionCheck: ProtectionCheck
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var decimalFormatter: DecimalFormatter
-    @Inject lateinit var injector: HasAndroidInjector
 
     private var queryingProtection = false
     private val disposable = CompositeDisposable()
@@ -142,12 +143,12 @@ class CarbsDialog : DialogFragmentWithDate() {
 
         binding.duration.setParams(
             savedInstanceState?.getDouble("duration")
-                ?: 0.0, 0.0, 10.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+                ?: 0.0, 0.0, HardLimits.MAX_CARBS_DURATION_HOURS.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
         binding.carbs.setParams(
             savedInstanceState?.getDouble("carbs")
-                ?: 0.0, 0.0, maxCarbs, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+                ?: 0.0, -maxCarbs, maxCarbs, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
         val plus1text = toSignedString(preferences.get(IntKey.OverviewCarbsButtonIncrement1))
         binding.plus1.text = plus1text
@@ -168,7 +169,7 @@ class CarbsDialog : DialogFragmentWithDate() {
         }
         val plus3text = toSignedString(preferences.get(IntKey.OverviewCarbsButtonIncrement3))
         binding.plus3.text = plus3text
-        binding.plus2.contentDescription = rh.gs(app.aaps.core.ui.R.string.carbs) + " " + plus3text
+        binding.plus3.contentDescription = rh.gs(app.aaps.core.ui.R.string.carbs) + " " + plus3text
         binding.plus3.setOnClickListener {
             binding.carbs.value = max(0.0, binding.carbs.value + preferences.get(IntKey.OverviewCarbsButtonIncrement3))
             validateInputs()
@@ -183,8 +184,33 @@ class CarbsDialog : DialogFragmentWithDate() {
         }
 
         iobCobCalculator.ads.actualBg()?.let { bgReading ->
-            if (bgReading.recalculated < 72)
-                binding.hypoTt.isChecked = true
+
+            if (bgReading.recalculated < 72) {
+
+                val activeTT = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+                val hypoTTDuration = preferences.get(IntKey.OverviewHypoDuration)
+
+                var shouldAutoCheckHypo = true
+
+                if (activeTT != null) {
+
+                    val activeTarget = activeTT.highTarget
+                    val now = System.currentTimeMillis()
+                    val remainingDurationMin =
+                        ((activeTT.timestamp + activeTT.duration) - now) / 60000
+
+                    // Prevent auto-checking HypoTT when:
+                    // 1. Active TT target is above Constants.ALLOW_SMB_WITH_HIGH_TT
+                    // 2. Active TT lasts longer than the hypoTT preset
+                    if (activeTarget > Constants.ALLOW_SMB_WITH_HIGH_TT && remainingDurationMin > hypoTTDuration) {
+                        shouldAutoCheckHypo = false
+                    }
+                }
+
+                if (shouldAutoCheckHypo) {
+                    binding.hypoTt.isChecked = true
+                }
+            }
         }
         binding.hypoTt.setOnClickListener {
             binding.activityTt.isChecked = false
@@ -216,8 +242,9 @@ class CarbsDialog : DialogFragmentWithDate() {
     override fun submit(): Boolean {
         if (_binding == null) return false
         val carbs = binding.carbs.value.toInt()
-        val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
+        var carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
         val units = profileUtil.units
+        val cob = iobCobCalculator.ads.getLastAutosensData("carbsDialog", aapsLogger, dateUtil)?.cob ?: 0.0
         val activityTTDuration = preferences.get(IntKey.OverviewActivityDuration)
         val activityTT = preferences.get(UnitDoubleKey.OverviewActivityTarget)
         val eatingSoonTTDuration = preferences.get(IntKey.OverviewEatingSoonDuration)
@@ -278,6 +305,18 @@ class CarbsDialog : DialogFragmentWithDate() {
             if (carbsAfterConstraints != carbs)
                 actions.add("<font color='" + rh.gac(context, app.aaps.core.ui.R.attr.warningColor) + "'>" + rh.gs(R.string.carbs_constraint_applied) + "</font>")
         }
+        if (carbsAfterConstraints < 0) {
+            if (carbsAfterConstraints < -cob) carbsAfterConstraints = ceil(-cob).toInt()
+            if (timeOffset != 0) carbsAfterConstraints = 0
+            actions.add(
+                rh.gs(app.aaps.core.ui.R.string.carbs) + ": " + "<font color='" + rh.gac(
+                    context,
+                    app.aaps.core.ui.R.attr.warningColor
+                ) + "'>" + rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsAfterConstraints) + "</font>"
+            )
+            if (carbsAfterConstraints != carbs)
+                actions.add("<font color='" + rh.gac(context, app.aaps.core.ui.R.attr.warningColor) + "'>" + rh.gs(R.string.carbs_constraint_applied) + "</font>")
+        }
         val notes = binding.notesLayout.notes.text.toString()
         if (notes.isNotEmpty())
             actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + notes)
@@ -285,34 +324,46 @@ class CarbsDialog : DialogFragmentWithDate() {
         if (eventTimeChanged)
             actions.add(rh.gs(app.aaps.core.ui.R.string.time) + ": " + dateUtil.dateAndTimeString(eventTime))
 
-        if (carbsAfterConstraints > 0 || activitySelected || eatingSoonSelected || hypoSelected) {
+        if (carbsAfterConstraints != 0 || activitySelected || eatingSoonSelected || hypoSelected) {
             activity?.let { activity ->
                 OKDialog.showConfirmation(activity, rh.gs(app.aaps.core.ui.R.string.carbs), HtmlHelper.fromHtml(Joiner.on("<br/>").join(actions)), {
+                    val selectedTTDuration = when {
+                        activitySelected   -> activityTTDuration
+                        eatingSoonSelected -> eatingSoonTTDuration
+                        hypoSelected       -> hypoTTDuration
+                        else               -> 0
+                    }
+                    val selectedTT = when {
+                        activitySelected   -> activityTT
+                        eatingSoonSelected -> eatingSoonTT
+                        hypoSelected       -> hypoTT
+                        else               -> 0.0
+                    }
                     val reason = when {
-                        activitySelected -> TT.Reason.ACTIVITY
+                        activitySelected   -> TT.Reason.ACTIVITY
                         eatingSoonSelected -> TT.Reason.EATING_SOON
-                        hypoSelected -> TT.Reason.HYPOGLYCEMIA
-                        else -> TT.Reason.CUSTOM
+                        hypoSelected       -> TT.Reason.HYPOGLYCEMIA
+                        else               -> TT.Reason.CUSTOM
                     }
                     if (reason != TT.Reason.CUSTOM)
                         disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
                             temporaryTarget = TT(
                                 timestamp = System.currentTimeMillis(),
-                                duration = TimeUnit.MINUTES.toMillis(hypoTTDuration.toLong()),
+                                duration = TimeUnit.MINUTES.toMillis(selectedTTDuration.toLong()),
                                 reason = reason,
-                                lowTarget = profileUtil.convertToMgdl(hypoTT, profileUtil.units),
-                                highTarget = profileUtil.convertToMgdl(hypoTT, profileUtil.units)
+                                lowTarget = profileUtil.convertToMgdl(selectedTT, profileUtil.units),
+                                highTarget = profileUtil.convertToMgdl(selectedTT, profileUtil.units)
                             ),
                             action = Action.TT,
                             source = Sources.CarbDialog,
                             note = null,
                             listValues = listOf(
                                 ValueWithUnit.TETTReason(reason),
-                                ValueWithUnit.fromGlucoseUnit(hypoTT, units),
-                                ValueWithUnit.Minute(hypoTTDuration)
+                                ValueWithUnit.fromGlucoseUnit(selectedTT, units),
+                                ValueWithUnit.Minute(selectedTTDuration)
                             )
                         ).subscribe()
-                    if (carbsAfterConstraints > 0) {
+                    if (carbsAfterConstraints != 0) {
                         val detailedBolusInfo = DetailedBolusInfo().also {
                             it.eventType = TE.Type.CORRECTION_BOLUS
                             it.carbs = carbsAfterConstraints.toDouble()
@@ -324,7 +375,7 @@ class CarbsDialog : DialogFragmentWithDate() {
                         uel.log(
                             action = if (duration == 0) Action.CARBS else Action.EXTENDED_CARBS, source = Sources.CarbDialog,
                             note = notes,
-                            listValues = listOf(
+                            listValues = listOfNotNull(
                                 ValueWithUnit.Timestamp(eventTime).takeIf { eventTimeChanged },
                                 ValueWithUnit.Gram(carbsAfterConstraints),
                                 ValueWithUnit.Minute(timeOffset).takeIf { timeOffset != 0 },

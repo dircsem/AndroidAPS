@@ -16,14 +16,12 @@ import app.aaps.core.objects.extensions.fromGv
 import app.aaps.plugins.constraints.R
 import app.aaps.shared.tests.TestBase
 import com.google.common.truth.Truth.assertThat
-import dagger.android.AndroidInjector
-import dagger.android.HasAndroidInjector
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.Mock
-import org.mockito.Mockito.anyInt
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.whenever
 
 class BgQualityCheckPluginTest : TestBase() {
 
@@ -35,7 +33,6 @@ class BgQualityCheckPluginTest : TestBase() {
 
     private lateinit var plugin: BgQualityCheckPlugin
 
-    private val injector = HasAndroidInjector { AndroidInjector { } }
     private val now = 100000000L
     //private val autosensDataStore = AutosensDataStoreObject()
 
@@ -43,23 +40,23 @@ class BgQualityCheckPluginTest : TestBase() {
     fun mock() {
         plugin =
             BgQualityCheckPlugin(aapsLogger, rh, rxBus, iobCobCalculator, aapsSchedulers, fabricPrivacy, dateUtil)
-        `when`(iobCobCalculator.ads).thenReturn(autosensDataStore)
-        `when`(rh.gs(anyInt())).thenReturn("")
-        `when`(rh.gs(anyInt(), any(), any())).thenReturn("")
-        `when`(dateUtil.now()).thenReturn(now)
+        whenever(iobCobCalculator.ads).thenReturn(autosensDataStore)
+        whenever(rh.gs(anyInt())).thenReturn("")
+        whenever(rh.gs(anyInt(), any(), any())).thenReturn("")
+        whenever(dateUtil.now()).thenReturn(now)
     }
 
     @Test
     fun runTest() {
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(null)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(null)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.UNKNOWN)
         assertThat(plugin.icon()).isEqualTo(0)
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
         assertThat(plugin.icon()).isEqualTo(0)
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
         assertThat(plugin.icon()).isEqualTo(R.drawable.ic_baseline_warning_24_yellow)
@@ -105,12 +102,12 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(superData)
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(superData)
 
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
 
@@ -165,9 +162,9 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(duplicatedData)
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(duplicatedData)
 
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(true)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.DOUBLED)
         assertThat(plugin.icon()).isEqualTo(R.drawable.ic_baseline_warning_24_red)
@@ -223,9 +220,9 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(identicalData)
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(identicalData)
 
-        `when`(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.DOUBLED)
 
@@ -331,8 +328,8 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(flatData)
-        `when`(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(flatData[0]))
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(flatData)
+        whenever(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(flatData[0]))
 
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FLAT)
@@ -440,8 +437,8 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(flatDataDexcom)
-        `when`(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(flatDataDexcom[0]))
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(flatDataDexcom)
+        whenever(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(flatDataDexcom[0]))
 
         plugin.processBgData()
         assertThat(plugin.state).isNotEqualTo(BgQualityCheck.State.FLAT)
@@ -469,8 +466,8 @@ class BgQualityCheckPluginTest : TestBase() {
                 trendArrow = TrendArrow.FLAT
             )
         )
-        `when`(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(incompleteData)
-        `when`(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(incompleteData[0]))
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(incompleteData)
+        whenever(iobCobCalculator.ads.lastBg()).thenReturn(InMemoryGlucoseValue.fromGv(incompleteData[0]))
         plugin.processBgData()// must be more than 5 values
         assertThat(plugin.state).isNotEqualTo(BgQualityCheck.State.FLAT)
         flatData.add(

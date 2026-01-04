@@ -6,20 +6,25 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.text.Spanned
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.ProcessedTbrEbData
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -32,8 +37,6 @@ import app.aaps.core.interfaces.rx.events.EventAppInitialized
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventNewBG
 import app.aaps.core.interfaces.rx.events.EventNewHistoryData
-import app.aaps.core.interfaces.rx.events.EventXdripNewLog
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.Sync
 import app.aaps.core.interfaces.sync.XDripBroadcast
@@ -41,15 +44,22 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.IntentKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.generateCOBString
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.toStringShort
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.HtmlHelper
+import app.aaps.core.validators.preferences.AdaptiveIntentPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsclient.extensions.toJson
+import app.aaps.plugins.sync.xdrip.events.EventXdripNewLog
 import app.aaps.plugins.sync.xdrip.events.EventXdripUpdateGUI
 import app.aaps.plugins.sync.xdrip.extensions.toXdripJson
+import app.aaps.plugins.sync.xdrip.keys.XdripLongKey
 import app.aaps.plugins.sync.xdrip.workers.XdripDataSyncWorker
 import app.aaps.shared.impl.extensions.safeQueryBroadcastReceivers
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -60,6 +70,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -67,10 +78,11 @@ import javax.inject.Singleton
 
 @Singleton
 class XdripPlugin @Inject constructor(
-    private val sp: SP,
+    aapsLogger: AAPSLogger,
+    rh: ResourceHelper,
+    preferences: Preferences,
     private val profileFunction: ProfileFunction,
     private val profileUtil: ProfileUtil,
-    rh: ResourceHelper,
     private val aapsSchedulers: AapsSchedulers,
     private val context: Context,
     private val fabricPrivacy: FabricPrivacy,
@@ -80,18 +92,20 @@ class XdripPlugin @Inject constructor(
     private val rxBus: RxBus,
     private val uiInteraction: UiInteraction,
     private val dateUtil: DateUtil,
-    aapsLogger: AAPSLogger,
-    private val decimalFormatter: DecimalFormatter
-) : XDripBroadcast, Sync, PluginBase(
-    PluginDescription()
+    private val config: Config,
+    private val decimalFormatter: DecimalFormatter,
+    private val glucoseStatusProvider: GlucoseStatusProvider
+) : XDripBroadcast, Sync, PluginBaseWithPreferences(
+    pluginDescription = PluginDescription()
         .mainType(PluginType.SYNC)
         .fragmentClass(XdripFragment::class.java.name)
         .pluginIcon((app.aaps.core.objects.R.drawable.ic_blooddrop_48))
         .pluginName(R.string.xdrip)
         .shortName(R.string.xdrip_shortname)
-        .preferencesId(R.xml.pref_xdrip)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .description(R.string.description_xdrip),
-    aapsLogger, rh
+    ownPreferences = listOf(XdripLongKey::class.java),
+    aapsLogger, rh, preferences
 ) {
 
     @Suppress("PrivatePropertyName")
@@ -99,9 +113,8 @@ class XdripPlugin @Inject constructor(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val disposable = CompositeDisposable()
-    private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
+    private var handler: Handler? = null
     private val listLog: MutableList<EventXdripNewLog> = ArrayList()
-    private var lastLoopStatus = false
 
     // Not used Sync interface members
     override val hasWritePermission: Boolean = true
@@ -110,6 +123,7 @@ class XdripPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+        handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
         disposable += rxBus
             .toObservable(EventAppExit::class.java)
             .observeOn(aapsSchedulers.io)
@@ -140,16 +154,21 @@ class XdripPlugin @Inject constructor(
         disposable += rxBus.toObservable(EventAppInitialized::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ sendStatusLine() }, fabricPrivacy::logException)
+        eventWorker = Executors.newSingleThreadScheduledExecutor()
     }
 
     override fun onStop() {
         super.onStop()
-        handler.removeCallbacksAndMessages(null)
+        handler?.looper?.quitSafely()
+        handler?.removeCallbacksAndMessages(null)
+        handler = null
+        eventWorker?.shutdown()
+        eventWorker = null
         disposable.clear()
     }
 
     fun clearLog() {
-        handler.post {
+        handler?.post {
             synchronized(listLog) { listLog.clear() }
             rxBus.send(EventXdripUpdateGUI())
         }
@@ -173,14 +192,14 @@ class XdripPlugin @Inject constructor(
                 for (log in listLog) newTextLog.append(log.toPreparedHtml())
             }
             return HtmlHelper.fromHtml(newTextLog.toString())
-        } catch (e: OutOfMemoryError) {
+        } catch (_: OutOfMemoryError) {
             uiInteraction.showToastAndNotification(context, "Out of memory!\nStop using this phone !!!", app.aaps.core.ui.R.raw.error)
         }
         return HtmlHelper.fromHtml("")
     }
 
     private fun sendStatusLine() {
-        if (sp.getBoolean(R.string.key_xdrip_send_status, false)) {
+        if (preferences.get(BooleanKey.XdripSendStatus)) {
             val status = profileFunction.getProfile()?.let { buildStatusLine(it) } ?: ""
             context.sendBroadcast(
                 Intent(Intents.ACTION_NEW_EXTERNAL_STATUSLINE).also {
@@ -214,7 +233,7 @@ class XdripPlugin @Inject constructor(
         return false
     }
 
-    private val eventWorker = Executors.newSingleThreadScheduledExecutor()
+    private var eventWorker: ScheduledExecutorService? = null
     private var scheduledEventPost: ScheduledFuture<*>? = null
     private fun delayAndScheduleExecution(origin: String) {
         class PostRunnable : Runnable {
@@ -227,33 +246,30 @@ class XdripPlugin @Inject constructor(
         // cancel waiting task to prevent sending multiple posts
         scheduledEventPost?.cancel(false)
         val task: Runnable = PostRunnable()
-        scheduledEventPost = eventWorker.schedule(task, 10, TimeUnit.SECONDS)
+        scheduledEventPost = eventWorker?.schedule(task, 10, TimeUnit.SECONDS)
     }
 
     private fun buildStatusLine(profile: Profile): String {
         val status = StringBuilder()
-        @Suppress("LiftReturnOrAssignment")
-        if (!loop.isEnabled()) {
+        if (!loop.runningMode.isLoopRunning() && config.APS)
             status.append(rh.gs(R.string.disabled_loop)).append("\n")
-            lastLoopStatus = false
-        } else lastLoopStatus = true
 
         //Temp basal
         processedTbrEbData.getTempBasalIncludingConvertedExtended(System.currentTimeMillis())?.let {
-            status.append(it.toStringShort(decimalFormatter)).append(" ")
+            status.append(it.toStringShort(rh)).append(" ")
         }
         //IOB
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
         status.append(decimalFormatter.to2Decimal(bolusIob.iob + basalIob.basaliob)).append(rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname))
-        if (sp.getBoolean(R.string.key_xdrip_status_detailed_iob, true))
+        if (preferences.get(BooleanKey.XdripSendDetailedIob))
             status.append("(")
                 .append(decimalFormatter.to2Decimal(bolusIob.iob))
                 .append("|")
                 .append(decimalFormatter.to2Decimal(basalIob.basaliob))
                 .append(")")
-        if (sp.getBoolean(R.string.key_xdrip_status_show_bgi, true)) {
-            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * profileUtil.fromMgdlToUnits(profile.getIsfMgdl())
+        if (preferences.get(BooleanKey.XdripSendBgi) && glucoseStatusProvider.glucoseStatusData != null) {
+            val bgi = -(bolusIob.activity + basalIob.activity) * 5 * profileUtil.fromMgdlToUnits(profile.getIsfMgdl("XdripPlugin"))
             status.append(" ")
                 .append(if (bgi >= 0) "+" else "")
                 .append(decimalFormatter.to2Decimal(bgi))
@@ -278,7 +294,7 @@ class XdripPlugin @Inject constructor(
             aapsLogger.debug(rh.gs(R.string.xdrip_not_installed))
             false
         } else {
-            ToastUtils.errorToast(context, R.string.calibration_sent)
+            ToastUtils.infoToast(context, R.string.calibration_sent)
             aapsLogger.debug(rh.gs(R.string.calibration_sent))
             true
         }
@@ -373,7 +389,7 @@ class XdripPlugin @Inject constructor(
 
                 is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toJson(true, dateUtil, decimalFormatter)
                 is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.toJson(true, dateUtil)
-                is DataSyncSelector.PairOfflineEvent           -> dataPair.value.toJson(true, dateUtil)
+                is DataSyncSelector.PairRunningMode            -> dataPair.value.toJson(true, dateUtil)
                 else                                           -> null
             }?.let {
                 array.put(it)
@@ -397,6 +413,25 @@ class XdripPlugin @Inject constructor(
                 rxBus.send(EventXdripUpdateGUI())
                 Thread.sleep(100)
             }
+        }
+    }
+
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null && requiredKey != "xdrip_advanced") return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "xdrip_settings"
+            title = rh.gs(R.string.xdrip)
+            initialExpandedChildrenCount = 0
+            addPreference(AdaptiveIntentPreference(ctx = context, intentKey = IntentKey.XdripInfo, summary = R.string.xdrip_local_broadcasts_summary, title = R.string.xdrip_local_broadcasts_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.XdripSendStatus, title = R.string.xdrip_send_status_title))
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "xdrip_advanced"
+                title = rh.gs(R.string.xdrip_status_settings)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.XdripSendDetailedIob, summary = R.string.xdrip_status_detailed_iob_summary, title = R.string.xdrip_status_detailed_iob_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.XdripSendBgi, summary = R.string.xdrip_status_show_bgi_summary, title = R.string.xdrip_status_show_bgi_title))
+            })
         }
     }
 }

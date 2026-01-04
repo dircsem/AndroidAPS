@@ -1,7 +1,6 @@
 package app.aaps.plugins.constraints.bgQualityCheck
 
 import androidx.annotation.DrawableRes
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
@@ -11,6 +10,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -41,7 +41,7 @@ class BgQualityCheckPlugin @Inject constructor(
         .mainType(PluginType.CONSTRAINTS)
         .neverVisible(true)
         .alwaysEnabled(true)
-        .showInList(false)
+        .showInList { false }
         .pluginName(R.string.bg_quality),
     aapsLogger, rh
 ), PluginConstraints, BgQualityCheck {
@@ -67,7 +67,7 @@ class BgQualityCheckPlugin @Inject constructor(
     // Fallback to LGS if BG values are doubled
     override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> =
         if (state == BgQualityCheck.State.DOUBLED)
-            maxIob.set(0.0, "Doubled values in BGSource", this)
+            maxIob.set(0.0, "Limiting max IOB to 0 U due to doubled values in BG Source", this)
         else
             maxIob
 
@@ -83,7 +83,7 @@ class BgQualityCheckPlugin @Inject constructor(
                     message = rh.gs(R.string.bg_too_close, dateUtil.dateAndTimeAndSecondsString(readings[i].timestamp), dateUtil.dateAndTimeAndSecondsString(readings[i + 1].timestamp))
                     return
                 }
-        if (lastBg?.sourceSensor?.isLibre() == true && isBgFlatForInterval(staleBgCheckPeriodMinutes, staleBgMaxDeltaMgdl) == true) {
+        if (lastBg?.sourceSensor?.isLibre1() == true && isBgFlatForInterval(staleBgCheckPeriodMinutes, staleBgMaxDeltaMgdl) == true) {
             state = BgQualityCheck.State.FLAT
             message = rh.gs(R.string.a11y_bg_quality_flat)
         } else if (iobCobCalculator.ads.lastUsed5minCalculation == true) {

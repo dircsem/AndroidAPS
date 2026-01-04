@@ -2,6 +2,7 @@ package app.aaps.pump.danars.comm
 
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.DetailedBolusInfoStorage
 import app.aaps.core.interfaces.pump.PumpSync
@@ -9,27 +10,29 @@ import app.aaps.core.interfaces.pump.TemporaryBasalStorage
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
-import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.pump.dana.DanaPump
 import app.aaps.pump.dana.R
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.danars.encryption.BleEncryption
+import app.aaps.pump.dana.keys.DanaBooleanKey
+import app.aaps.pump.danars.encryption.BleEncryption
 import org.joda.time.DateTime
 import org.joda.time.DateTimeZone
 import javax.inject.Inject
 
-open class DanaRSPacketAPSHistoryEvents(
-    injector: HasAndroidInjector,
-    private var from: Long
-) : DanaRSPacket(injector) {
+open class DanaRSPacketAPSHistoryEvents @Inject constructor(
+    private val aapsLogger: AAPSLogger,
+    private val dateUtil: DateUtil,
+    private val rxBus: RxBus,
+    private val rh: ResourceHelper,
+    private val danaPump: DanaPump,
+    private val detailedBolusInfoStorage: DetailedBolusInfoStorage,
+    private val temporaryBasalStorage: TemporaryBasalStorage,
+    private val preferences: Preferences,
+    private val pumpSync: PumpSync
+) : DanaRSPacket() {
 
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var danaPump: DanaPump
-    @Inject lateinit var detailedBolusInfoStorage: DetailedBolusInfoStorage
-    @Inject lateinit var temporaryBasalStorage: TemporaryBasalStorage
-    @Inject lateinit var sp: SP
-    @Inject lateinit var pumpSync: PumpSync
+    private var from: Long = 0L
 
     companion object {
 
@@ -38,11 +41,15 @@ open class DanaRSPacketAPSHistoryEvents(
 
     init {
         opCode = BleEncryption.DANAR_PACKET__OPCODE__APS_HISTORY_EVENTS
-        if (from > dateUtil.now()) {
+    }
+
+    fun with(from: Long) = this.also {
+        it.from = from
+        if (it.from > dateUtil.now()) {
             aapsLogger.debug(LTag.PUMPCOMM, "Asked to load from the future")
-            from = 0
+            it.from = 0
         }
-        aapsLogger.debug(LTag.PUMPCOMM, "Loading event history from: " + dateUtil.dateAndTimeString(from))
+        aapsLogger.debug(LTag.PUMPCOMM, "Loading event history from: " + dateUtil.dateAndTimeString(it.from))
         danaPump.historyDoneReceived = false
         messageBuffer = arrayListOf()
     }
@@ -287,7 +294,7 @@ open class DanaRSPacketAPSHistoryEvents(
             }
 
             DanaPump.HistoryEntry.REFILL              -> {
-                if (sp.getBoolean(R.string.key_rs_loginsulinchange, true)) {
+                if (preferences.get(DanaBooleanKey.LogInsulinChange)) {
                     val newRecord = pumpSync.insertTherapyEventIfNewWithTimestamp(
                         timestamp = datetime,
                         type = TE.Type.INSULIN_CHANGE,
@@ -335,7 +342,7 @@ open class DanaRSPacketAPSHistoryEvents(
             }
 
             DanaPump.HistoryEntry.PRIME_CANNULA       -> {
-                if (sp.getBoolean(R.string.key_rs_logcanulachange, true)) {
+                if (preferences.get(DanaBooleanKey.LogCannulaChange)) {
                     val newRecord = pumpSync.insertTherapyEventIfNewWithTimestamp(
                         timestamp = datetime,
                         type = TE.Type.CANNULA_CHANGE,
@@ -358,14 +365,6 @@ open class DanaRSPacketAPSHistoryEvents(
                     "[$pumpId] EVENT TIME_CHANGE($recordCode) ${dateUtil.dateAndTimeString(datetime)} ($datetime) Previous: ${dateUtil.dateAndTimeString(oldDateTime)}"
                 )
                 status = "TIME_CHANGE " + dateUtil.timeString(datetime)
-            }
-
-            else                                      -> {
-                aapsLogger.debug(
-                    LTag.PUMPCOMM,
-                    "[$pumpId] Event: $recordCode ${dateUtil.dateAndTimeString(datetime)} ($datetime) Param1: $param1 Param2: $param2"
-                )
-                status = "UNKNOWN " + dateUtil.timeString(datetime)
             }
         }
         if (datetime > danaPump.lastEventTimeLoaded) danaPump.lastEventTimeLoaded = datetime

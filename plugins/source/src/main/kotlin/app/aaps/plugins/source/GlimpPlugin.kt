@@ -7,17 +7,16 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.source.BgSource
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
-import dagger.android.HasAndroidInjector
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,17 +24,19 @@ import javax.inject.Singleton
 @Singleton
 class GlimpPlugin @Inject constructor(
     rh: ResourceHelper,
-    aapsLogger: AAPSLogger
-) : PluginBase(
-    PluginDescription()
+    aapsLogger: AAPSLogger,
+    preferences: Preferences
+) : AbstractBgSourcePlugin(
+    pluginDescription = PluginDescription()
         .mainType(PluginType.BGSOURCE)
         .fragmentClass(BGSourceFragment::class.java.name)
         .pluginIcon(app.aaps.core.objects.R.drawable.ic_glimp)
-        .preferencesId(R.xml.pref_bgsource)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .pluginName(R.string.glimp)
         .preferencesVisibleInSimpleMode(false)
         .description(R.string.description_source_glimp),
-    aapsLogger, rh
+    ownPreferences = emptyList(),
+    aapsLogger, rh, preferences
 ), BgSource {
 
     // cannot be inner class because of needed injection
@@ -44,7 +45,6 @@ class GlimpPlugin @Inject constructor(
         params: WorkerParameters
     ) : LoggingWorker(context, params, Dispatchers.IO) {
 
-        @Inject lateinit var injector: HasAndroidInjector
         @Inject lateinit var glimpPlugin: GlimpPlugin
         @Inject lateinit var persistenceLayer: PersistenceLayer
 
@@ -58,7 +58,7 @@ class GlimpPlugin @Inject constructor(
             glucoseValues += GV(
                 timestamp = inputData.getLong("myTimestamp", 0),
                 value = inputData.getDouble("mySGV", 0.0),
-                raw = inputData.getDouble("mySGV", 0.0),
+                raw = null,
                 noise = null,
                 trendArrow = TrendArrow.fromString(inputData.getString("myTrend")),
                 sourceSensor = SourceSensor.LIBRE_1_GLIMP

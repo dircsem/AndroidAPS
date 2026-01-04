@@ -27,7 +27,6 @@ import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNtpStatus
 import app.aaps.core.interfaces.rx.events.EventSWUpdate
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.ui.dialogs.OKDialog
@@ -39,6 +38,7 @@ import app.aaps.plugins.constraints.objectives.activities.ObjectivesExamDialog
 import app.aaps.plugins.constraints.objectives.dialogs.NtpProgressDialog
 import app.aaps.plugins.constraints.objectives.events.EventObjectivesUpdateGui
 import app.aaps.plugins.constraints.objectives.objectives.Objective.ExamTask
+import app.aaps.plugins.constraints.objectives.objectives.Objective.UITask
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -49,7 +49,6 @@ class ObjectivesFragment : DaggerFragment() {
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var aapsSchedulers: AapsSchedulers
-    @Inject lateinit var sp: SP
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var objectivesPlugin: ObjectivesPlugin
@@ -86,34 +85,37 @@ class ObjectivesFragment : DaggerFragment() {
         binding.fake.setOnClickListener { updateGUI() }
         binding.reset.setOnClickListener {
             objectivesPlugin.reset()
-            binding.recyclerview.adapter?.notifyDataSetChanged()
+            updateGUI()
             scrollToCurrentObjective()
         }
         scrollToCurrentObjective()
-        startUpdateTimer()
     }
 
-    @Synchronized
     override fun onResume() {
         super.onResume()
         disposable += rxBus
             .toObservable(EventObjectivesUpdateGui::class.java)
             .observeOn(aapsSchedulers.main)
-            .subscribe({
-                           binding.recyclerview.adapter?.notifyDataSetChanged()
-                       }, fabricPrivacy::logException)
+            .subscribe({ updateGUI() }, fabricPrivacy::logException)
+        startUpdateTimer()
     }
 
-    @Synchronized
     override fun onPause() {
         super.onPause()
         disposable.clear()
+        handler.removeCallbacksAndMessages(null)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        handler.removeCallbacksAndMessages(null)
+        handler.looper.quitSafely()
     }
 
     @Synchronized
     override fun onDestroyView() {
         super.onDestroyView()
-        handler.removeCallbacks(objectiveUpdater)
+        binding.recyclerview.adapter = null
         _binding = null
     }
 
@@ -244,6 +246,9 @@ class ObjectivesFragment : DaggerFragment() {
                             dialog.show(childFragmentManager, "ObjectivesFragment")
                         }
                     }
+                    if (task is UITask) {
+                        state.setOnClickListener { task.code.invoke(this@ObjectivesFragment.requireContext(), task) { updateGUI() } }
+                    }
                     if (task.isCompleted()) {
                         if (task.learned.isNotEmpty())
                             holder.binding.progress.addView(
@@ -297,7 +302,7 @@ class ObjectivesFragment : DaggerFragment() {
                                     rxBus.send(EventNtpStatus(rh.gs(R.string.failedretrievetime), 99))
                                 }
                             }
-                        }, receiverStatusStore.isConnected)
+                        }, receiverStatusStore.isKnownNetworkStatus && receiverStatusStore.isConnected)
                     }
                 }
             }
@@ -332,7 +337,7 @@ class ObjectivesFragment : DaggerFragment() {
                                     rxBus.send(EventNtpStatus(rh.gs(R.string.failedretrievetime), 99))
                                 }
                             }
-                        }, receiverStatusStore.isConnected)
+                        }, receiverStatusStore.isKnownNetworkStatus && receiverStatusStore.isConnected)
                     }
             }
             holder.binding.unstart.setOnClickListener {
@@ -368,6 +373,7 @@ class ObjectivesFragment : DaggerFragment() {
         }
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     fun updateGUI() {
         activity?.runOnUiThread { objectivesAdapter.notifyDataSetChanged() }
     }

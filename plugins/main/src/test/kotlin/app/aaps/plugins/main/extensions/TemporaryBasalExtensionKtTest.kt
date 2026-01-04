@@ -1,9 +1,9 @@
 package app.aaps.plugins.main.extensions
 
-import app.aaps.core.data.aps.AutosensResult
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.insulin.Insulin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -14,7 +14,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
-import org.mockito.Mockito
+import org.mockito.kotlin.whenever
 
 class TemporaryBasalExtensionKtTest : TestBaseWithProfile() {
 
@@ -28,8 +28,8 @@ class TemporaryBasalExtensionKtTest : TestBaseWithProfile() {
     @BeforeEach
     fun setup() {
         insulin = InsulinLyumjevPlugin(rh, profileFunctions, rxBus, aapsLogger, config, hardLimits, uiInteraction)
-        Mockito.`when`(activePlugin.activeInsulin).thenReturn(insulin)
-        Mockito.`when`(dateUtil.now()).thenReturn(now)
+        whenever(activePlugin.activeInsulin).thenReturn(insulin)
+        whenever(dateUtil.now()).thenReturn(now)
     }
 
     @Test

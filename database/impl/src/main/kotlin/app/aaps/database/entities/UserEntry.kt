@@ -22,7 +22,7 @@ data class UserEntry(
     var action: Action,
     var source: Sources,
     var note: String,
-    var values: List<@JvmSuppressWildcards ValueWithUnit?>
+    var values: List<@JvmSuppressWildcards ValueWithUnit>
 ) : DBEntry, DBEntryWithTime {
 
     enum class Action {
@@ -46,8 +46,9 @@ data class UserEntry(
         LGS_LOOP_MODE,
         OPEN_LOOP_MODE,
         LOOP_DISABLED,
-        LOOP_ENABLED,
+        LOOP_RESUME,
         LOOP_CHANGE,
+        PUMP_RUNNING,
         LOOP_REMOVED,
         RECONNECT,
         DISCONNECT,
@@ -61,7 +62,9 @@ data class UserEntry(
         CANCEL_EXTENDED_BOLUS,
         CANCEL_TT,
         CAREPORTAL,
+        SENSOR_LOCATION,
         SITE_CHANGE,
+        SITE_LOCATION,
         RESERVOIR_CHANGE,
         CALIBRATION,
         PRIME_BOLUS,
@@ -98,7 +101,9 @@ data class UserEntry(
         DELETE_FUTURE_TREATMENTS,
         EXPORT_SETTINGS,
         IMPORT_SETTINGS,
+        SELECT_DIRECTORY,
         RESET_DATABASES,
+        RESET_APS_RESULTS,
         CLEANUP_DATABASES,
         EXPORT_DATABASES,
         IMPORT_DATABASES,
@@ -111,6 +116,9 @@ data class UserEntry(
         EXIT_AAPS,
         PLUGIN_ENABLED,
         PLUGIN_DISABLED,
+        RUNNING_MODE,
+        RUNNING_MODE_REMOVED,
+        RUNNING_MODE_UPDATED,
         UNKNOWN
         ;
     }
@@ -128,6 +136,7 @@ data class UserEntry(
         TempBasalDialog,
         CalibrationDialog,
         FillDialog,
+        SiteRotationDialog,
         BgCheck,
         SensorInsert,
         BatteryChange,
@@ -135,6 +144,7 @@ data class UserEntry(
         Exercise,
         Question,
         Announcement,
+        SettingsExport,
         Actions,            //From Actions plugin
         Automation,         //From Automation plugin
         Autotune,           //From Autotune plugin
@@ -171,6 +181,7 @@ data class UserEntry(
         OmnipodEros,
         OmnipodDash,        //No entry currently
         EOPatch2,
+        Equil,
         Medtrum,
         MDI,
         VirtualPump,
@@ -181,12 +192,16 @@ data class UserEntry(
         Food,               //From Food plugin
         ConfigBuilder,      //From ConfigBuilder Plugin
         Overview,           //From OverViewPlugin
-        Stats,               //From Stat Activity
+        Ottai,              //From Ottai plugin
+        SyaiTag,            //From Syai Tag plugin
+        SiBionic,
+        Sino,
+        Stats,              //From Stat Activity
         Aaps,               // MainApp
         BgFragment,
         Garmin,
-        Unknown             //if necessary
-        ,
+        Database,           //for PersistenceLayer
+        Unknown,            //if necessary
         Enlite
         ;
 

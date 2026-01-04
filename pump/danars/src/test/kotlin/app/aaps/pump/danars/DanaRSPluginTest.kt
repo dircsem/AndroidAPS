@@ -8,12 +8,15 @@ import app.aaps.core.interfaces.pump.TemporaryBasalStorage
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.pump.dana.database.DanaHistoryDatabase
+import app.aaps.pump.dana.keys.DanaStringKey
+import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mock
-import org.mockito.Mockito
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.whenever
 
 @Suppress("SpellCheckingInspection")
 class DanaRSPluginTest : DanaRSTestBase() {
@@ -29,8 +32,8 @@ class DanaRSPluginTest : DanaRSTestBase() {
 
     @Test
     fun basalRateShouldBeLimited() {
-        danaRSPlugin.setPluginEnabled(PluginType.PUMP, true)
-        danaRSPlugin.setPluginEnabled(PluginType.PUMP, true)
+        danaRSPlugin.setPluginEnabledBlocking(PluginType.PUMP, true)
+        danaRSPlugin.setPluginEnabledBlocking(PluginType.PUMP, true)
         danaPump.maxBasal = 0.8
         val c = ConstraintObject(Double.MAX_VALUE, aapsLogger)
         danaRSPlugin.applyBasalConstraints(c, validProfile)
@@ -41,8 +44,8 @@ class DanaRSPluginTest : DanaRSTestBase() {
 
     @Test
     fun percentBasalRateShouldBeLimited() {
-        danaRSPlugin.setPluginEnabled(PluginType.PUMP, true)
-        danaRSPlugin.setPluginEnabled(PluginType.PUMP, true)
+        danaRSPlugin.setPluginEnabledBlocking(PluginType.PUMP, true)
+        danaRSPlugin.setPluginEnabledBlocking(PluginType.PUMP, true)
         danaPump.maxBasal = 0.8
         val c = ConstraintObject(Int.MAX_VALUE, aapsLogger)
         danaRSPlugin.applyBasalPercentConstraints(c, validProfile)
@@ -53,32 +56,22 @@ class DanaRSPluginTest : DanaRSTestBase() {
 
     @BeforeEach
     fun prepareMocks() {
-        Mockito.`when`(sp.getString(app.aaps.pump.dana.R.string.key_danars_name, "")).thenReturn("")
-        Mockito.`when`(sp.getString(app.aaps.pump.dana.R.string.key_danars_address, "")).thenReturn("")
-        Mockito.`when`(rh.gs(eq(app.aaps.core.ui.R.string.limitingbasalratio), anyObject(), anyObject())).thenReturn("limitingbasalratio")
-        Mockito.`when`(rh.gs(eq(app.aaps.core.ui.R.string.limitingpercentrate), anyObject(), anyObject())).thenReturn("limitingpercentrate")
+        whenever(preferences.get(DanaStringKey.RsName)).thenReturn("")
+        whenever(preferences.get(DanaStringKey.MacAddress)).thenReturn("")
+        whenever(rh.gs(eq(app.aaps.core.ui.R.string.limitingbasalratio), anyOrNull(), anyOrNull())).thenReturn("limitingbasalratio")
+        whenever(rh.gs(eq(app.aaps.core.ui.R.string.limitingpercentrate), anyOrNull(), anyOrNull())).thenReturn("limitingpercentrate")
 
         danaRSPlugin =
             DanaRSPlugin(
-                aapsLogger,
-                aapsSchedulers,
-                rxBus,
-                context,
-                rh,
-                constraintChecker,
-                profileFunction,
-                sp,
-                commandQueue,
-                danaPump,
-                pumpSync,
-                detailedBolusInfoStorage,
-                temporaryBasalStorage,
-                fabricPrivacy,
-                dateUtil,
-                uiInteraction,
-                danaHistoryDatabase,
-                decimalFormatter,
-                instantiator
+                aapsLogger, rh, preferences, commandQueue, aapsSchedulers, rxBus, context, constraintChecker, profileFunction, danaPump, pumpSync, detailedBolusInfoStorage, temporaryBasalStorage,
+                fabricPrivacy, dateUtil, uiInteraction, danaHistoryDatabase, decimalFormatter, pumpEnactResultProvider
             )
+    }
+
+    @Test
+    fun preferenceScreenTest() {
+        val screen = preferenceManager.createPreferenceScreen(context)
+        danaRSPlugin.addPreferenceScreen(preferenceManager, screen, context, null)
+        assertThat(screen.preferenceCount).isGreaterThan(0)
     }
 }

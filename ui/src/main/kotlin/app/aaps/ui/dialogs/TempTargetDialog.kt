@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.ui.dialogs.OKDialog
@@ -80,13 +81,13 @@ class TempTargetDialog : DialogFragmentWithDate() {
         if (profileUtil.units == GlucoseUnit.MMOL)
             binding.temptarget.setParams(
                 savedInstanceState?.getDouble("tempTarget")
-                    ?: 8.0,
+                    ?: 5.6,
                 Constants.MIN_TT_MMOL, Constants.MAX_TT_MMOL, 0.1, DecimalFormat("0.0"), false, binding.okcancel.ok
             )
         else
             binding.temptarget.setParams(
                 savedInstanceState?.getDouble("tempTarget")
-                    ?: 120.0,
+                    ?: 101.0,
                 Constants.MIN_TT_MGDL, Constants.MAX_TT_MGDL, 1.0, DecimalFormat("0"), false, binding.okcancel.ok
             )
 
@@ -239,11 +240,11 @@ class TempTargetDialog : DialogFragmentWithDate() {
                         action = Action.TT,
                         source = Sources.TTDialog,
                         note = null,
-                        listValues = listValues
+                        listValues = listValues.filterNotNull()
                     ).subscribe()
                 }
 
-                if (duration == 10) sp.putBoolean(app.aaps.core.utils.R.string.key_objectiveusetemptarget, true)
+                if (duration == 10) preferences.put(BooleanNonKey.ObjectivesTempTargetUsed, true)
             })
         }
         return true

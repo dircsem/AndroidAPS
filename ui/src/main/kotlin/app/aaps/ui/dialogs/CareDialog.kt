@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.StringRes
+import androidx.fragment.app.FragmentManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
@@ -21,6 +22,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.Translator
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.ui.R
@@ -32,7 +34,7 @@ import java.text.DecimalFormat
 import java.util.LinkedList
 import javax.inject.Inject
 
-class CareDialog : DialogFragmentWithDate() {
+class CareDialog(val fm: FragmentManager) : DialogFragmentWithDate() {
 
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var profileFunction: ProfileFunction
@@ -162,7 +164,7 @@ class CareDialog : DialogFragmentWithDate() {
     }
 
     override fun submit(): Boolean {
-        val enteredBy = sp.getString("careportal_enteredby", "AndroidAPS")
+        val enteredBy = "AAPS"
         val unitResId = if (profileFunction.getUnits() == GlucoseUnit.MGDL) app.aaps.core.ui.R.string.mgdl else app.aaps.core.ui.R.string.mmol
 
         eventTime -= eventTime % 1000
@@ -182,6 +184,7 @@ class CareDialog : DialogFragmentWithDate() {
         )
 
         val actions: LinkedList<String> = LinkedList()
+        actions.add(rh.gs(R.string.confirm_treatment))
         if (options == UiInteraction.EventType.BGCHECK || options == UiInteraction.EventType.QUESTION || options == UiInteraction.EventType.ANNOUNCEMENT) {
             val meterType =
                 when {
@@ -199,7 +202,7 @@ class CareDialog : DialogFragmentWithDate() {
         if (options == UiInteraction.EventType.NOTE || options == UiInteraction.EventType.EXERCISE) {
             actions.add(rh.gs(app.aaps.core.ui.R.string.duration_label) + ": " + rh.gs(app.aaps.core.ui.R.string.format_mins, binding.duration.value.toInt()))
             therapyEvent.duration = T.mins(binding.duration.value.toLong()).msecs()
-            valuesWithUnit.add(ValueWithUnit.Minute(binding.duration.value.toInt()).takeIf { !binding.duration.value.equals(0.0) })
+            valuesWithUnit.add(ValueWithUnit.Minute(binding.duration.value.toInt()).takeIf { binding.duration.value != 0.0 })
         }
         val notes = binding.notesLayout.notes.text.toString()
         if (notes.isNotEmpty()) {
@@ -230,8 +233,18 @@ class CareDialog : DialogFragmentWithDate() {
                     action = Action.CAREPORTAL,
                     source = source,
                     note = notes,
-                    listValues = valuesWithUnit
+                    listValues = valuesWithUnit.filterNotNull()
                 ).subscribe()
+                if (therapyEvent.type == TE.Type.SENSOR_CHANGE &&  preferences.get(BooleanKey.SiteRotationManageCgm)) {
+                    SiteRotationDialog().also { srd ->
+                        srd.arguments = Bundle().also { args ->
+                            args.putLong("time", therapyEvent.timestamp)
+                            args.putInt("siteMode", UiInteraction.SiteMode.EDIT.ordinal)
+                            args.putInt("siteType", TE.Type.SENSOR_CHANGE.ordinal)
+                        }
+                        srd.show(fm, "SiteRotationViewDialog")
+                    }
+                }
             }, null)
         }
         return true

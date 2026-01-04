@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
     id("kotlin-android")
     id("android-module-dependencies")
     id("test-module-dependencies")
@@ -13,4 +13,5 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:interfaces"))
     implementation(project(":database:impl"))
+    implementation(project(":core:objects"))
 }

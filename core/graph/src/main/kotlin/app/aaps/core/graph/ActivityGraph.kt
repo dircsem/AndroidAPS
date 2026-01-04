@@ -5,17 +5,13 @@ import android.graphics.Color
 import android.util.AttributeSet
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.time.T
+import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.interfaces.insulin.Insulin
-import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.LineGraphSeries
 import kotlin.math.floor
 
-class ActivityGraph : GraphView {
-
-    constructor(context: Context) : super(context)
-
-    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+class ActivityGraph @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) : GraphViewWithCleanup(context, attrs, defStyle) {
 
     fun show(insulin: Insulin, diaSample: Double? = null) {
         removeAllSeries()
@@ -46,7 +42,7 @@ class ActivityGraph : GraphView {
         viewport.isYAxisBoundsManual = true
         viewport.setMinY(0.0)
         viewport.setMaxY(0.01)
-        gridLabelRenderer.numHorizontalLabels = (hours + 1).toInt()
+        //gridLabelRenderer.numHorizontalLabels = (hours + 1).toInt()
         gridLabelRenderer.horizontalAxisTitle = "[min]"
         secondScale.addSeries(LineGraphSeries(Array(iobArray.size) { i -> iobArray[i] }).also {
             it.isDrawBackground = true

@@ -7,7 +7,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceViewHolder
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.utils.SafeParse
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 
@@ -19,18 +19,18 @@ class ValidatingEditTextPreference(ctx: Context, attrs: AttributeSet?) : EditTex
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var preferences: Preferences
 
-    private val attributes: TypedArray = context.obtainStyledAttributes(attrs, app.aaps.core.keys.R.styleable.SimpleFullModeSelector)
-    private val simpleMode: Boolean = attributes.getBoolean(app.aaps.core.keys.R.styleable.SimpleFullModeSelector_simpleMode, true)
-    private val apsMode: Boolean = attributes.getBoolean(app.aaps.core.keys.R.styleable.SimpleFullModeSelector_apsMode, true)
-    private val nsclientMode: Boolean = attributes.getBoolean(app.aaps.core.keys.R.styleable.SimpleFullModeSelector_nsclientMode, true)
-    private val pumpControlMode: Boolean = attributes.getBoolean(app.aaps.core.keys.R.styleable.SimpleFullModeSelector_pumpControlMode, true)
+    private val attributes: TypedArray = context.obtainStyledAttributes(attrs, R.styleable.SimpleFullModeSelector)
+    private val simpleMode: Boolean = attributes.getBoolean(R.styleable.SimpleFullModeSelector_simpleMode, true)
+    private val apsMode: Boolean = attributes.getBoolean(R.styleable.SimpleFullModeSelector_apsMode, true)
+    private val nsclientMode: Boolean = attributes.getBoolean(R.styleable.SimpleFullModeSelector_nsclientMode, true)
+    private val pumpControlMode: Boolean = attributes.getBoolean(R.styleable.SimpleFullModeSelector_pumpControlMode, true)
 
     // PreferenceScreen is final so we cannot extend and modify behavior
-    private val hideParentScreenIfHidden: Boolean = attributes.getBoolean(app.aaps.core.keys.R.styleable.SimpleFullModeSelector_hideParentScreenIfHidden, false)
+    private val hideParentScreenIfHidden: Boolean = attributes.getBoolean(R.styleable.SimpleFullModeSelector_hideParentScreenIfHidden, false)
 
     init {
         setOnBindEditTextListener { editText -> validator = DefaultEditTextValidator(editText, validatorParameters, context) }
-        setOnPreferenceChangeListener { _, _ -> validator?.testValidity(false) ?: true }
+        setOnPreferenceChangeListener { _, _ -> validator?.testValidity(false) != false }
         (context.applicationContext as HasAndroidInjector).androidInjector().inject(this)
         if (preferences.simpleMode && !simpleMode) isVisible = false
         if (preferences.apsMode && !apsMode) isVisible = false

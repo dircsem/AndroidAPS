@@ -49,25 +49,25 @@ data class Bolus(
     var insulinConfiguration: InsulinConfiguration? = null
 ) : TraceableDBEntry, DBEntryWithTime {
 
-    fun contentEqualsTo(other: Bolus): Boolean =
-        isValid == other.isValid &&
-            timestamp == other.timestamp &&
-            utcOffset == other.utcOffset &&
-            amount == other.amount &&
-            type == other.type &&
-            notes == other.notes &&
-            isBasalInsulin == other.isBasalInsulin
-
-    fun onlyNsIdAdded(previous: Bolus): Boolean =
-        previous.id != id &&
-            contentEqualsTo(previous) &&
-            previous.interfaceIDs.nightscoutId == null &&
-            interfaceIDs.nightscoutId != null
-    fun contentToBeAdded(other: Bolus): Boolean =
-        isValid == other.isValid &&
-            timestamp == other.timestamp &&
-            utcOffset == other.utcOffset &&
-            amount == other.amount
+//    fun contentEqualsTo(other: Bolus): Boolean =
+//        isValid == other.isValid &&
+//            timestamp == other.timestamp &&
+//            utcOffset == other.utcOffset &&
+//            amount == other.amount &&
+//            type == other.type &&
+//            notes == other.notes &&
+//            isBasalInsulin == other.isBasalInsulin
+//
+//    fun onlyNsIdAdded(previous: Bolus): Boolean =
+//        previous.id != id &&
+//            contentEqualsTo(previous) &&
+//            previous.interfaceIDs.nightscoutId == null &&
+//            interfaceIDs.nightscoutId != null
+//    fun contentToBeAdded(other: Bolus): Boolean =
+//        isValid == other.isValid &&
+//            timestamp == other.timestamp &&
+//            utcOffset == other.utcOffset &&
+//            amount == other.amount
      fun isSMBorBasal() =
         this.type == Type.SMB || this.type == Type.TBR
     enum class Type {

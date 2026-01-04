@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.text.toSpanned
+import androidx.fragment.app.FragmentActivity
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -13,6 +14,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -33,6 +35,7 @@ import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.plugins.configuration.R
+import app.aaps.plugins.configuration.activities.DaggerAppCompatActivityWithResult
 import app.aaps.plugins.configuration.databinding.MaintenanceFragmentBinding
 import app.aaps.plugins.configuration.maintenance.activities.LogSettingActivity
 import dagger.android.support.DaggerFragment
@@ -60,6 +63,7 @@ class MaintenanceFragment : DaggerFragment() {
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var activePlugin: ActivePlugin
+    @Inject lateinit var fileListProvider: FileListProvider
 
     private val disposable = CompositeDisposable()
     private var inMenu = false
@@ -86,6 +90,22 @@ class MaintenanceFragment : DaggerFragment() {
                     .subscribeOn(aapsSchedulers.io)
                     .subscribe({ uel.log(Action.DELETE_LOGS, Sources.Maintenance) }, fabricPrivacy::logException)
         }
+        binding.navResetApsResults.setOnClickListener {
+            activity?.let { activity ->
+                OKDialog.showConfirmation(activity, rh.gs(R.string.maintenance), rh.gs(R.string.reset_aps_results_confirm), Runnable {
+                    disposable +=
+                        Completable.fromAction {
+                            persistenceLayer.clearApsResults()
+                        }
+                            .subscribeOn(aapsSchedulers.io)
+                            .subscribeBy(
+                                onError = { aapsLogger.error("Error clearing aps results", it) },
+                                onComplete = { aapsLogger.debug("Aps results cleared") }
+                            )
+                    uel.log(Action.RESET_APS_RESULTS, Sources.Maintenance)
+                })
+            }
+        }
         binding.navResetdb.setOnClickListener {
             activity?.let { activity ->
                 OKDialog.showConfirmation(activity, rh.gs(R.string.maintenance), rh.gs(R.string.reset_db_confirm), Runnable {
@@ -106,7 +126,7 @@ class MaintenanceFragment : DaggerFragment() {
                             .subscribeBy(
                                 onError = { aapsLogger.error("Error clearing databases", it) },
                                 onComplete = {
-                                    rxBus.send(EventPreferenceChange(rh.gs(StringKey.GeneralUnits.key)))
+                                    rxBus.send(EventPreferenceChange(StringKey.GeneralUnits.key))
                                     runOnUiThread { activity.recreate() }
                                 }
                             )
@@ -149,8 +169,11 @@ class MaintenanceFragment : DaggerFragment() {
             uel.log(Action.IMPORT_SETTINGS, Sources.Maintenance)
             // start activity for checking permissions...
             importExportPrefs.verifyStoragePermissions(this) {
-                importExportPrefs.importSharedPreferences(this)
+                importExportPrefs.importSharedPreferences(activity as FragmentActivity)
             }
+        }
+        binding.directory.setOnClickListener {
+            maintenancePlugin.selectAapsDirectory(requireActivity() as DaggerAppCompatActivityWithResult)
         }
         binding.navLogsettings.setOnClickListener { startActivity(Intent(activity, LogSettingActivity::class.java)) }
         binding.exportCsv.setOnClickListener {

@@ -2,22 +2,28 @@ package app.aaps.plugins.main.iob.iobCobCalculator.data
 
 import androidx.collection.LongSparseArray
 import androidx.collection.size
-import app.aaps.core.data.aps.AutosensData
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.objects.extensions.fromGv
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToLong
 
 class AutosensDataStoreObject : AutosensDataStore {
-
     override val dataLock = Any()
     override var lastUsed5minCalculation: Boolean? = null // true if used 5min bucketed data
+
+    companion object {
+
+        const val IRREGULAR_DATA_SEC = 30L
+    }
 
     // we need to make sure that bucketed_data will always have the same timestamp for correct use of cached values
     // once referenceTime != null all bucketed data should be (x * 5min) from referenceTime
@@ -47,8 +53,14 @@ class AutosensDataStoreObject : AutosensDataStore {
     override fun getBucketedDataTableCopy(): MutableList<InMemoryGlucoseValue>? = synchronized(dataLock) { bucketedData?.toMutableList() }
     override fun getBgReadingsDataTableCopy(): List<GV> = synchronized(dataLock) { bgReadings.toMutableList() }
 
-    override fun reset() {
+    /*override fun reset() {
         synchronized(autosensDataTable) { autosensDataTable = LongSparseArray() }
+    }*/
+    override fun reset() {
+        synchronized(autosensDataTable) {
+            autosensDataTable.clear()
+            bucketedData?.clear()
+        }
     }
 
     override fun newHistoryData(time: Long, aapsLogger: AAPSLogger, dateUtil: DateUtil) {
@@ -122,7 +134,7 @@ class AutosensDataStoreObject : AutosensDataStore {
     var storedLastAutosensResult: AutosensData? = null
         get() = field?.let { if (it.time < System.currentTimeMillis() - 11 * 60 * 1000) it else null }
 
-    override fun getLastAutosensData(reason: String, aapsLogger: AAPSLogger, dateUtil: DateUtil): AutosensData? {
+    /*override fun getLastAutosensData(reason: String, aapsLogger: AAPSLogger, dateUtil: DateUtil): AutosensData? {
         synchronized(dataLock) {
             if (autosensDataTable.size() < 1) {
                 aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA null: autosensDataTable empty ($reason)")
@@ -130,7 +142,7 @@ class AutosensDataStoreObject : AutosensDataStore {
             }
             val data: AutosensData = try {
                 autosensDataTable.valueAt(autosensDataTable.size() - 1)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // data can be processed on the background
                 // in this rare case better return null and do not block UI
                 // APS plugin should use getLastAutosensDataSynchronized where the blocking is not an issue
@@ -145,6 +157,37 @@ class AutosensDataStoreObject : AutosensDataStore {
                 storedLastAutosensResult = data
                 data
             }
+        }
+    }*/
+    private val lock = ReentrantLock()
+
+    override fun getLastAutosensData(reason: String, aapsLogger: AAPSLogger, dateUtil: DateUtil): AutosensData? {
+        lock.lock()
+        try {
+            if (autosensDataTable.size() < 1) {
+                aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA null: autosensDataTable empty ($reason)")
+                return storedLastAutosensResult
+            }
+            val data: AutosensData = try {
+                autosensDataTable.valueAt(autosensDataTable.size() - 1)
+            } catch (e: Exception) {
+                // data can be processed on the background
+                // in this rare case better return null and do not block UI
+                // APS plugin should use getLastAutosensDataSynchronized where the blocking is not an issue
+                aapsLogger.error("AUTOSENSDATA null: Exception caught ($reason)")
+                return storedLastAutosensResult
+            }
+            //if (data.time < dateUtil.now() - 11 * 60 * 1000) {
+            return if (data.time < dateUtil.now() - 11 * 60 * 1000) {
+                aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA null: data is old ($reason) size()=${autosensDataTable.size()} lastData=${dateUtil.dateAndTimeAndSecondsString(data.time)}" }
+                storedLastAutosensResult
+            } else {
+                aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA ($reason) $data" }
+                storedLastAutosensResult = data
+                data
+            }
+        } finally {
+            lock.unlock()
         }
     }
 
@@ -172,7 +215,7 @@ class AutosensDataStoreObject : AutosensDataStore {
                 if (diff > T.mins(2).plus(T.secs(30)).msecs()) diff -= T.mins(5).msecs()
                 totalDiff += diff
                 diff = abs(diff)
-                if (diff > T.secs(30).msecs()) {
+                if (diff > T.secs(IRREGULAR_DATA_SEC).msecs()) {
                     aapsLogger.debug(LTag.AUTOSENS, "Interval detection: values: ${bgReadings.size} diff: ${diff / 1000}[s] is5minData: false")
                     return false
                 }
@@ -242,7 +285,7 @@ class AutosensDataStoreObject : AutosensDataStore {
                 val bgDelta = newer.value - older.value
                 val timeDiffToNew = newer.timestamp - currentTime
                 val timeDiffToOlder = currentTime - older.timestamp
-                val filledGap = timeDiffToOlder > T.mins(5).msecs() || timeDiffToNew > T.mins(5).msecs()
+                val filledGap = min(timeDiffToOlder, timeDiffToNew) > T.secs(IRREGULAR_DATA_SEC).msecs()
                 val currentBg = newer.value - timeDiffToNew.toDouble() / (newer.timestamp - older.timestamp) * bgDelta
                 val newBgReading = InMemoryGlucoseValue(currentTime, currentBg.roundToLong().toDouble(), filledGap = filledGap, sourceSensor = lastBg.sourceSensor)
                 newBucketedData.add(newBgReading)

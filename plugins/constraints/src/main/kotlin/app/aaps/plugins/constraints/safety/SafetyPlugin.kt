@@ -1,7 +1,9 @@
 package app.aaps.plugins.constraints.safety
 
-import app.aaps.core.data.aps.ApsMode
-import app.aaps.core.data.plugin.PluginDescription
+import android.content.Context
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.interfaces.configuration.Config
@@ -14,11 +16,11 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusSize
 import app.aaps.core.interfaces.pump.defs.determineCorrectExtendedBolusSize
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -26,11 +28,14 @@ import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
+import app.aaps.core.validators.preferences.AdaptiveIntPreference
+import app.aaps.core.validators.preferences.AdaptiveListPreference
 import app.aaps.plugins.constraints.R
 import org.json.JSONObject
 import javax.inject.Inject
@@ -40,7 +45,6 @@ import javax.inject.Singleton
 class SafetyPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
-    private val sp: SP,
     private val preferences: Preferences,
     private val constraintChecker: ConstraintsChecker,
     private val activePlugin: ActivePlugin,
@@ -55,9 +59,9 @@ class SafetyPlugin @Inject constructor(
         .mainType(PluginType.CONSTRAINTS)
         .neverVisible(true)
         .alwaysEnabled(true)
-        .showInList(false)
+        .showInList { false }
         .pluginName(R.string.safety)
-        .preferencesId(R.xml.pref_safety),
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN),
     aapsLogger, rh
 ), PluginConstraints, Safety {
 
@@ -70,8 +74,6 @@ class SafetyPlugin @Inject constructor(
     }
 
     override fun isClosedLoopAllowed(value: Constraint<Boolean>): Constraint<Boolean> {
-        val mode = ApsMode.fromString(preferences.get(StringKey.LoopApsMode))
-        if (mode == ApsMode.OPEN) value.set(false, rh.gs(R.string.closedmodedisabledinpreferences), this)
         if (!config.isEngineeringModeOrRelease()) {
             if (value.value()) {
                 uiInteraction.addNotification(Notification.TOAST_ALARM, rh.gs(R.string.closed_loop_disabled_on_dev_branch), Notification.NORMAL)
@@ -104,7 +106,7 @@ class SafetyPlugin @Inject constructor(
         val pump = activePlugin.activePump
         // check for pump max
         if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
-            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings?.maxDose ?: 0.0
+            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
             absoluteRate.setIfSmaller(pumpLimit, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
         }
 
@@ -133,7 +135,7 @@ class SafetyPlugin @Inject constructor(
                 .toInt() else Round.floorTo(percentRateAfterConst.toDouble(), pump.pumpDescription.tempPercentStep.toDouble()).toInt()
         percentRate.set(percentRateAfterConst, rh.gs(app.aaps.core.ui.R.string.limitingpercentrate, percentRateAfterConst, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
         if (pump.pumpDescription.tempBasalStyle == PumpDescription.PERCENT) {
-            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings?.maxDose ?: 0.0
+            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
             percentRate.setIfSmaller(pumpLimit.toInt(), rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
         }
         return percentRate
@@ -162,32 +164,44 @@ class SafetyPlugin @Inject constructor(
     }
 
     override fun applyCarbsConstraints(carbs: Constraint<Int>): Constraint<Int> {
-        carbs.setIfGreater(0, rh.gs(R.string.limitingcarbs, 0, rh.gs(app.aaps.core.ui.R.string.itmustbepositivevalue)), this)
         val maxCarbs = preferences.get(IntKey.SafetyMaxCarbs)
         carbs.setIfSmaller(maxCarbs, rh.gs(R.string.limitingcarbs, maxCarbs, rh.gs(R.string.maxvalueinpreferences)), this)
         return carbs
     }
 
-    override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
-        val apsMode = ApsMode.fromString(preferences.get(StringKey.LoopApsMode))
-        if (apsMode == ApsMode.LGS) maxIob.setIfSmaller(
-            HardLimits.MAX_IOB_LGS,
-            rh.gs(app.aaps.core.ui.R.string.limiting_iob, HardLimits.MAX_IOB_LGS, rh.gs(app.aaps.core.ui.R.string.lowglucosesuspend)),
-            this
-        )
-        return maxIob
-    }
-
     override fun configuration(): JSONObject =
         JSONObject()
-            .put(StringKey.SafetyAge, preferences, rh)
-            .put(DoubleKey.SafetyMaxBolus, preferences, rh)
-            .put(IntKey.SafetyMaxCarbs, preferences, rh)
+            .put(StringKey.SafetyAge, preferences)
+            .put(DoubleKey.SafetyMaxBolus, preferences)
+            .put(IntKey.SafetyMaxCarbs, preferences)
 
     override fun applyConfiguration(configuration: JSONObject) {
         configuration
-            .store(StringKey.SafetyAge, preferences, rh)
-            .store(DoubleKey.SafetyMaxBolus, preferences, rh)
-            .store(IntKey.SafetyMaxCarbs, preferences, rh)
+            .store(StringKey.SafetyAge, preferences)
+            .store(DoubleKey.SafetyMaxBolus, preferences)
+            .store(IntKey.SafetyMaxCarbs, preferences)
+    }
+
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null) return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "safety_settings"
+            title = rh.gs(R.string.treatmentssafety_title)
+            initialExpandedChildrenCount = 0
+            addPreference(
+                AdaptiveListPreference(
+                    ctx = context,
+                    stringKey = StringKey.SafetyAge,
+                    summary = app.aaps.core.ui.R.string.patient_age_summary,
+                    title = app.aaps.core.ui.R.string.patient_type,
+                    entries = hardLimits.ageEntries(),
+                    entryValues = hardLimits.ageEntryValues()
+                )
+            )
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.SafetyMaxBolus, title = app.aaps.core.ui.R.string.max_bolus_title))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.SafetyMaxCarbs, title = app.aaps.core.ui.R.string.max_carbs_title))
+        }
     }
 }

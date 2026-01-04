@@ -19,7 +19,7 @@ fun NSProfileSwitch.toProfileSwitch(activePlugin: ActivePlugin, dateUtil: DateUt
         profileJson?.let { pureProfileFromJson(it, dateUtil) ?: return null }
             ?: activePlugin.activeProfileSource.profile?.getSpecificProfile(profile) ?: return null
 
-    val profileSealed = ProfileSealed.Pure(pureProfile)
+    val profileSealed = ProfileSealed.Pure(value = pureProfile, activePlugin = null)
 
     return PS(
         isValid = isValid,
@@ -33,7 +33,7 @@ fun NSProfileSwitch.toProfileSwitch(activePlugin: ActivePlugin, dateUtil: DateUt
         profileName = originalProfileName ?: profile,
         timeshift = timeShift ?: 0,
         percentage = percentage ?: 100,
-        duration = originalDuration ?: T.mins(duration ?: 0).msecs(),
+        duration = duration ?: 0L,
         iCfg = profileSealed.iCfg,
         ids = IDs(nightscoutId = identifier, pumpId = pumpId, pumpType = PumpType.fromString(pumpType), pumpSerial = pumpSerial, endId = endId)
     )
@@ -53,11 +53,11 @@ fun PS.toNSProfileSwitch(dateUtil: DateUtil, decimalFormatter: DecimalFormatter)
         utcOffset = T.msecs(utcOffset).mins(),
         timeShift = timeshift,
         percentage = percentage,
-        duration = T.mins(duration).msecs(),
+        duration = duration,
         profile = unmodifiedCustomizedName,
         originalProfileName = profileName,
         originalDuration = duration,
-        profileJson = ProfileSealed.PS(notCustomized).toPureNsJson(dateUtil),
+        profileJson = ProfileSealed.PS(value = notCustomized, activePlugin = null).toPureNsJson(dateUtil),
         identifier = ids.nightscoutId,
         pumpId = ids.pumpId,
         pumpType = ids.pumpType?.name,

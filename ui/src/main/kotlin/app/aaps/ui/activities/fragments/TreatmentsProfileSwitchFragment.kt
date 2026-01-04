@@ -30,7 +30,6 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventLocalProfileChanged
 import app.aaps.core.interfaces.rx.events.EventProfileSwitchChanged
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -54,7 +53,6 @@ import javax.inject.Inject
 class TreatmentsProfileSwitchFragment : DaggerFragment(), MenuProvider {
 
     @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var sp: SP
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var rh: ResourceHelper
@@ -94,19 +92,19 @@ class TreatmentsProfileSwitchFragment : DaggerFragment(), MenuProvider {
 
     private fun profileSwitchWithInvalid(now: Long) = persistenceLayer
         .getProfileSwitchesIncludingInvalidFromTime(now - millsToThePast, false)
-        .map { bolus -> bolus.map { ProfileSealed.PS(it) } }
+        .map { ps -> ps.map { ProfileSealed.PS(value = it, activePlugin = null) } }
 
     private fun effectiveProfileSwitchWithInvalid(now: Long) = persistenceLayer
         .getEffectiveProfileSwitchesIncludingInvalidFromTime(now - millsToThePast, false)
-        .map { carb -> carb.map { ProfileSealed.EPS(it) } }
+        .map { eps -> eps.map { ProfileSealed.EPS(value = it, activePlugin = null) } }
 
     private fun profileSwitches(now: Long) = persistenceLayer
         .getProfileSwitchesFromTime(now - millsToThePast, false)
-        .map { bolus -> bolus.map { ProfileSealed.PS(it) } }
+        .map { ps -> ps.map { ProfileSealed.PS(value = it, activePlugin = null) } }
 
     private fun effectiveProfileSwitches(now: Long) = persistenceLayer
         .getEffectiveProfileSwitchesFromTime(now - millsToThePast, false)
-        .map { carb -> carb.map { ProfileSealed.EPS(it) } }
+        .map { eps -> eps.map { ProfileSealed.EPS(value = it, activePlugin = null) } }
 
     private fun swapAdapter() {
         val now = System.currentTimeMillis()

@@ -1,13 +1,14 @@
 package app.aaps.core.objects.profile
 
 import android.content.Context
+import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.pureProfileFromJson
 import app.aaps.shared.impl.utils.DateUtilImpl
 import app.aaps.shared.tests.HardLimitsMock
@@ -17,10 +18,10 @@ import com.google.common.truth.Truth.assertThat
 import org.json.JSONObject
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyInt
+import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mock
-import org.mockito.Mockito.anyInt
-import org.mockito.Mockito.anyString
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.whenever
 import java.util.Calendar
 
 /**
@@ -28,12 +29,13 @@ import java.util.Calendar
  */
 class ProfileSealedTest : TestBase() {
 
-    @Mock lateinit var activePluginProvider: ActivePlugin
+    @Mock lateinit var activePlugin: ActivePlugin
     @Mock lateinit var rh: ResourceHelper
     @Mock lateinit var context: Context
     @Mock lateinit var config: Config
-    @Mock lateinit var sp: SP
     @Mock lateinit var preferences: Preferences
+    @Mock lateinit var aps: APS
+    @Mock lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
 
     private lateinit var hardLimits: HardLimits
     private lateinit var dateUtil: DateUtil
@@ -58,19 +60,20 @@ class ProfileSealedTest : TestBase() {
     fun prepare() {
         testPumpPlugin = TestPumpPlugin(rh)
         dateUtil = DateUtilImpl(context)
-        hardLimits = HardLimitsMock(sp, preferences, rh)
-        `when`(activePluginProvider.activePump).thenReturn(testPumpPlugin)
-        `when`(rh.gs(app.aaps.core.ui.R.string.profile_per_unit)).thenReturn("/U")
-        `when`(rh.gs(app.aaps.core.ui.R.string.profile_carbs_per_unit)).thenReturn("g/U")
-        `when`(rh.gs(app.aaps.core.ui.R.string.profile_ins_units_per_hour)).thenReturn("U/h")
-        `when`(rh.gs(anyInt(), anyString())).thenReturn("")
+        hardLimits = HardLimitsMock(preferences, rh)
+        whenever(activePlugin.activePump).thenReturn(testPumpPlugin)
+        whenever(rh.gs(app.aaps.core.ui.R.string.profile_per_unit)).thenReturn("/U")
+        whenever(rh.gs(app.aaps.core.ui.R.string.profile_carbs_per_unit)).thenReturn("g/U")
+        whenever(rh.gs(app.aaps.core.ui.R.string.profile_ins_units_per_hour)).thenReturn("U/h")
+        whenever(rh.gs(anyInt(), anyString())).thenReturn("")
+        whenever(activePlugin.activeAPS).thenReturn(aps)
     }
 
     @Test
     fun doTests() {
 
         // Test valid profile
-        var p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!)
+        var p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!, activePlugin)
         assertThat(p.isValid("Test", testPumpPlugin, config, rh, rxBus, hardLimits, false).isValid).isTrue()
 //        assertThat(p.log()).contains("NS units: mmol")
 //        JSONAssertions.assertEquals(JSONObject(okProfile), p.toPureNsJson(dateUtil), false)
@@ -82,9 +85,9 @@ class ProfileSealedTest : TestBase() {
         c[Calendar.MINUTE] = 0
         c[Calendar.SECOND] = 0
         c[Calendar.MILLISECOND] = 0
-        assertThat(p.getIsfMgdl(c.timeInMillis)).isWithin(0.01).of(108.0)
+        assertThat(p.getIsfMgdlForCarbs(c.timeInMillis, "test", config, processedDeviceStatusData)).isWithin(0.01).of(108.0)
         c[Calendar.HOUR_OF_DAY] = 2
-        assertThat(p.getIsfMgdl(c.timeInMillis)).isWithin(0.01).of(111.6)
+        assertThat(p.getIsfMgdlForCarbs(c.timeInMillis, "test", config, processedDeviceStatusData)).isWithin(0.01).of(111.6)
 //        assertThat(p.getIsfTimeFromMidnight(2 * 60 * 60)).isWithin(0.01).of(110.0)
         assertThat(p.getIsfList(rh, dateUtil).replace(".", ",")).isEqualTo(
             """
@@ -112,29 +115,29 @@ class ProfileSealedTest : TestBase() {
         assertThat(p.timeshift).isEqualTo(0)
 
         //Test basal profile below limit
-        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(belowLimitValidProfile), dateUtil)!!)
+        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(belowLimitValidProfile), dateUtil)!!, activePlugin)
         p.isValid("Test", testPumpPlugin, config, rh, rxBus, hardLimits, false)
 
         // Test profile w/o units
         assertThat(pureProfileFromJson(JSONObject(noUnitsValidProfile), dateUtil)).isNull()
 
         //Test profile not starting at midnight
-        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(notStartingAtZeroValidProfile), dateUtil)!!)
+        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(notStartingAtZeroValidProfile), dateUtil)!!, activePlugin)
         assertThat(p.getIc(0)).isWithin(0.01).of(30.0)
 
         // Test wrong profile
         assertThat(pureProfileFromJson(JSONObject(wrongProfile), dateUtil)).isNull()
 
         // Test percentage functionality
-        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!)
+        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!, activePlugin)
         p.pct = 50
         assertThat(p.getBasal(c.timeInMillis)).isWithin(0.01).of(0.05)
         assertThat(p.percentageBasalSum()).isWithin(0.01).of(1.2)
         assertThat(p.getIc(c.timeInMillis)).isWithin(0.01).of(60.0)
-        assertThat(p.getIsfMgdl(c.timeInMillis)).isWithin(0.01).of(223.2)
+        assertThat(p.getIsfMgdlForCarbs(c.timeInMillis, "test", config, processedDeviceStatusData)).isWithin(0.01).of(223.2)
 
         // Test timeshift functionality
-        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!)
+        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(okProfile), dateUtil)!!, activePlugin)
         p.ts = 1
         assertThat(p.getIsfList(rh, dateUtil).replace(',', '.')).isEqualTo(
             """
@@ -146,7 +149,7 @@ class ProfileSealedTest : TestBase() {
 
         // Test hour alignment
         testPumpPlugin.pumpDescription.is30minBasalRatesCapable = false
-        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(notAlignedBasalValidProfile), dateUtil)!!)
+        p = ProfileSealed.Pure(pureProfileFromJson(JSONObject(notAlignedBasalValidProfile), dateUtil)!!, activePlugin)
         p.isValid("Test", testPumpPlugin, config, rh, rxBus, hardLimits, false)
     }
 }

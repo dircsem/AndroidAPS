@@ -5,9 +5,11 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.ui.alertDialogs.ErrorDialog
@@ -18,9 +20,10 @@ import javax.inject.Inject
 
 class ErrorHelperActivity : TranslatedDaggerAppCompatActivity() {
 
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var dateUtil: DateUtil
+    @Inject lateinit var config: Config
 
     private val disposable = CompositeDisposable()
 
@@ -34,7 +37,7 @@ class ErrorHelperActivity : TranslatedDaggerAppCompatActivity() {
         errorDialog.title = intent.getStringExtra(AlarmSoundService.TITLE) ?: ""
         errorDialog.show(supportFragmentManager, "Error")
 
-        if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_create_announcements_from_errors, true))
+        if (preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS)
             disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                 therapyEvent = TE.asAnnouncement(intent.getStringExtra(AlarmSoundService.STATUS) ?: ""),
                 timestamp = dateUtil.now(),
@@ -43,5 +46,10 @@ class ErrorHelperActivity : TranslatedDaggerAppCompatActivity() {
                 note = intent.getStringExtra(AlarmSoundService.STATUS) ?: "",
                 listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
             ).subscribe()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        disposable.clear()
     }
 }

@@ -8,8 +8,8 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
-import app.aaps.core.data.model.OE
 import app.aaps.core.data.model.PS
+import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -20,12 +20,12 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.JsonHelper
 import app.aaps.core.utils.receivers.DataWorkerStorage
-import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsclient.extensions.extendedBolusFromJson
 import app.aaps.plugins.sync.nsclient.extensions.fromJson
 import app.aaps.plugins.sync.nsclient.extensions.isEffectiveProfileSwitch
@@ -40,7 +40,7 @@ class NSClientAddUpdateWorker(
 
     @Inject lateinit var dataWorkerStorage: DataWorkerStorage
     @Inject lateinit var config: Config
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var rxBus: RxBus
@@ -68,22 +68,18 @@ class NSClientAddUpdateWorker(
 
             //Find latest date in treatment
             val mills = JsonHelper.safeGetLong(json, "mills")
-            if (mills != 0L && mills < dateUtil.now())
-                if (mills > latestDateInReceivedData) latestDateInReceivedData = mills
+            if (mills != 0L && mills < dateUtil.now() && mills > latestDateInReceivedData)
+                latestDateInReceivedData = mills
 
-            if (insulin > 0) {
-                if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_insulin, false) || config.NSCLIENT) {
-                    BS.fromJson(json)?.let { bolus ->
-                        storeDataForDb.boluses.add(bolus)
-                    } ?: aapsLogger.error("Error parsing bolus json $json")
-                }
+            if (insulin > 0 && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
+                BS.fromJson(json)?.let { bolus ->
+                    storeDataForDb.addToBoluses(bolus)
+                } ?: aapsLogger.error("Error parsing bolus json $json")
             }
-            if (carbs > 0) {
-                if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_carbs, false) || config.NSCLIENT) {
-                    CA.fromJson(json)?.let { carb ->
-                        storeDataForDb.carbs.add(carb)
-                    } ?: aapsLogger.error("Error parsing bolus json $json")
-                }
+            if (carbs != 0.0 && (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) {
+                CA.fromJson(json)?.let { carb ->
+                    storeDataForDb.addToCarbs(carb)
+                } ?: aapsLogger.error("Error parsing bolus json $json")
             }
             // Convert back emulated TBR -> EB
             if (eventType == TE.Type.TEMPORARY_BASAL.text && json.has("extendedEmulated")) {
@@ -99,22 +95,22 @@ class NSClientAddUpdateWorker(
             when {
                 insulin > 0 || carbs > 0                                          -> Any()
                 eventType == TE.Type.TEMPORARY_TARGET.text                        ->
-                    if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_temp_target, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptTempTarget) || config.AAPSCLIENT) {
                         TT.fromJson(json, profileUtil)?.let { temporaryTarget ->
-                            storeDataForDb.temporaryTargets.add(temporaryTarget)
+                            storeDataForDb.addToTemporaryTargets(temporaryTarget)
                         } ?: aapsLogger.error("Error parsing TT json $json")
                     }
 
                 eventType == TE.Type.NOTE.text && json.isEffectiveProfileSwitch() -> // replace this by new Type when available in NS
-                    if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptProfileSwitch) || config.AAPSCLIENT) {
                         EPS.fromJson(json, dateUtil)?.let { effectiveProfileSwitch ->
-                            storeDataForDb.effectiveProfileSwitches.add(effectiveProfileSwitch)
+                            storeDataForDb.addToEffectiveProfileSwitches(effectiveProfileSwitch)
                         } ?: aapsLogger.error("Error parsing EffectiveProfileSwitch json $json")
                     }
 
                 eventType == TE.Type.BOLUS_WIZARD.text                            ->
                     BCR.fromJson(json)?.let { bolusCalculatorResult ->
-                        storeDataForDb.bolusCalculatorResults.add(bolusCalculatorResult)
+                        storeDataForDb.addToBolusCalculatorResults(bolusCalculatorResult)
                     } ?: aapsLogger.error("Error parsing BolusCalculatorResult json $json")
 
                 eventType == TE.Type.CANNULA_CHANGE.text ||
@@ -127,42 +123,42 @@ class NSClientAddUpdateWorker(
                     eventType == TE.Type.EXERCISE.text ||
                     eventType == TE.Type.NOTE.text ||
                     eventType == TE.Type.PUMP_BATTERY_CHANGE.text                 ->
-                    if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_therapy_events, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptTherapyEvent) || config.AAPSCLIENT) {
                         TE.fromJson(json)?.let { therapyEvent ->
-                            storeDataForDb.therapyEvents.add(therapyEvent)
+                            storeDataForDb.addToTherapyEvents(therapyEvent)
                         } ?: aapsLogger.error("Error parsing TherapyEvent json $json")
                     }
 
                 eventType == TE.Type.COMBO_BOLUS.text                             ->
-                    if (config.isEngineeringMode() && sp.getBoolean(R.string.key_ns_receive_tbr_eb, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT) {
                         EB.extendedBolusFromJson(json)?.let { extendedBolus ->
-                            storeDataForDb.extendedBoluses.add(extendedBolus)
+                            storeDataForDb.addToExtendedBoluses(extendedBolus)
                         } ?: aapsLogger.error("Error parsing ExtendedBolus json $json")
                     }
 
                 eventType == TE.Type.TEMPORARY_BASAL.text                         ->
-                    if (config.isEngineeringMode() && sp.getBoolean(R.string.key_ns_receive_tbr_eb, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT) {
                         TB.temporaryBasalFromJson(json)?.let { temporaryBasal ->
-                            storeDataForDb.temporaryBasals.add(temporaryBasal)
+                            storeDataForDb.addToTemporaryBasals(temporaryBasal)
                         } ?: aapsLogger.error("Error parsing TemporaryBasal json $json")
                     }
 
                 eventType == TE.Type.PROFILE_SWITCH.text                          ->
-                    if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
+                    if (preferences.get(BooleanKey.NsClientAcceptProfileSwitch) || config.AAPSCLIENT) {
                         PS.fromJson(json, dateUtil, activePlugin)?.let { profileSwitch ->
-                            storeDataForDb.profileSwitches.add(profileSwitch)
+                            storeDataForDb.addToProfileSwitches(profileSwitch)
                         } ?: aapsLogger.error("Error parsing ProfileSwitch json $json")
                     }
 
                 eventType == TE.Type.APS_OFFLINE.text                             ->
-                    if (sp.getBoolean(app.aaps.core.utils.R.string.key_ns_receive_offline_event, false) && config.isEngineeringMode() || config.NSCLIENT) {
-                        OE.fromJson(json)?.let { offlineEvent ->
-                            storeDataForDb.offlineEvents.add(offlineEvent)
-                        } ?: aapsLogger.error("Error parsing OfflineEvent json $json")
+                    if (preferences.get(BooleanKey.NsClientAcceptRunningMode) && config.isEngineeringMode() || config.AAPSCLIENT) {
+                        RM.fromJson(json)?.let { runningMode ->
+                            storeDataForDb.addToRunningModes(runningMode)
+                        } ?: aapsLogger.error("Error parsing RunningMode json $json")
                     }
             }
         }
-        storeDataForDb.storeTreatmentsToDb()
+        storeDataForDb.storeTreatmentsToDb(fullSync = false)
         activePlugin.activeNsClient?.updateLatestTreatmentReceivedIfNewer(latestDateInReceivedData)
         return ret
     }

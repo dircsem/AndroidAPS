@@ -1,8 +1,6 @@
 package app.aaps.plugins.main.general.overview.ui
 
 import android.annotation.SuppressLint
-import android.os.Handler
-import android.os.HandlerThread
 import android.widget.TextView
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
@@ -15,8 +13,12 @@ import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.Preferences
-import app.aaps.core.ui.extensions.runOnUiThread
+import app.aaps.core.keys.interfaces.Preferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,7 +36,7 @@ class StatusLightHandler @Inject constructor(
     private val decimalFormatter: DecimalFormatter
 ) {
 
-    private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     /**
      * applies the extended statusLight subview on the overview fragment
@@ -59,6 +61,7 @@ class StatusLightHandler @Inject constructor(
         }
 
         val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
+        if (cannulaUsage != null) scope.launch { handleUsage(cannulaUsage, insulinUnit) }
         if (pump.pumpDescription.isPatchPump) {
             handlePatchReservoirLevel(
                 reservoirLevel,
@@ -68,24 +71,23 @@ class StatusLightHandler @Inject constructor(
                 pump.pumpDescription.maxResorvoirReading.toDouble()
             )
         } else {
-            if (cannulaUsage != null) handleUsage(cannulaUsage, insulinUnit)
             handleLevel(reservoirLevel, IntKey.OverviewResCritical, IntKey.OverviewResWarning, pump.reservoirLevel, insulinUnit)
         }
-        if (!config.NSCLIENT) {
+        if (!config.AAPSCLIENT) {
             if (bgSource.sensorBatteryLevel != -1)
                 handleLevel(sensorBatteryLevel, IntKey.OverviewSbatCritical, IntKey.OverviewSbatWarning, bgSource.sensorBatteryLevel.toDouble(), "%")
             else
                 sensorBatteryLevel?.text = ""
         }
 
-        if (!config.NSCLIENT) {
+        if (!config.AAPSCLIENT) {
             // The Omnipod Eros does not report its battery level. However, some RileyLink alternatives do.
             // Depending on the user's configuration, we will either show the battery level reported by the RileyLink or "n/a"
             // Pump instance check is needed because at startup, the pump can still be VirtualPumpPlugin and that will cause a crash
             val erosBatteryLinkAvailable = pump.model() == PumpType.OMNIPOD_EROS && pump.isUseRileyLinkBatteryLevel()
-
-            if (pump.model().supportBatteryLevel || erosBatteryLinkAvailable) {
-                handleLevel(batteryLevel, IntKey.OverviewBattCritical, IntKey.OverviewSbatWarning, pump.batteryLevel.toDouble(), "%")
+            val batteryLevelValue  = pump.batteryLevel?.toDouble()
+            if (batteryLevelValue != null && (pump.model().supportBatteryLevel || erosBatteryLinkAvailable)) {
+                handleLevel(batteryLevel, IntKey.OverviewBattCritical, IntKey.OverviewBattWarning, batteryLevelValue, "%")
             } else {
                 batteryLevel?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
                 batteryLevel?.setTextColor(rh.gac(batteryLevel.context, app.aaps.core.ui.R.attr.defaultTextColor))
@@ -120,23 +122,22 @@ class StatusLightHandler @Inject constructor(
         view: TextView?, criticalSetting: IntKey, warnSetting: IntKey, level: Double, units: String, maxReading: Double
     ) {
         if (level >= maxReading) {
-            view?.text = decimalFormatter.to0Decimal(maxReading, units)
+            @Suppress("SetTextI18n")
+            view?.text = "${decimalFormatter.to0Decimal(maxReading)}+ $units"
             view?.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
         } else {
             handleLevel(view, criticalSetting, warnSetting, level, units)
         }
     }
 
-    private fun handleUsage(view: TextView?, units: String) {
-        handler.post {
-            val therapyEvent = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
-            val usage =
-                if (therapyEvent != null) {
-                    tddCalculator.calculate(therapyEvent.timestamp, dateUtil.now(), allowMissingData = false)?.totalAmount ?: 0.0
-                } else 0.0
-            runOnUiThread {
-                view?.text = decimalFormatter.to0Decimal(usage, units)
-            }
+    private suspend fun handleUsage(view: TextView?, units: String) {
+        val therapyEvent = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val usage =
+            if (therapyEvent != null) {
+                tddCalculator.calculateInterval(therapyEvent.timestamp, dateUtil.now(), allowMissingData = false)?.totalAmount ?: 0.0
+            } else 0.0
+        withContext(Dispatchers.Main) {
+            view?.text = decimalFormatter.to0Decimal(usage, units)
         }
     }
 

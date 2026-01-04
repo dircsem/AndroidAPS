@@ -15,9 +15,10 @@ import app.aaps.core.interfaces.rx.events.EventWearUpdateGui
 import app.aaps.core.interfaces.rx.weardata.CUSTOM_VERSION
 import app.aaps.core.interfaces.rx.weardata.CwfMetadataKey
 import app.aaps.core.interfaces.rx.weardata.CwfMetadataMap
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.databinding.CwfInfosActivityBinding
@@ -38,7 +39,7 @@ import javax.inject.Inject
 class CwfInfosActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var fabricPrivacy: FabricPrivacy
@@ -67,6 +68,12 @@ class CwfInfosActivity : TranslatedDaggerAppCompatActivity() {
         disposable.clear()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        binding.prefRecyclerview.adapter = null
+        binding.viewRecyclerview.adapter = null
+    }
+
     override fun onResume() {
         super.onResume()
         disposable += rxBus
@@ -86,7 +93,7 @@ class CwfInfosActivity : TranslatedDaggerAppCompatActivity() {
 
     private fun updateGui() {
         wearPlugin.savedCustomWatchface?.let {
-            val cwfAuthorization = sp.getBoolean(app.aaps.core.utils.R.string.key_wear_custom_watchface_autorization, false)
+            val cwfAuthorization = preferences.get(BooleanKey.WearCustomWatchfaceAuthorization)
             val metadata = it.metadata
             val drawable = it.resData[ResFileMap.CUSTOM_WATCHFACE.fileName]?.toDrawable(resources)
             binding.customWatchface.setImageDrawable(drawable)
@@ -201,7 +208,7 @@ class CwfInfosActivity : TranslatedDaggerAppCompatActivity() {
                     if (visibility || allViews)
                         visibleKeyPairs.add(Pair(viewKey, visibility))
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 aapsLogger.debug(LTag.WEAR, "Wrong key in json file: ${viewKey.key}")
             }
         }

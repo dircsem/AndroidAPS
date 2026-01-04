@@ -9,6 +9,9 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -20,20 +23,24 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import app.aaps.core.data.model.HasIDs
 import app.aaps.core.data.model.data.Block
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.sync.Sync
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.openhumans.delegates.OHAppIDDelegate
 import app.aaps.plugins.sync.openhumans.delegates.OHCounterDelegate
 import app.aaps.plugins.sync.openhumans.delegates.OHStateDelegate
+import app.aaps.plugins.sync.openhumans.keys.OhLongKey
+import app.aaps.plugins.sync.openhumans.keys.OhStringKey
 import app.aaps.plugins.sync.openhumans.ui.OHFragment
 import app.aaps.plugins.sync.openhumans.ui.OHLoginActivity
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -59,7 +66,7 @@ import javax.inject.Singleton
 class OpenHumansUploaderPlugin @Inject internal constructor(
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
-    private val sp: SP,
+    preferences: Preferences,
     private val context: Context,
     private val persistenceLayer: PersistenceLayer,
     private val openHumansAPI: OpenHumansAPI,
@@ -67,16 +74,17 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
     counterDelegate: OHCounterDelegate,
     appIdDelegate: OHAppIDDelegate,
     private val rxBus: RxBus
-) : Sync, PluginBase(
+) : Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
         .pluginIcon(R.drawable.open_humans_white)
         .pluginName(R.string.open_humans)
         .shortName(R.string.open_humans_short)
         .description(R.string.open_humans_description)
-        .preferencesId(R.xml.pref_openhumans)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .fragmentClass(OHFragment::class.qualifiedName),
-    aapsLogger, rh
+    ownPreferences = listOf(OhStringKey.AppId::class.java, OhLongKey.Counter::class.java),
+    aapsLogger, rh, preferences
 ) {
 
     private var openHumansState by stateDelegate
@@ -106,7 +114,7 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
     }
 
     private fun onSharedPreferenceChanged(event: EventPreferenceChange) {
-        if (event.changedKey in arrayOf("key_oh_charging_only", "key_oh_wifi_only") && openHumansState != null) scheduleWorker(true)
+        if (event.changedKey in arrayOf(BooleanKey.OpenHumansWifiOnly.key, BooleanKey.OpenHumansChargingOnly.key) && openHumansState != null) scheduleWorker(true)
     }
 
     suspend fun login(bearerToken: String) = withContext(Dispatchers.IO) {
@@ -211,7 +219,7 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
                 extendedBoluses.isNotEmpty() ||
                 glucoseValues.isNotEmpty() ||
 //                multiwaveBolusLinks.isNotEmpty() ||
-                offlineEvents.isNotEmpty() ||
+                runningModes.isNotEmpty() ||
 //                preferencesChanges.isNotEmpty() ||
                 profileSwitches.isNotEmpty() ||
                 temporaryBasals.isNotEmpty() ||
@@ -420,14 +428,14 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
                 }
         */
 
-        if (data.offlineEvents.isNotEmpty()) {
-            zos.writeDBEntryFile("OfflineEvents.json", data.offlineEvents) {
+        if (data.runningModes.isNotEmpty()) {
+            zos.writeDBEntryFile("RunningModes.json", data.runningModes) {
                 put("timestamp", it.timestamp)
                 put("utcOffset", it.utcOffset)
-                put("reason", it.reason.toString())
+                put("mode", it.mode.toString())
                 put("duration", it.duration)
             }
-            tags.add("OfflineEvents")
+            tags.add("RunningModes")
         }
 
         /*
@@ -561,8 +569,8 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
 
     private fun scheduleWorker(replace: Boolean, delay: Boolean = false) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(if (sp.getBoolean("key_oh_wifi_only", true)) NetworkType.UNMETERED else NetworkType.CONNECTED)
-            .setRequiresCharging(sp.getBoolean("key_oh_charging_only", false))
+            .setRequiredNetworkType(if (preferences.get(BooleanKey.OpenHumansWifiOnly)) NetworkType.UNMETERED else NetworkType.CONNECTED)
+            .setRequiresCharging(preferences.get(BooleanKey.OpenHumansChargingOnly))
             .setRequiresBatteryNotLow(true)
             .build()
         val workRequest = PeriodicWorkRequestBuilder<OpenHumansWorker>(1, TimeUnit.DAYS)
@@ -640,7 +648,7 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
                     Intent(context, OHLoginActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
                     },
-                    0
+                    PendingIntent.FLAG_IMMUTABLE
                 )
             )
             .build()
@@ -681,4 +689,16 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
         const val UPLOAD_NOTIFICATION_ID = 3126
     }
 
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null) return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "open_humans_settings"
+            title = rh.gs(R.string.open_humans)
+            initialExpandedChildrenCount = 0
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OpenHumansWifiOnly, title = R.string.only_upload_if_connected_to_wifi))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OpenHumansChargingOnly, title = R.string.only_upload_if_charging))
+        }
+    }
 }

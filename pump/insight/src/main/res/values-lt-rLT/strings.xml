@@ -24,7 +24,10 @@
     <string name="pairing_completed">Sėkmingai susieta</string>
     <string name="code_compare">Ar kodas, kurį matote įrenginyje, sutampa su pompos kodu?</string>
     <string name="insight_pairing">Insight susiejimas</string>
+    <string name="insight_local">Accu-Chek Insight</string>
+    <string name="insight_alert_formatter">%1$s: %2$s</string>
     <string name="tube_changed">Kateteris pakeistas</string>
+    <string name="insightpump_shortname">Insight</string>
     <string name="insight_alert_notification_channel">Insight pompos aliarmai</string>
     <string name="disable_vibration">Išjungti vibracijas rankinio boluso suleidimo metu</string>
     <string name="disable_vibration_summary">Bolusui ir ištęstam bolusui (tik su Insight programinės įrangos 3.x versija)</string>
@@ -33,13 +36,6 @@
     <string name="timeout_during_handshake">Ryšio užmezgimui skirtas laikas baigėsi - iš naujo nustatykite bluetooth</string>
     <string name="pump_stopped">Pompa sustabdyta</string>
     <string name="pump_started">Pompa paleista</string>
-    <string name="short_status_last_connected">Pask. prijung: prieš %1$d min</string>
-    <string name="short_status_tbr">LBD: %1$d%% - %2$d / %3$d min</string>
-    <string name="short_status_extended">Ištęstas: %1$.2f / %2$.2f V %3$d min</string>
-    <string name="short_status_multiwave">Daugiabangis: %1$.2f / %2$.2f vv %3$d min</string>
-    <string name="short_status_tdd">BPD: %1$.2f</string>
-    <string name="short_status_reservoir">Rez.: %1$.2f vv</string>
-    <string name="short_status_battery">Bat.: %1$d%%</string>
     <string name="release_software_version">Išleistos programinės įrangos versija</string>
     <string name="ui_processor_software_version">UI procesoriaus programinės įrangos versija</string>
     <string name="pc_processor_software_version">PC procesoriaus programinės įrangos versija</string>
@@ -63,5 +59,5 @@
     <string name="min_recovery_duration">Min. atkūrimo trukmė [s]</string>
     <string name="pump_alert">Pompos aliarmas</string>
     <string name="pairing_information">Susiejimo informacija</string>
-    <string name="insight_refresh_button" comment="26 characters max for translation">Naujinti Insight mygtukas </string>
+    <string name="last_connection">%1$s (%2$s)</string>
 </resources>

@@ -1,26 +1,30 @@
 package app.aaps.plugins.sensitivity
 
-import app.aaps.core.data.aps.AutosensResult
+import android.content.Context
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import app.aaps.core.data.model.TE
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.aps.AutosensDataStore
+import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.Sensitivity.SensitivityType
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.DoubleKey
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.utils.Percentile
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.plugins.sensitivity.extensions.isPSEvent5minBack
 import app.aaps.plugins.sensitivity.extensions.isTherapyEventEvent5minBack
 import org.json.JSONObject
@@ -33,7 +37,6 @@ import kotlin.math.roundToInt
 class SensitivityOref1Plugin @Inject constructor(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
-    sp: SP,
     preferences: Preferences,
     private val profileFunction: ProfileFunction,
     private val dateUtil: DateUtil,
@@ -45,10 +48,10 @@ class SensitivityOref1Plugin @Inject constructor(
         .pluginName(R.string.sensitivity_oref1)
         .shortName(R.string.sensitivity_shortname)
         .enableByDefault(true)
-        .preferencesId(R.xml.pref_absorption_oref1)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .description(R.string.description_sensitivity_oref1)
         .setDefault(),
-    aapsLogger, rh, sp, preferences
+    aapsLogger, rh, preferences
 ), PluginConstraints {
 
     override fun detectSensitivity(ads: AutosensDataStore, fromTime: Long, toTime: Long): AutosensResult {
@@ -141,7 +144,7 @@ class SensitivityOref1Plugin @Inject constructor(
             if (deviations.size < deviationCategory[i]) {
                 val pad = ((1 - deviations.size.toDouble() / deviationCategory[i]) * 18).roundToInt()
                 aapsLogger.debug(LTag.AUTOSENS, "Adding $pad more zero deviations")
-                for (d in 0 until pad) {
+                (0 until pad).forEach {
                     deviations.add(0.0)
                 }
             }
@@ -149,6 +152,8 @@ class SensitivityOref1Plugin @Inject constructor(
             deviationsHour[i] = deviations
         }
         var hourUsed = 0
+        //val sens = profile.getIsfMgdl(toTime, current.bg, "SensitivityOref1Plugin")
+        val sens = current.sens
         while (hourUsed < deviationsHour.size) {
             val deviationsArray: ArrayList<Double> = deviationsHour[hourUsed]
             val pastSensitivity = pastSensitivityArray[hourUsed]
@@ -156,7 +161,6 @@ class SensitivityOref1Plugin @Inject constructor(
             if (hourUsed == 1) sensResult = "(24 hours) "
             val ratioLimit = ""
             val deviations: Array<Double> = Array(deviationsArray.size) { i -> deviationsArray[i] }
-            val sens = profile.getIsfMgdl()
             aapsLogger.debug(LTag.AUTOSENS, "Records: $index   $pastSensitivity")
             Arrays.sort(deviations)
             val pSensitive = Percentile.percentile(deviations, 0.50)
@@ -208,17 +212,17 @@ class SensitivityOref1Plugin @Inject constructor(
 
     override fun configuration(): JSONObject =
         JSONObject()
-            .put(DoubleKey.ApsSmbMin5MinCarbsImpact, preferences, rh)
-            .put(DoubleKey.AbsorptionCutOff, preferences, rh)
-            .put(DoubleKey.AutosensMin, preferences, rh)
-            .put(DoubleKey.AutosensMax, preferences, rh)
+            .put(DoubleKey.ApsSmbMin5MinCarbsImpact, preferences)
+            .put(DoubleKey.AbsorptionCutOff, preferences)
+            .put(DoubleKey.AutosensMin, preferences)
+            .put(DoubleKey.AutosensMax, preferences)
 
     override fun applyConfiguration(configuration: JSONObject) {
         configuration
-            .store(DoubleKey.ApsSmbMin5MinCarbsImpact, preferences, rh)
-            .store(DoubleKey.AbsorptionCutOff, preferences, rh)
-            .store(DoubleKey.AutosensMin, preferences, rh)
-            .store(DoubleKey.AutosensMax, preferences, rh)
+            .store(DoubleKey.ApsSmbMin5MinCarbsImpact, preferences)
+            .store(DoubleKey.AbsorptionCutOff, preferences)
+            .store(DoubleKey.AutosensMin, preferences)
+            .store(DoubleKey.AutosensMax, preferences)
     }
 
     override val id: SensitivityType
@@ -227,5 +231,24 @@ class SensitivityOref1Plugin @Inject constructor(
     override fun isUAMEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
         if (!isEnabled()) value.set(false, rh.gs(R.string.uam_disabled_oref1_not_selected), this)
         return value
+    }
+
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null && requiredKey != "absorption_oref1_advanced") return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "sensitivity_oref1_settings"
+            title = rh.gs(R.string.absorption_settings_title)
+            initialExpandedChildrenCount = 0
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMin5MinCarbsImpact, dialogMessage = R.string.openapsama_min_5m_carb_impact_summary, title = R.string.openapsama_min_5m_carb_impact))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.AbsorptionCutOff, dialogMessage = R.string.absorption_cutoff_summary, title = R.string.absorption_cutoff_title))
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "absorption_oref1_advanced"
+                title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.AutosensMax, dialogMessage = R.string.openapsama_autosens_max_summary, title = R.string.openapsama_autosens_max))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.AutosensMin, dialogMessage = R.string.openapsama_autosens_min_summary, title = R.string.openapsama_autosens_min))
+            })
+        }
     }
 }

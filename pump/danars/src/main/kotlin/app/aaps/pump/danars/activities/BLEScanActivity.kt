@@ -11,10 +11,7 @@ import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
@@ -23,10 +20,11 @@ import androidx.core.app.ActivityCompat
 import app.aaps.core.interfaces.pump.BlePreCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.extensions.safeEnable
+import app.aaps.pump.dana.keys.DanaStringKey
 import app.aaps.pump.danars.R
 import app.aaps.pump.danars.databinding.DanarsBlescannerActivityBinding
 import app.aaps.pump.danars.events.EventDanaRSDeviceChange
@@ -35,7 +33,7 @@ import javax.inject.Inject
 
 class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
 
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var blePreCheck: BlePreCheck
     @Inject lateinit var context: Context
     @Inject lateinit var rxBus: RxBus
@@ -43,7 +41,7 @@ class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
 
     private var listAdapter: ListAdapter? = null
     private val devices = ArrayList<BluetoothDeviceItem>()
-    private val bluetoothAdapter: BluetoothAdapter? get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
+    private val bluetoothAdapter: BluetoothAdapter? get() = (context.getSystemService(BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
     private val bluetoothLeScanner: BluetoothLeScanner? get() = bluetoothAdapter?.bluetoothLeScanner
 
     private lateinit var binding: DanarsBlescannerActivityBinding
@@ -59,7 +57,10 @@ class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowHomeEnabled(true)
 
-        blePreCheck.prerequisitesCheck(this)
+        if (!blePreCheck.prerequisitesCheck(this)) {
+            ToastUtils.errorToast(this, getString(app.aaps.core.ui.R.string.need_connect_permission))
+            finish()
+        }
 
         listAdapter = ListAdapter()
         binding.bleScannerListview.emptyView = binding.bleScannerNoDevice
@@ -70,40 +71,33 @@ class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
-            bluetoothAdapter?.safeEnable()
-            startScan()
-        } else {
-            ToastUtils.errorToast(context, context.getString(app.aaps.core.ui.R.string.need_connect_permission))
-        }
+        bluetoothAdapter?.safeEnable()
+        startScan()
     }
 
     override fun onPause() {
         super.onPause()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
-            stopScan()
-        }
+        stopScan()
     }
 
-    private fun startScan() =
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
-            try {
-                bluetoothLeScanner?.startScan(mBleScanCallback)
-            } catch (ignore: IllegalStateException) {
-            } // ignore BT not on
-        } else {
-            ToastUtils.errorToast(context, context.getString(app.aaps.core.ui.R.string.need_connect_permission))
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        binding.bleScannerListview.adapter = null
+    }
 
+    @SuppressLint("MissingPermission")
+    private fun startScan() =
+        try {
+            bluetoothLeScanner?.startScan(mBleScanCallback)
+        } catch (_: IllegalStateException) {
+        } // ignore BT not on
+
+    @SuppressLint("MissingPermission")
     private fun stopScan() =
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
-            try {
-                bluetoothLeScanner?.stopScan(mBleScanCallback)
-            } catch (ignore: IllegalStateException) {
-            } // ignore BT not on
-        } else {
-            ToastUtils.errorToast(context, context.getString(app.aaps.core.ui.R.string.need_connect_permission))
-        }
+        try {
+            bluetoothLeScanner?.stopScan(mBleScanCallback)
+        } catch (_: IllegalStateException) {
+        } // ignore BT not on
 
     @SuppressLint("MissingPermission")
     private fun addBleDevice(device: BluetoothDevice?) {
@@ -115,7 +109,7 @@ class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
             return
         }
         devices.add(item)
-        Handler(Looper.getMainLooper()).post { listAdapter?.notifyDataSetChanged() }
+        runOnUiThread { listAdapter?.notifyDataSetChanged() }
     }
 
     private val mBleScanCallback: ScanCallback = object : ScanCallback() {
@@ -157,9 +151,9 @@ class BLEScanActivity : TranslatedDaggerAppCompatActivity() {
             }
 
             override fun onClick(v: View) {
-                sp.putString(app.aaps.pump.dana.R.string.key_danars_address, item.device.address)
-                sp.putString(app.aaps.pump.dana.R.string.key_danars_name, name.text.toString())
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                preferences.put(DanaStringKey.MacAddress, item.device.address)
+                preferences.put(DanaStringKey.RsName, name.text.toString())
+                if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                     item.device.createBond()
                     rxBus.send(EventDanaRSDeviceChange())
                 } else {

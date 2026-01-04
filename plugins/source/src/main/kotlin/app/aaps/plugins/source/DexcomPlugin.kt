@@ -10,7 +10,6 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
@@ -18,21 +17,17 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.logging.UserEntryLogger
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.source.BgSource
 import app.aaps.core.interfaces.source.DexcomBoyda
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
-import app.aaps.shared.impl.extensions.safeGetInstalledPackages
-import dagger.android.HasAndroidInjector
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,12 +39,12 @@ class DexcomPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     private val context: Context,
     config: Config
-) : PluginBase(
+) : AbstractBgSourceWithSensorInsertLogPlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
         .fragmentClass(BGSourceFragment::class.java.name)
         .pluginIcon(app.aaps.core.objects.R.drawable.ic_dexcom_g6)
-        .preferencesId(R.xml.pref_dexcom)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .pluginName(R.string.dexcom_app_patched)
         .shortName(R.string.dexcom_short)
         .preferencesVisibleInSimpleMode(false)
@@ -58,7 +53,7 @@ class DexcomPlugin @Inject constructor(
 ), BgSource, DexcomBoyda {
 
     init {
-        if (!config.NSCLIENT) {
+        if (!config.AAPSCLIENT) {
             pluginDescription.setDefault()
         }
     }
@@ -76,14 +71,11 @@ class DexcomPlugin @Inject constructor(
         params: WorkerParameters
     ) : LoggingWorker(context, params, Dispatchers.IO) {
 
-        @Inject lateinit var injector: HasAndroidInjector
         @Inject lateinit var dexcomPlugin: DexcomPlugin
-        @Inject lateinit var sp: SP
         @Inject lateinit var preferences: Preferences
         @Inject lateinit var dateUtil: DateUtil
         @Inject lateinit var dataWorkerStorage: DataWorkerStorage
         @Inject lateinit var persistenceLayer: PersistenceLayer
-        @Inject lateinit var uel: UserEntryLogger
         @Inject lateinit var profileUtil: ProfileUtil
 
         @SuppressLint("CheckResult")
@@ -96,7 +88,7 @@ class DexcomPlugin @Inject constructor(
             try {
                 val sourceSensor = when (bundle.getString("sensorType") ?: "") {
                     "G6" -> SourceSensor.DEXCOM_G6_NATIVE
-                    "G5" -> SourceSensor.DEXCOM_G5_NATIVE
+                    "G7" -> SourceSensor.DEXCOM_G7_NATIVE
                     else -> SourceSensor.DEXCOM_NATIVE_UNKNOWN
                 }
                 val calibrations = mutableListOf<PersistenceLayer.Calibration>()
@@ -127,8 +119,6 @@ class DexcomPlugin @Inject constructor(
                     val timestamp = glucoseValueBundle.getLong("timestamp") * 1000
                     // G5 calibration bug workaround (calibration is sent as glucoseValue too)
                     var valid = true
-                    if (sourceSensor == SourceSensor.DEXCOM_G5_NATIVE)
-                        calibrations.forEach { calibration -> if (calibration.timestamp == timestamp) valid = false }
                     // G6 is sending one 24h old changed value causing recalculation. Ignore
                     if (sourceSensor == SourceSensor.DEXCOM_G6_NATIVE)
                         if ((now - timestamp) > T.hours(20).msecs()) valid = false
@@ -142,7 +132,7 @@ class DexcomPlugin @Inject constructor(
                             sourceSensor = sourceSensor
                         )
                 }
-                var sensorStartTime = if (preferences.get(BooleanKey.DexcomCreateSensorChange) && bundle.containsKey("sensorInsertionTime")) {
+                var sensorStartTime = if (preferences.get(BooleanKey.BgSourceCreateSensorChange) && bundle.containsKey("sensorInsertionTime")) {
                     bundle.getLong("sensorInsertionTime", 0) * 1000
                 } else {
                     null
@@ -186,19 +176,11 @@ class DexcomPlugin @Inject constructor(
         }
     }
 
-    override fun findDexcomPackageName(): String? {
-        val packageManager = context.packageManager
-        for (packageInfo in packageManager.safeGetInstalledPackages(0)) {
-            if (PACKAGE_NAMES.contains(packageInfo.packageName)) return packageInfo.packageName
-        }
-        return null
-    }
+    override fun dexcomPackages() = PACKAGE_NAMES
 
     companion object {
 
-        private val PACKAGE_NAMES = arrayOf(
-            "com.dexcom.cgm.region1.mgdl", "com.dexcom.cgm.region1.mmol",
-            "com.dexcom.cgm.region2.mgdl", "com.dexcom.cgm.region2.mmol",
+        private val PACKAGE_NAMES = listOf(
             "com.dexcom.g6.region1.mmol", "com.dexcom.g6.region2.mgdl",
             "com.dexcom.g6.region3.mgdl", "com.dexcom.g6.region3.mmol",
             "com.dexcom.g6", "com.dexcom.g7"

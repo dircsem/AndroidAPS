@@ -4,16 +4,16 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
 import androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
 import androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventThemeSwitch
-import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.main.R
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -31,7 +31,7 @@ class ThemeSwitcherPlugin @Inject constructor(
         .mainType(PluginType.GENERAL)
         .neverVisible(true)
         .alwaysEnabled(true)
-        .showInList(false)
+        .showInList { false }
         .pluginName(R.string.theme_switcher),
     aapsLogger, rh
 ) {
@@ -42,7 +42,7 @@ class ThemeSwitcherPlugin @Inject constructor(
         disposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .subscribe {
-                if (it.isChanged(rh.gs(StringKey.GeneralDarkMode.key))) {
+                if (it.isChanged(StringKey.GeneralDarkMode.key)) {
                     setThemeMode()
                     rxBus.send(EventThemeSwitch())
                 }
@@ -52,9 +52,9 @@ class ThemeSwitcherPlugin @Inject constructor(
     fun setThemeMode() {
         val mode = try {
             when (preferences.get(StringKey.GeneralDarkMode)) {
-                rh.gs(R.string.value_dark_theme)  -> MODE_NIGHT_YES
+                rh.gs(R.string.value_dark_theme) -> MODE_NIGHT_YES
                 rh.gs(R.string.value_light_theme) -> MODE_NIGHT_NO
-                else                              -> MODE_NIGHT_FOLLOW_SYSTEM
+                else -> MODE_NIGHT_FOLLOW_SYSTEM
             }
         } catch (ignored: Exception) {
             MODE_NIGHT_FOLLOW_SYSTEM

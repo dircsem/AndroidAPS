@@ -11,6 +11,7 @@ import app.aaps.core.graph.data.DeviationDataPoint
 import app.aaps.core.graph.data.FixedLineGraphSeries
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.RunningModeDataPoint
 import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.StepsDataPoint
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -21,9 +22,9 @@ import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.R
 import app.aaps.core.objects.extensions.convertedToPercent
 import app.aaps.core.objects.extensions.isInProgress
@@ -38,11 +39,10 @@ import javax.inject.Singleton
 class OverviewDataImpl @Inject constructor(
     private val rh: ResourceHelper,
     private val dateUtil: DateUtil,
-    private val sp: SP,
+    private val preferences: Preferences,
     private val activePlugin: ActivePlugin,
     private val profileFunction: ProfileFunction,
     private val persistenceLayer: PersistenceLayer,
-    private val decimalFormatter: DecimalFormatter,
     private val processedTbrEbData: ProcessedTbrEbData
 ) : OverviewData {
 
@@ -64,6 +64,7 @@ class OverviewDataImpl @Inject constructor(
         basalLineGraphSeries = LineGraphSeries<ScaledDataPoint>()
         absoluteBasalGraphSeries = LineGraphSeries<ScaledDataPoint>()
         temporaryTargetSeries = LineGraphSeries<DataPoint>()
+        runningModesSeries = PointsWithLabelGraphSeries< RunningModeDataPoint>()
         maxIAValue = 0.0
         activitySeries = FixedLineGraphSeries<ScaledDataPoint>()
         activityPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -95,10 +96,13 @@ class OverviewDataImpl @Inject constructor(
         therapyEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsCountGraphSeries = PointsWithLabelGraphSeries<StepsDataPoint>()
+        maxVarSensValueFound = 200.0
+        minVarSensValueFound = 50.0
+        varSensSeries = LineGraphSeries<ScaledDataPoint>()
     }
 
     override fun initRange() {
-        rangeToDisplay = sp.getInt(app.aaps.core.utils.R.string.key_rangetodisplay, 6)
+        rangeToDisplay = preferences.get(IntNonKey.RangeToDisplay)
 
         val calendar = Calendar.getInstance().also {
             it.timeInMillis = System.currentTimeMillis()
@@ -133,7 +137,7 @@ class OverviewDataImpl @Inject constructor(
         profileFunction.getProfile()?.let { profile ->
             var temporaryBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())
             if (temporaryBasal?.isInProgress == false) temporaryBasal = null
-            temporaryBasal?.let { "T:" + it.toStringShort(decimalFormatter) }
+            temporaryBasal?.let { rh.gs(app.aaps.plugins.main.R.string.temp_basal_overview_short_name) + " " + it.toStringShort(rh) }
                 ?: rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())
         } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
 
@@ -141,7 +145,7 @@ class OverviewDataImpl @Inject constructor(
         profileFunction.getProfile()?.let { profile ->
             processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
                 "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}" +
-                    "\n" + rh.gs(app.aaps.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil, decimalFormatter)
+                    "\n" + rh.gs(app.aaps.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil, rh)
             }
                 ?: "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}"
         } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
@@ -175,7 +179,7 @@ class OverviewDataImpl @Inject constructor(
         } ?: ""
 
     override fun extendedBolusDialogText(): String =
-        persistenceLayer.getExtendedBolusActiveAt(dateUtil.now())?.toStringFull(dateUtil, decimalFormatter) ?: ""
+        persistenceLayer.getExtendedBolusActiveAt(dateUtil.now())?.toStringFull(dateUtil, rh) ?: ""
 
     /*
      * Graphs
@@ -194,7 +198,7 @@ class OverviewDataImpl @Inject constructor(
     override var absoluteBasalGraphSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
     override var temporaryTargetSeries: SeriesData = LineGraphSeries<DataPoint>()
-
+    override var runningModesSeries: SeriesData = PointsWithLabelGraphSeries< RunningModeDataPoint>()
     override var maxIAValue = 0.0
     override val actScale = Scale()
     override var activitySeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
@@ -243,4 +247,9 @@ class OverviewDataImpl @Inject constructor(
     override var heartRateGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsForScale = Scale()
     override var stepsCountGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+    override var maxVarSensValueFound = 200.0
+    override var minVarSensValueFound = 50.0
+    override val varSensScale = Scale()
+    override var varSensSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 }

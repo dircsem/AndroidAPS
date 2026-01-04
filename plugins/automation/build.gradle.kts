@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
     id("kotlin-android")
-    id("kotlin-kapt")
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
@@ -24,11 +24,16 @@ dependencies {
     testImplementation(project(":shared:impl"))
     testImplementation(project(":implementation"))
     testImplementation(project(":plugins:main"))
+    testImplementation(project(":pump:virtual"))
 
-    api(Libs.AndroidX.constraintLayout)
-    api(Libs.Google.Android.PlayServices.location)
-    api(Libs.Kotlin.reflect)
+    api(libs.androidx.constraintlayout)
+    api(libs.com.google.android.gms.playservices.location)
+    api(libs.kotlin.reflect)
+    // Places SDK
+    api(libs.com.google.android.places)
+    api(libs.com.github.rtchagas.pingplacepicker)
+    api(libs.com.google.firebase.config)
 
-    kapt(Libs.Dagger.compiler)
-    kapt(Libs.Dagger.androidProcessor)
+    ksp(libs.com.google.dagger.compiler)
+    ksp(libs.com.google.dagger.android.processor)
 }

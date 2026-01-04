@@ -5,7 +5,6 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.CarbsDataPoint
@@ -27,7 +26,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -61,14 +60,15 @@ class PrepareTreatmentsDataWorker(
         val fromTime = data.overviewData.fromTime
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_TREATMENTS_DATA, 0, null))
         data.overviewData.maxTreatmentsValue = 0.0
+        data.overviewData.maxTherapyEventValue = 0.0
         data.overviewData.maxEpsValue = 0.0
         val filteredTreatments: MutableList<DataPointWithLabelInterface> = ArrayList()
         val filteredTherapyEvents: MutableList<DataPointWithLabelInterface> = ArrayList()
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
-            .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, profileUtil, preferences, decimalFormatter) }
-            .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB || it.data.type == BS.Type.TBR}
+            .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
+            .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB  || it.data.type == BS.Type.TBR}
             .forEach {
                 it.y = getNearestBg(data.overviewData, it.x.toLong())
                 filteredTreatments.add(it)
@@ -88,22 +88,10 @@ class PrepareTreatmentsDataWorker(
                 filteredEps.add(it)
             }
 
-        // OfflineEvent
-        persistenceLayer.getOfflineEventsFromTimeToTime(data.overviewData.fromTime, data.overviewData.endTime, true)
-            .map {
-                TherapyEventDataPoint(
-                    TE(timestamp = it.timestamp, duration = it.duration, type = TE.Type.APS_OFFLINE, glucoseUnit = GlucoseUnit.MMOL),
-                    rh,
-                    profileUtil,
-                    translator
-                )
-            }
-            .forEach(filteredTreatments::add)
-
         // Extended bolus
         if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) {
             persistenceLayer.getExtendedBolusesStartingFromTimeToTime(fromTime, endTime, true)
-                .map { ExtendedBolusDataPoint(it, rh, decimalFormatter) }
+                .map { ExtendedBolusDataPoint(it, rh) }
                 .filter { it.duration != 0L }
                 .forEach {
                     it.y = getNearestBg(data.overviewData, it.x.toLong())

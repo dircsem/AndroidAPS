@@ -1,5 +1,7 @@
+import kotlin.math.min
+
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
     id("kotlin-android")
     id("kotlin-parcelize")
     id("kotlinx-serialization")
@@ -12,24 +14,26 @@ android {
 
     namespace = "app.aaps.core.interfaces"
     defaultConfig {
-        minSdk = Versions.wearMinSdk  // for wear
+        minSdk = min(Versions.minSdk, Versions.wearMinSdk)
     }
 }
 
 dependencies {
     implementation(project(":core:data"))
+    implementation(project(":core:keys"))
 
 
-    api(Libs.AndroidX.appCompat)
-    api(Libs.AndroidX.preference)
+    api(libs.androidx.appcompat)
+    api(libs.androidx.preference)
 
-    api(Libs.KotlinX.serializationJson)
-    api(Libs.KotlinX.serializationProtobuf)
+    api(platform(libs.kotlinx.serialization.bom))
+    api(libs.kotlinx.serialization.json)
+    api(libs.kotlinx.serialization.protobuf)
 
-    api(Libs.Apache.commonsLang3)
+    api(libs.org.apache.commons.lang3)
+    api(libs.net.danlew.android.joda)
 
     //RxBus
-    api(Libs.Rx.rxKotlin)
-    implementation(project(":database:impl"))
-    testImplementation(Libs.Rx.rxAndroid)
+    api(libs.io.reactivex.rxjava3.rxkotlin)
+    testImplementation(libs.io.reactivex.rxjava3.rxandroid)
 }

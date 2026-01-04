@@ -3,16 +3,20 @@ package app.aaps.implementation.queue
 import android.content.Context
 import android.os.Handler
 import android.os.PowerManager
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.TestListenableWorkerBuilder
 import app.aaps.core.data.model.BS
 import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.objects.Instantiator
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
@@ -20,7 +24,6 @@ import app.aaps.core.interfaces.queue.CustomCommand
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -41,15 +44,21 @@ import app.aaps.implementation.queue.commands.CommandTempBasalPercent
 import app.aaps.implementation.queue.commands.CommandUpdateTime
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.android.HasAndroidInjector
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.Mock
-import org.mockito.Mockito.anyLong
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.`when`
 import org.mockito.invocation.InvocationOnMock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.util.Calendar
+import javax.inject.Provider
 
 class CommandQueueImplementationTest : TestBaseWithProfile() {
 
@@ -58,6 +67,9 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var androidPermission: AndroidPermission
     @Mock lateinit var persistenceLayer: PersistenceLayer
+    @Mock lateinit var jobName: CommandQueueName
+    @Mock lateinit var workManager: WorkManager
+    @Mock lateinit var infos: ListenableFuture<List<WorkInfo>>
 
     class CommandQueueMocked(
         injector: HasAndroidInjector,
@@ -69,19 +81,19 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         profileFunction: ProfileFunction,
         activePlugin: ActivePlugin,
         context: Context,
-        sp: SP,
         config: Config,
         dateUtil: DateUtil,
         fabricPrivacy: FabricPrivacy,
-        androidPermission: AndroidPermission,
         uiInteraction: UiInteraction,
         persistenceLayer: PersistenceLayer,
         decimalFormatter: DecimalFormatter,
-        instantiator: Instantiator
+        pumpEnactResultProvider: Provider<PumpEnactResult>,
+        jobName: CommandQueueName,
+        workManager: WorkManager
     ) : CommandQueueImplementation(
         injector, aapsLogger, rxBus, aapsSchedulers, rh, constraintChecker, profileFunction,
-        activePlugin, context, sp, config, dateUtil, fabricPrivacy, androidPermission,
-        uiInteraction, persistenceLayer, decimalFormatter, instantiator
+        activePlugin, context, config, dateUtil, fabricPrivacy,
+        uiInteraction, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager
     ) {
 
         override fun notifyAboutNewCommand(): Boolean = true
@@ -156,6 +168,17 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
                 it.rh = rh
                 it.activePlugin = activePlugin
             }
+            if (it is QueueWorker) {
+                it.aapsLogger = aapsLogger
+                it.queue = commandQueue
+                it.context = context
+                it.rxBus = rxBus
+                it.activePlugin = activePlugin
+                it.rh = rh
+                it.preferences = preferences
+                it.androidPermission = androidPermission
+                it.config = config
+            }
         }
     }
 
@@ -165,45 +188,55 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
     fun prepare() {
         commandQueue = CommandQueueMocked(
             injector, aapsLogger, rxBus, aapsSchedulers, rh, constraintChecker, profileFunction, activePlugin, context,
-            sp, config, dateUtil, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter, instantiator
+            config, dateUtil, fabricPrivacy, uiInteraction, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager
         )
         testPumpPlugin.pumpDescription.basalMinimumRate = 0.1
+        testPumpPlugin.connected = true
 
-        `when`(context.getSystemService(Context.POWER_SERVICE)).thenReturn(powerManager)
-        `when`(activePlugin.activePump).thenReturn(testPumpPlugin)
-        `when`(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenReturn(effectiveProfileSwitch)
-        `when`(persistenceLayer.getNewestBolus()).thenReturn(
+        whenever(context.getSystemService(Context.POWER_SERVICE)).thenReturn(powerManager)
+        whenever(activePlugin.activePump).thenReturn(testPumpPlugin)
+        whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenReturn(effectiveProfileSwitch)
+        whenever(persistenceLayer.getNewestBolus()).thenReturn(
             BS(
                 timestamp = Calendar.getInstance().also { it.set(2000, 0, 1) }.timeInMillis,
                 type = BS.Type.NORMAL,
                 amount = 0.0
             )
         )
-        `when`(profileFunction.getProfile()).thenReturn(validProfile)
+        whenever(profileFunction.getProfile()).thenReturn(validProfile)
 
         val bolusConstraint = ConstraintObject(0.0, aapsLogger)
-        `when`(constraintChecker.applyBolusConstraints(anyObject())).thenReturn(bolusConstraint)
-        `when`(constraintChecker.applyExtendedBolusConstraints(anyObject())).thenReturn(bolusConstraint)
+        whenever(constraintChecker.applyBolusConstraints(anyOrNull())).thenReturn(bolusConstraint)
+        whenever(constraintChecker.applyExtendedBolusConstraints(anyOrNull())).thenReturn(bolusConstraint)
         val carbsConstraint = ConstraintObject(0, aapsLogger)
-        `when`(constraintChecker.applyCarbsConstraints(anyObject())).thenReturn(carbsConstraint)
+        whenever(constraintChecker.applyCarbsConstraints(anyOrNull())).thenReturn(carbsConstraint)
         val rateConstraint = ConstraintObject(0.0, aapsLogger)
-        `when`(constraintChecker.applyBasalConstraints(anyObject(), anyObject())).thenReturn(rateConstraint)
+        whenever(constraintChecker.applyBasalConstraints(anyOrNull(), anyOrNull())).thenReturn(rateConstraint)
         val percentageConstraint = ConstraintObject(0, aapsLogger)
-        `when`(constraintChecker.applyBasalPercentConstraints(anyObject(), anyObject())).thenReturn(percentageConstraint)
-        `when`(rh.gs(app.aaps.core.ui.R.string.connectiontimedout)).thenReturn("Connection timed out")
-        `when`(rh.gs(app.aaps.core.ui.R.string.format_insulin_units)).thenReturn("%1\$.2f U")
-        `when`(rh.gs(app.aaps.core.ui.R.string.goingtodeliver)).thenReturn("Going to deliver %1\$.2f U")
+        whenever(constraintChecker.applyBasalPercentConstraints(anyOrNull(), anyOrNull())).thenReturn(percentageConstraint)
+        whenever(rh.gs(app.aaps.core.ui.R.string.connectiontimedout)).thenReturn("Connection timed out")
+        whenever(rh.gs(app.aaps.core.ui.R.string.format_insulin_units)).thenReturn("%1\$.2f U")
+        whenever(rh.gs(app.aaps.core.ui.R.string.goingtodeliver)).thenReturn("Going to deliver %1\$.2f U")
+        whenever(workManager.getWorkInfosForUniqueWork(anyOrNull())).thenReturn(infos)
+        doAnswer { invocation: InvocationOnMock ->
+            Thread {
+                val work = TestListenableWorkerBuilder<QueueWorker>(context).build()
+                runBlocking { work.doWorkAndLog() }
+            }.start()
+            null
+        }.whenever(workManager).enqueueUniqueWork(anyOrNull(), anyOrNull(), any<OneTimeWorkRequest>())
+        whenever(infos.get()).thenReturn(emptyList())
     }
 
     @Test
     fun commandIsPickedUp() {
-        val commandQueue = CommandQueueImplementation(
+        commandQueue = CommandQueueImplementation(
             injector, aapsLogger, rxBus, aapsSchedulers, rh,
-            constraintChecker, profileFunction, activePlugin, context, sp,
-            config, dateUtil, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter, instantiator
+            constraintChecker, profileFunction, activePlugin, context,
+            config, dateUtil, fabricPrivacy, uiInteraction, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager
         )
-        val handler = mock(Handler::class.java)
-        `when`(handler.post(anyObject())).thenAnswer { invocation: InvocationOnMock ->
+        val handler: Handler = mock()
+        whenever(handler.post(anyOrNull())).thenAnswer { invocation: InvocationOnMock ->
             (invocation.arguments[0] as Runnable).run()
             true
         }
@@ -217,7 +250,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         assertThat(commandQueue.size()).isEqualTo(1)
 
         commandQueue.waitForFinishedThread()
-        Thread.sleep(1000)
+        Thread.sleep(3000)
 
         assertThat(commandQueue.size()).isEqualTo(0)
     }
@@ -253,7 +286,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         assertThat(commandQueue.size()).isEqualTo(1)
 
         // cancel tempbasal it should replace previous TEMPBASAL
-        commandQueue.cancelTempBasal(false, null)
+        commandQueue.cancelTempBasal(enforceNew = false, autoForced = false, callback = null)
         assertThat(commandQueue.size()).isEqualTo(1)
 
         // add extended bolus
@@ -386,7 +419,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.setUserOptions(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.SET_USER_SETTINGS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.setUserOptions(null)
@@ -402,7 +435,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.loadEvents(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.LOAD_EVENTS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.loadEvents(null)
@@ -418,7 +451,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.clearAlarms(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.CLEAR_ALARMS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.clearAlarms(null)
@@ -434,7 +467,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.deactivate(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.DEACTIVATE)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.deactivate(null)
@@ -450,7 +483,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.updateTime(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.UPDATE_TIME)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.updateTime(null)
@@ -481,7 +514,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.loadHistory(0, null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.LOAD_HISTORY)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.loadHistory(0, null)
@@ -533,7 +566,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.stopPump(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.STOP_PUMP)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
@@ -546,7 +579,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.startPump(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.START_PUMP)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
@@ -559,7 +592,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.setTBROverNotification(null, true)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.INSIGHT_SET_TBR_OVER_ALARM)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
