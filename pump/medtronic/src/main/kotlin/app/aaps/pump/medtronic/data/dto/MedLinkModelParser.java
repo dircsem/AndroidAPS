@@ -1,11 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
+package app.aaps.pump.medtronic.data.dto;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn;
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType;
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicDeviceType;
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn;
 
 /**
  * Created by Dirceu on 03/01/21.

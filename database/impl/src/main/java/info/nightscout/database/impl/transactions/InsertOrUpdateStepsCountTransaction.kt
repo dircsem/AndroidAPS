@@ -1,7 +1,7 @@
 package info.nightscout.database.impl.transactions
 
 import app.aaps.database.entities.StepsCount
-import app.aaps.database.impl.transactions.Transaction
+import app.aaps.database.transactions.Transaction
 
 class InsertOrUpdateStepsCountTransaction(private val stepsCount: StepsCount):
     Transaction<InsertOrUpdateStepsCountTransaction.TransactionResult>() {

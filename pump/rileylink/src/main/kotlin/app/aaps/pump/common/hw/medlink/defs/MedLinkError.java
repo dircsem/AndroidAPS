@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs;
+package app.aaps.pump.common.hw.medlink.defs;
 
 
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R;

@@ -1,7 +1,7 @@
 // package info.nightscout.androidaps.plugins.pump.medtronic.data.dto
 //
 // import dagger.android.HasAndroidInjector
-// import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+// import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 // import info.nightscout.interfaces.Constants
 // import app.aaps.core.interfaces.profile.Profile
 // import app.aaps.core.interfaces.logging.AAPSLogger

@@ -2,22 +2,22 @@ package info.nightscout.androidaps.plugins.pump.medtronic.comm
 
 import android.content.Context
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkCommunicationManager
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.ConnectionCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandPriority
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkRFSpy
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCommand
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCommandReader
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleConnectCommand
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.MedLinkCommunicationManager
+import app.aaps.pump.common.hw.medlink.activities.ConnectionCallback
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.CommandPriority
+import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
+import app.aaps.pump.common.hw.medlink.ble.command.BleCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleCommandReader
+import app.aaps.pump.common.hw.medlink.ble.command.BleConnectCommand
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RLMessage
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.PumpMessage
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.PumpSettingDTO
@@ -26,8 +26,6 @@ import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCo
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
 import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.PumpStatus
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag

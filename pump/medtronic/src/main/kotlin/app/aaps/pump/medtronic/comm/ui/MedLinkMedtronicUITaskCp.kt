@@ -2,10 +2,10 @@ package info.nightscout.androidaps.plugins.pump.medtronic.comm.ui
 
 import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.ConnectionCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.activities.ConnectionCallback
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.TempBasalPair
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicUIResponseType
@@ -52,7 +52,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
     //        this.commandType = commandType;
     //        this.parameters = parameters;
     //    }
-    fun <B,C>execute(communicationManager: MedLinkMedtronicCommunicationManager, medtronicUIPostprocessor: MedLinkMedtronicUIPostprocessor?,pumpMessage: MedLinkPumpMessage<B,C>) {
+    fun <B,C>execute(communicationManager: MedLinkMedtronicCommunicationManager, medtronicUIPostprocessor: MedLinkMedtronicUIPostprocessor?,pumpMessage: MedLinkPumpMessage<B, C>) {
         aapsLogger!!.info(LTag.PUMP, "MedtronicUITask: @@@ In execute. {}", pumpMessage)
         val func = pumpMessage.firstFunction()
         func.map {
@@ -61,16 +61,16 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
             }
         }
         when (pumpMessage.firstCommand()) {
-            MedLinkCommandType.BolusStatus                                                                                                                                            -> {
+            MedLinkCommandType.BolusStatus                                                     -> {
                 run { communicationManager.setCommand(pumpMessage) }
 
             }
 
-            MedLinkCommandType.GetState                                                                                                                                               -> {
+            MedLinkCommandType.GetState                                                        -> {
                 communicationManager.getStatusData(pumpMessage)
             }
 
-            MedLinkCommandType.PumpModel                                                                                                                                              -> {
+            MedLinkCommandType.PumpModel                                                       -> {
                 val activity: Function<Supplier<Stream<String>>, MedLinkStandardReturn<String>> = ConnectionCallback().andThen(
                     Function { s: MedLinkStandardReturn<String> ->
                         if (s.getAnswer().anyMatch { f -> f.contains("eomeomeom") || f.contains("ready") }) {
@@ -82,15 +82,15 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
             }
 
 
-            MedLinkCommandType.PreviousBolusHistory, MedLinkCommandType.BolusHistory                                                                                                  -> {
+            MedLinkCommandType.PreviousBolusHistory, MedLinkCommandType.BolusHistory           -> {
                 result = communicationManager.getBolusHistory(pumpMessage)
             }
 
-            MedLinkCommandType.RemoveStopCommand                                                                                                  -> {
+            MedLinkCommandType.RemoveStopCommand                                               -> {
                 result = communicationManager.removeStopCommand(pumpMessage)
             }
 
-            MedLinkCommandType.TBRBolus, MedLinkCommandType.SMBBolus, MedLinkCommandType.Bolus                                                                                        -> {
+            MedLinkCommandType.TBRBolus, MedLinkCommandType.SMBBolus, MedLinkCommandType.Bolus -> {
                 // if ((pumpMessage as BolusMedLinkMessage).insulinAmount != 0.0)
                     result = communicationManager.setBolus(pumpMessage)
             }
@@ -100,7 +100,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
             MedLinkCommandType.Calibrate,
             MedLinkCommandType.PreviousBGHistory,
             MedLinkCommandType.StopStartPump,
-            MedLinkCommandType.BGHistory -> {
+            MedLinkCommandType.BGHistory                                                       -> {
                 communicationManager.setCommand(pumpMessage)
             }
 
@@ -145,7 +145,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
     val isReceived: Boolean
         get() = result != null || errorDescription != null
 
-    fun <B,C>postProcess(postprocessor: MedLinkMedtronicUIPostprocessor?, ret: MedLinkStandardReturn<*>, pumpMessage: MedLinkPumpMessage<B,C>) {
+    fun <B,C>postProcess(postprocessor: MedLinkMedtronicUIPostprocessor?, ret: MedLinkStandardReturn<*>, pumpMessage: MedLinkPumpMessage<B, C>) {
         aapsLogger!!.debug(LTag.PUMP, "MedtronicUITask: @@@ In execute. {}", pumpMessage)
         if (responseType === MedtronicUIResponseType.Data) {
 //            postprocessor.postProcessData(this);

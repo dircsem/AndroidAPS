@@ -1,6 +1,6 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.data;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.PumpResponses;
+import app.aaps.pump.common.hw.medlink.PumpResponses;
 import app.aaps.core.interfaces.pump.DetailedBolusInfo;
 
 

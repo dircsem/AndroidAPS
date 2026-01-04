@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command;
+package app.aaps.pump.common.hw.medlink.ble.command;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -6,9 +6,9 @@ import java.util.ArrayList;
 import javax.inject.Inject;
 
 import dagger.android.HasAndroidInjector;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData;
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.command.RileyLinkCommand;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.RadioPacket;
+import app.aaps.pump.common.hw.medlink.ble.data.RadioPacket;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkCommandType;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion;
 

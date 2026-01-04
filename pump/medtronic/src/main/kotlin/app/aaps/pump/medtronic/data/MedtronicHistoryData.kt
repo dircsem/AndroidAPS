@@ -9,16 +9,10 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
-import app.aaps.core.keys.interfaces.LongNonPreferenceKey
-import app.aaps.core.keys.interfaces.Preferences
+
 import app.aaps.core.utils.DateTimeUtil
 import app.aaps.core.utils.StringUtil
-import app.aaps.pump.common.sync.PumpDbEntry
-import app.aaps.pump.common.sync.PumpDbEntryBolus
-import app.aaps.pump.common.sync.PumpDbEntryCarbs
-import app.aaps.pump.common.sync.PumpDbEntryTBR
-import app.aaps.pump.common.sync.PumpSyncStorage
-import app.aaps.pump.medtronic.R
+
 import app.aaps.pump.medtronic.comm.history.pump.MedtronicPumpHistoryDecoder
 import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
 import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntryType
@@ -56,7 +50,7 @@ import javax.inject.Singleton
 @Singleton
 class MedtronicHistoryData @Inject constructor(
     private val aapsLogger: AAPSLogger,
-    private val preferences: Preferences,
+    private val preferences: UiInteraction.Preferences,
     private val rh: ResourceHelper,
     private val medtronicUtil: MedtronicUtil,
     private val medtronicPumpHistoryDecoder: MedtronicPumpHistoryDecoder,
@@ -102,11 +96,9 @@ class MedtronicHistoryData @Inject constructor(
     }
 
     private fun getEntryByPumpId(pumpId: Long): PumpHistoryEntry? {
-        val findFirst = this.allHistory.stream()
-            .filter { f -> f.pumpId == pumpId }
-            .findFirst()
 
-        return if (findFirst.isPresent) findFirst.get() else null
+
+        return this.allHistory.first { f -> f.pumpId == pumpId }
     }
 
     private fun showLogs(header: String?, data: String) {

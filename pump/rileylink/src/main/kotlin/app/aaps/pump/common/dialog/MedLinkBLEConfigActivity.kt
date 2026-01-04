@@ -2,13 +2,11 @@ package info.nightscout.androidaps.plugins.pump.common.dialog
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
-import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -19,11 +17,10 @@ import android.view.ViewGroup
 import android.widget.*
 import android.widget.AdapterView.OnItemClickListener
 import androidx.core.app.ActivityCompat
-import dagger.android.support.DaggerAppCompatActivity
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst.DEVICE_NAME
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
+import app.aaps.pump.common.hw.medlink.MedLinkConst
+import app.aaps.pump.common.hw.medlink.MedLinkConst.DEVICE_NAME
+import app.aaps.pump.common.hw.medlink.MedLinkUtil
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.GattAttributes
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.MedLinkBleConfigActivityBinding

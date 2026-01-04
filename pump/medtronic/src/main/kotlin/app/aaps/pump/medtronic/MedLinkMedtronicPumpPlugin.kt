@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic
+package app.aaps.pump.medtronic
 
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
@@ -16,7 +16,6 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpDescription
@@ -28,11 +27,11 @@ import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
-import app.aaps.core.interfaces.objects.Instantiator
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
@@ -59,47 +58,53 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.utils.DateTimeUtil
+import app.aaps.pump.common.hw.medlink.ble.command.BlePartialCommand
+import app.aaps.pump.common.hw.medlink.ble.data.BolusStatusMedLinkMessage
+import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
+import app.aaps.pump.medtronic.data.dto.BasalProfile
+import app.aaps.pump.medtronic.defs.MedtronicNotificationType
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.PumpResponses
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusDeliverCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusProgressCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandPriority
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.*
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.*
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkService
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.MedLinkWakeAndTuneTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpInfo
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ResetRileyLinkConfigurationTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask
+import app.aaps.pump.common.hw.medlink.MedLinkConst
+import app.aaps.pump.common.hw.medlink.PumpResponses
+import app.aaps.pump.common.hw.medlink.activities.BolusCallback
+import app.aaps.pump.common.hw.medlink.activities.BolusDeliverCallback
+import app.aaps.pump.common.hw.medlink.activities.BolusProgressCallback
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.CommandPriority
+import app.aaps.pump.common.hw.medlink.ble.command.BleBolusCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleBolusStatusCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleCalibrateCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleConnectCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleStartCommand
+import app.aaps.pump.common.hw.medlink.ble.command.BleStopCommand
+import app.aaps.pump.common.hw.medlink.ble.data.BasalMedLinkMessage
+import app.aaps.pump.common.hw.medlink.ble.data.BolusMedLinkMessage
+import app.aaps.pump.common.hw.medlink.ble.data.CalibrateMedLinkMessage
+import app.aaps.pump.common.hw.medlink.ble.data.CommandStructure
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
+import app.aaps.pump.common.hw.medlink.service.MedLinkService
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
+import app.aaps.pump.common.hw.medlink.service.tasks.MedLinkWakeAndTuneTask
+import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
+
+import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicFragment
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.activities.*
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntry
 import info.nightscout.androidaps.plugins.pump.medtronic.data.BolusAnswer
 import info.nightscout.androidaps.plugins.pump.medtronic.data.EnliteInterval
 import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkMedtronicHistoryData
 import info.nightscout.androidaps.plugins.pump.medtronic.data.NextStartStop
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.*
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.*
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.events.EventMedtronicPumpValuesChanged
 import info.nightscout.androidaps.plugins.pump.medtronic.service.MedLinkMedtronicService
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicConst
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicPumpPluginInterface
-import info.nightscout.pump.common.MedLinkPumpPluginAbstract
-import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl
-import info.nightscout.pump.common.defs.PumpDriverState
-import info.nightscout.pump.common.sync.PumpDbEntryTBR
-import info.nightscout.pump.common.sync.PumpSyncStorage
+import app.aaps.pump.medtronic.data.MedLinkPumpStatusImpl
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicStatusRefreshType
 import org.joda.time.DateTimeZone
 import org.joda.time.Instant
 import org.joda.time.LocalDateTime
@@ -125,7 +130,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
 
-import info.nightscout.pump.common.extensions.*
 import org.joda.time.DateTime
 
 /**
@@ -155,7 +159,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     pumpSyncStorage: PumpSyncStorage?,
     private val bgSync: BgSync,
     decimalFormatter: DecimalFormatter,
-    instantiator: Instantiator,
     private val parser: MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>,
 ) : MedLinkPumpPluginAbstract(
     PluginDescription() //
@@ -169,7 +172,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     PumpType.MEDLINK_MEDTRONIC_554_754_VEO,  // we default to most basic model, correct model from config is loaded later
     resourceHelper!!, aapsLogger, commandQueue!!, rxBus!!, activePlugin!!, sp,
     context!!, fabricPrivacy!!, dateUtil!!,
-    aapsSchedulers!!, pumpSync!!, pumpSyncStorage!!, decimalFormatter, uiInteract, instantiator,
+    aapsSchedulers!!, pumpSync!!, pumpSyncStorage!!, decimalFormatter, uiInteract,
 ), Pump, MedLinkPumpDevice, MedtronicPumpPluginInterface {
 
     private var lastHistoryCount = 0
@@ -201,7 +204,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     // variables for handling statuses and history
     private var firstRun = true
     private var isRefresh = false
-    private val statusRefreshMap: MutableMap<MedLinkMedtronicStatusRefreshType?, Long?> = EnumMap(info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicStatusRefreshType::class.java)
+    private val statusRefreshMap: MutableMap<MedLinkMedtronicStatusRefreshType?, Long?> = EnumMap(MedLinkMedtronicStatusRefreshType::class.java)
     private var isInitialized = false
     private val lastPumpHistoryEntry: PumpHistoryEntry? = null
     private val busyTimestamps: MutableList<Long> = ArrayList()

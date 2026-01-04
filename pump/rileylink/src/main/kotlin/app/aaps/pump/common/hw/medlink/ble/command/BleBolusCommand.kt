@@ -1,12 +1,12 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
+package app.aaps.pump.common.hw.medlink.ble.command
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpRunningState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 
 /**
  * Created by Dirceu on 24/03/21.

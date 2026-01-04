@@ -1,16 +1,16 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
+package app.aaps.pump.common.hw.medlink.ble.command
 
 import app.aaps.core.data.pump.defs.PumpType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BolusProgressCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
+import app.aaps.pump.common.hw.medlink.activities.BolusProgressCallback
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
+import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 class BleBolusStatusCommand(
     aapsLogger: AAPSLogger,

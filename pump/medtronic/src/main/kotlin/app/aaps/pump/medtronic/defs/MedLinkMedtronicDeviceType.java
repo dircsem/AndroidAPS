@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.defs;
+package app.aaps.pump.medtronic.defs;
 
 import java.util.HashMap;
 import java.util.Map;

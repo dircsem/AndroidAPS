@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build.VERSION_CODES.R
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.preference.PreferenceCategory
@@ -35,6 +36,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventSWRLStatus
+import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.interfaces.Preferences
@@ -115,7 +117,7 @@ import kotlin.math.floor
 class MedtronicPumpPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
-    preferences: Preferences,
+    preferences: EventData.Preferences,
     commandQueue: CommandQueue,
     rxBus: RxBus,
     context: Context,

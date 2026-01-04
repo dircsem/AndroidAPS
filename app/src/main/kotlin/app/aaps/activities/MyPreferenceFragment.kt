@@ -58,7 +58,7 @@ import app.aaps.plugins.main.skins.SkinProvider
 import dagger.android.support.AndroidSupportInjection
 import java.util.Vector
 import javax.inject.Inject
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 
 class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListener {
 

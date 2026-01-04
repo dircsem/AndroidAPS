@@ -2,8 +2,8 @@ package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
 
 import org.joda.time.LocalDateTime;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType;
+import app.aaps.pump.common.hw.medlink.data.MLHistoryItem;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
 import app.aaps.core.interfaces.resources.ResourceHelper;
 

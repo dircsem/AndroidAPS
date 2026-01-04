@@ -1,10 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.ui;
+package app.aaps.pump.medtronic.comm.ui;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin;
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus;
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin;
+
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus;
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil;
 import app.aaps.core.interfaces.rx.bus.RxBus;
 import app.aaps.core.interfaces.logging.AAPSLogger;

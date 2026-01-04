@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 31,
-    "identityHash": "646bb0b4f948ae4a7fb732fb5e92e26a",
+    "identityHash": "fb28419889e2bc650eca6d12b0e37402",
     "entities": [
       {
         "tableName": "apsResults",
@@ -1306,7 +1306,7 @@
       },
       {
         "tableName": "glucoseValues",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `raw` REAL, `value` REAL NOT NULL, `trendArrow` TEXT NOT NULL, `noise` REAL, `sourceSensor` TEXT NOT NULL, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `glucoseValues`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, `timestamp` INTEGER NOT NULL, `utcOffset` INTEGER NOT NULL, `raw` REAL, `value` REAL NOT NULL, `trendArrow` TEXT NOT NULL, `noise` REAL, `sourceSensor` TEXT NOT NULL, `isig` REAL, `nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, `startId` INTEGER, `endId` INTEGER, FOREIGN KEY(`referenceId`) REFERENCES `glucoseValues`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         "fields": [
           {
             "fieldPath": "id",
@@ -1376,6 +1376,11 @@
             "columnName": "sourceSensor",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "isig",
+            "columnName": "isig",
+            "affinity": "REAL"
           },
           {
             "fieldPath": "interfaceIDs_backing.nightscoutSystemId",
@@ -3461,7 +3466,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '646bb0b4f948ae4a7fb732fb5e92e26a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fb28419889e2bc650eca6d12b0e37402')"
     ]
   }
 }

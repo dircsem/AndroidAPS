@@ -1,14 +1,14 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
+package app.aaps.pump.common.hw.medlink.ble.command
 
 import android.os.Handler
 import android.os.SystemClock
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandExecutor
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.ContinuousCommandExecutor
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.CommandExecutor
+import app.aaps.pump.common.hw.medlink.ble.ContinuousCommandExecutor
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import java.util.*

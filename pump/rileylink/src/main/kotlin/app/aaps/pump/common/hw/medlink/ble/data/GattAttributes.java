@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data;
+package app.aaps.pump.common.hw.medlink.ble.data;
 
 import java.util.HashMap;
 import java.util.Map;

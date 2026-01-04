@@ -27,9 +27,9 @@ open class MLHistoryItem {
     //    }
     //private MedtronicCommandType medtronicCommandType;
     protected var dateTime: LocalDateTime
-    protected var source: MLHistoryItemSource
-    protected var serviceState: MedLinkServiceState? = null
-    protected var errorCode: MedLinkError? = null
+    @JvmField protected var source: MLHistoryItemSource
+    @JvmField protected var serviceState: MedLinkServiceState? = null
+    @JvmField protected var errorCode: MedLinkError? = null
     protected var targetDevice: RileyLinkTargetDevice
     protected var pumpDeviceState: PumpDeviceState? = null
 
@@ -71,7 +71,7 @@ open class MLHistoryItem {
     //        source = RLHistoryItemSource.OmnipodCommand;
     //    }
     fun getDateTime(): LocalDateTime {
-        return field
+        return dateTime
     }
 
     fun getServiceState(): MedLinkServiceState? {

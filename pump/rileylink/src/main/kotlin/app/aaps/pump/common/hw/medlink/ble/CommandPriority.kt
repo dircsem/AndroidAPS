@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble
+package app.aaps.pump.common.hw.medlink.ble
 
 
 enum class CommandPriority  {

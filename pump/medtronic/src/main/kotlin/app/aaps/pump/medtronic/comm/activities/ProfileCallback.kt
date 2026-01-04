@@ -5,8 +5,8 @@ import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.ui.toast.ToastUtils.showToastInUiThread
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 import info.nightscout.androidaps.plugins.pump.medtronic.R
 import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
 import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus

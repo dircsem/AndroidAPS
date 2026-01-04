@@ -1,5 +1,6 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.defs;
+package app.aaps.pump.medtronic.defs;
 
+import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCommandType;
 /**
  * Created by dirceu
  *

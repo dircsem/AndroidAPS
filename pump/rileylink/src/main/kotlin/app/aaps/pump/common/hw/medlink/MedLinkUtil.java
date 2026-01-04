@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink;
+package app.aaps.pump.common.hw.medlink;
 
 import android.content.Context;
 import android.content.Intent;
@@ -11,8 +11,8 @@ import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkEncodingType;
+import app.aaps.pump.common.hw.medlink.data.MLHistoryItem;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.encoding.Encoding4b6b;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask;

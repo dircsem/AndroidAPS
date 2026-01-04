@@ -1,17 +1,17 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
+package app.aaps.pump.common.hw.medlink.service
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import dagger.android.DaggerService
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkCommunicationManager
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkRFSpy
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkEncodingType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkError
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
+import app.aaps.pump.common.hw.medlink.MedLinkCommunicationManager
+import app.aaps.pump.common.hw.medlink.MedLinkUtil
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkError
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -117,13 +117,15 @@ abstract class MedLinkService : DaggerService() {
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (bluetoothAdapter == null) {
             aapsLogger.error("Unable to obtain a BluetoothAdapter.")
-            medLinkServiceData.setServiceState(MedLinkServiceState.BluetoothError,
-                                                 MedLinkError.NoBluetoothAdapter)
+            medLinkServiceData.setServiceState(
+                MedLinkServiceState.BluetoothError,
+                MedLinkError.NoBluetoothAdapter)
         } else {
             if (!bluetoothAdapter!!.isEnabled) {
                 aapsLogger.error("Bluetooth is not enabled.")
-                medLinkServiceData.setServiceState(MedLinkServiceState.BluetoothError,
-                                                     MedLinkError.BluetoothDisabled)
+                medLinkServiceData.setServiceState(
+                    MedLinkServiceState.BluetoothError,
+                    MedLinkError.BluetoothDisabled)
             } else {
                 medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.BluetoothReady)
                 return true
@@ -186,8 +188,9 @@ abstract class MedLinkService : DaggerService() {
         aapsLogger.debug("New pump frequency $newFrequency")
         if (newFrequency == 0.0) {
             // error tuning pump, pump not present ??
-            medLinkServiceData.setServiceState(MedLinkServiceState.PumpConnectorError,
-                                                 MedLinkError.TuneUpOfDeviceFailed)
+            medLinkServiceData.setServiceState(
+                MedLinkServiceState.PumpConnectorError,
+                MedLinkError.TuneUpOfDeviceFailed)
         } else {
             deviceCommunicationManager.clearNotConnectedCount()
             medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)

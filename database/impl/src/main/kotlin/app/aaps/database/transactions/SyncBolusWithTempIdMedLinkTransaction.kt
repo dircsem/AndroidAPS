@@ -1,4 +1,4 @@
-package app.aaps.database.impl.transactions
+package app.aaps.database.transactions
 
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.embedments.InterfaceIDs
@@ -19,7 +19,7 @@ class SyncBolusWithTempIdMedLinkTransaction(
         if(current != null && current.type != Bolus.Type.NORMAL && bolus.type == Bolus.Type.NORMAL){
             bolus.type = current.type
         }
-        if (current != null && !current.contentToBeAdded(bolus)) {
+        if (current != null) {
             current.timestamp = bolus.timestamp
             current.amount = bolus.amount
             current.type = if(current.isSMBorBasal()) current.type else  newType?: current.type
@@ -27,7 +27,7 @@ class SyncBolusWithTempIdMedLinkTransaction(
             if (database.bolusDao.updateExistingEntry(current) >0 ) {
                 result.updated.add(current)
             }
-        } else if(current == null && bolus.interfaceIDs.pumpType == InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_554_754_VEO) {
+        } else if(bolus.interfaceIDs.pumpType == InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_554_754_VEO) {
             database.bolusDao.insertNewEntry(bolus)
             result.inserted.add(bolus)
         }

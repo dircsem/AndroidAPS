@@ -1,6 +1,6 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities
+package app.aaps.pump.common.hw.medlink.activities
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 
 import app.aaps.core.interfaces.logging.AAPSLogger

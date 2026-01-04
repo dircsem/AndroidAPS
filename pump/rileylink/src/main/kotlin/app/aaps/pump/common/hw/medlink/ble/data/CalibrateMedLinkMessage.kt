@@ -1,9 +1,9 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data
+package app.aaps.pump.common.hw.medlink.ble.data
 
 import app.aaps.core.interfaces.pump.BgSync
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCalibrateCommand
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.command.BleCalibrateCommand
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import java.util.function.Supplier
 import java.util.stream.Stream
 
@@ -14,7 +14,7 @@ class CalibrateMedLinkMessage(
     bleCommand: BleCalibrateCommand,
     shouldBeSuspended: Boolean,
     calibrationArgument: String
-) : StartStopMessage<BgSync.BgHistory,String>(
+) : StartStopMessage<BgSync.BgHistory, String>(
     MedLinkCommandType.Calibrate,
     MedLinkCommandType.CalibrateValue,
     baseCallback,
@@ -32,7 +32,7 @@ class CalibrateMedLinkMessage(
                             argCallback: java.util.function.Function<Supplier<Stream<String>>, MedLinkStandardReturn<BgSync.BgHistory>>,
                             btSleepTime: Long,
                             bleCommand: BleCalibrateCommand,
-                            shouldBeSuspended: Boolean): CalibrateMedLinkMessage{
+                            shouldBeSuspended: Boolean): CalibrateMedLinkMessage {
             calibrationArgument.bgValue = calibrationInfo
             val argument = if(calibrationInfo<100){
                 " 0${calibrationInfo.toInt()}"

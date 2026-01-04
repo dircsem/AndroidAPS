@@ -1,10 +1,10 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities;
+package app.aaps.pump.common.hw.medlink.activities;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.PumpResponses;
+import app.aaps.pump.common.hw.medlink.PumpResponses;
 
 
 /**

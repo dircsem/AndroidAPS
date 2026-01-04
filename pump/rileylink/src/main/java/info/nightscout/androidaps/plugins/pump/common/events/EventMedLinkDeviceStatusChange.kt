@@ -2,11 +2,10 @@ package info.nightscout.androidaps.plugins.pump.common.events
 
 import android.content.Context
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkError
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
+import app.aaps.pump.common.hw.medlink.defs.MedLinkError
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.events.EventStatus
 
 open class EventMedLinkDeviceStatusChange : EventStatus {

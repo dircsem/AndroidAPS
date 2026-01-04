@@ -6,10 +6,10 @@ import app.aaps.core.interfaces.pump.BGReadingStatus
 import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseStatusCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser.Companion.parseStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.common.hw.medlink.activities.BaseStatusCallback
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser.Companion.parseStatus
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 import java.util.*
 import java.util.function.Supplier
 import java.util.regex.Pattern

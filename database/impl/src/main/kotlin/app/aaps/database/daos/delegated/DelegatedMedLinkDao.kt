@@ -1,4 +1,5 @@
-package app.aaps.database.impl.daos.delegated
+package app.aaps.database.daos.delegated
+
 
 import app.aaps.database.impl.daos.MedLinkDao
 import app.aaps.database.entities.MedLinkConfig

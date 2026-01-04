@@ -1,9 +1,9 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities
+package app.aaps.pump.common.hw.medlink.activities
 
 import android.os.SystemClock
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandExecutor
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkStatusParser
+import app.aaps.pump.common.hw.medlink.ble.CommandExecutor
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.rx.bus.RxBus

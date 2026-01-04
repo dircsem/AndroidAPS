@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.data
+package app.aaps.pump.common.hw.medlink.data
 
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import java.util.Date

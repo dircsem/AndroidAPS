@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
+package app.aaps.pump.common.hw.medlink.service
 
 import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
 import app.aaps.core.interfaces.logging.AAPSLogger

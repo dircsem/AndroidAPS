@@ -1,11 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.operations;
+package app.aaps.pump.common.hw.medlink.ble.operations;
 
 import android.bluetooth.BluetoothGatt;
 
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE;
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE;
 
 /**
  * Created by dirceu on 12/27/20.

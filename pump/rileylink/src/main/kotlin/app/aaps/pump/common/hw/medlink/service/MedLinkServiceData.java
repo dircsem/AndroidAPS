@@ -1,13 +1,13 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service;
+package app.aaps.pump.common.hw.medlink.service;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import info.nightscout.androidaps.plugins.pump.common.events.EventMedLinkDeviceStatusChange;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkError;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState;
+import app.aaps.pump.common.hw.medlink.MedLinkUtil;
+import app.aaps.pump.common.hw.medlink.data.MLHistoryItem;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkError;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency;
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;

@@ -1,14 +1,14 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink
+package app.aaps.pump.common.hw.medlink
 
 import dagger.android.HasAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.hw.connector.CommunicationManager
 import info.nightscout.androidaps.plugins.pump.common.hw.connector.ConnectorUtil.isSame
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseStringAggregatorCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkRFSpy
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.RadioPacket
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.activities.BaseCallback
+import app.aaps.pump.common.hw.medlink.activities.BaseStringAggregatorCallback
+import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.ble.data.RadioPacket
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.FrequencyScanResults
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType

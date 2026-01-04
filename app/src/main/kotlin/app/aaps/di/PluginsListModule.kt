@@ -76,7 +76,7 @@ import dagger.multibindings.IntKey
 import dagger.multibindings.IntoMap
 import info.nightscout.pump.combov2.ComboV2Plugin
 import javax.inject.Qualifier
-import info.nightscout.androidaps.plugins.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 
 @Suppress("unused")
 @Module

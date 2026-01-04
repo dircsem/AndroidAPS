@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.dialog;
+package app.aaps.pump.common.hw.medlink.dialog;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;

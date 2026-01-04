@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink;
+package app.aaps.pump.common.hw.medlink;
 
 
 import java.util.ArrayList;

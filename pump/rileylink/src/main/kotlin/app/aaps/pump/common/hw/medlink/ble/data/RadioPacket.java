@@ -1,9 +1,9 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data;
+package app.aaps.pump.common.hw.medlink.ble.data;
 
 import javax.inject.Inject;
 
 import dagger.android.HasAndroidInjector;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil;
+import app.aaps.pump.common.hw.medlink.MedLinkUtil;
 import info.nightscout.androidaps.plugins.pump.common.utils.CRC;
 
 

@@ -1,15 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data
+package app.aaps.pump.medtronic.data
 
-import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.pump.BGReadingStatus
-import app.aaps.core.interfaces.pump.BgSync.BgHistory.BgValue
-import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPartialBolus
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
-import info.nightscout.pump.common.sync.PumpDbEntryTBR
+import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
+import app.aaps.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
 import java.time.ZonedDateTime
 
 /**

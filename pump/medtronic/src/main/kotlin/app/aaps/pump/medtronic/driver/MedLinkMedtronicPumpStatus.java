@@ -1,11 +1,7 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.driver;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+package app.aaps.pump.medtronic.driver;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
@@ -15,22 +11,20 @@ import java.util.Map;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue;
 import app.aaps.core.data.pump.defs.PumpType;
-import app.aaps.core.interfaces.pump.BgSync;
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
 import app.aaps.core.interfaces.resources.ResourceHelper;
 import app.aaps.core.interfaces.rx.bus.RxBus;
 import app.aaps.core.interfaces.sharedPreferences.SP;
-import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.data.MLHistoryItem;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus;
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.BatteryType;
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType;
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst;
-import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkPumpStatusImpl;
+import app.aaps.pump.common.events.EventRileyLinkDeviceStatusChange;
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
+import app.aaps.pump.medtronic.defs.BasalProfileStatus;
+import app.aaps.pump.medtronic.defs.BatteryType;
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicDeviceType;
+import app.aaps.pump.common.hw.medlink.MedLinkUtil;
+import app.aaps.pump.common.hw.medlink.data.MLHistoryItem;
+import app.aaps.pump.medtronic.data.MedLinkPumpStatusImpl;
+import app.aaps.pump.medtronic.keys.MedtronicLongNonKey;
 
 
 /**
@@ -97,7 +91,7 @@ public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatusImpl {
         if (this.medtronicDeviceTypeMap == null)
             createMedtronicDeviceTypeMap();
 
-        this.setLastConnection(sp.getLong(MedtronicConst.Statistics.LastGoodPumpCommunicationTime
+        this.setLastConnection(sp.getLong(MedtronicLongNonKey.LastGoodPumpCommunicationTime
                 , 0L));
         this.setLastDataTime(this.getLastConnection());
     }
@@ -156,7 +150,7 @@ public class MedLinkMedtronicPumpStatus extends MedLinkPumpStatusImpl {
         if (mapByDescription == null) {
             mapByDescription = new HashMap<>();
             for (BatteryType value : BatteryType.values()) {
-                mapByDescription.put(resourceHelper.gs(value.getDescription()), value);
+                mapByDescription.put(resourceHelper.gs(value.getFriendlyName()), value);
             }
         }
         if (mapByDescription.containsKey(batteryTypeStr)) {

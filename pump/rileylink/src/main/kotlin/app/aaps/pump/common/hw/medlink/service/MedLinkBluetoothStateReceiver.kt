@@ -1,11 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
+package app.aaps.pump.common.hw.medlink.service
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import dagger.android.DaggerBroadcastReceiver
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil
+import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin

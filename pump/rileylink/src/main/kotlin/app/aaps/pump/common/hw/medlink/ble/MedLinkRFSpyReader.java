@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble;
+package app.aaps.pump.common.hw.medlink.ble;
 
 import android.os.AsyncTask;
 import android.os.SystemClock;
@@ -8,7 +8,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import app.aaps.core.utils.pump.ThreadUtil;
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkEncodingType;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType;
 
 import app.aaps.core.interfaces.logging.AAPSLogger;
 import app.aaps.core.interfaces.logging.LTag;

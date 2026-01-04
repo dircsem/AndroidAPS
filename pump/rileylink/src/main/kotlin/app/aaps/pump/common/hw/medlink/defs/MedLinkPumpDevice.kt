@@ -1,10 +1,8 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs
+package app.aaps.pump.common.hw.medlink.defs
 
 import info.nightscout.androidaps.plugins.pump.common.hw.connector.defs.CommunicatorPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkService
+import app.aaps.pump.common.hw.medlink.service.MedLinkService
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpInfo
-import app.aaps.core.interfaces.profile.Profile
-import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import org.json.JSONObject
 import java.util.stream.Stream

@@ -1,8 +1,8 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command
+package app.aaps.pump.common.hw.medlink.ble.command
 
 import android.os.SystemClock
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag

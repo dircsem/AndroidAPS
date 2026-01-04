@@ -3,22 +3,21 @@ package info.nightscout.androidaps.plugins.pump.common.di
 import dagger.Module
 import dagger.android.ContributesAndroidInjector
 import info.nightscout.androidaps.plugins.pump.common.dialog.MedLinkBLEConfigActivity
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkCommunicationManager
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkBLE
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.MedLinkRFSpy
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.SendAndListen
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.dialog.MedLinkStatusActivity
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.dialog.MedLinkStatusGeneralFragment
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.dialog.MedLinkStatusHistoryFragment
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkBluetoothStateReceiver
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkBroadcastReceiver
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkService
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.MedLinkDiscoverGattServicesTask
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.MedLinkPumpTask
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.MedLinkWakeAndTuneTask
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.ResetMedLinkConfigurationTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
+import app.aaps.pump.common.hw.medlink.MedLinkCommunicationManager
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
+import app.aaps.pump.common.hw.medlink.ble.command.SendAndListen
+import app.aaps.pump.common.hw.medlink.dialog.MedLinkStatusActivity
+import app.aaps.pump.common.hw.medlink.dialog.MedLinkStatusGeneralFragment
+import app.aaps.pump.common.hw.medlink.dialog.MedLinkStatusHistoryFragment
+import app.aaps.pump.common.hw.medlink.service.MedLinkBluetoothStateReceiver
+import app.aaps.pump.common.hw.medlink.service.MedLinkBroadcastReceiver
+import app.aaps.pump.common.hw.medlink.service.MedLinkService
+import app.aaps.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
+import app.aaps.pump.common.hw.medlink.service.tasks.MedLinkDiscoverGattServicesTask
+import app.aaps.pump.common.hw.medlink.service.tasks.MedLinkPumpTask
+import app.aaps.pump.common.hw.medlink.service.tasks.MedLinkWakeAndTuneTask
+import app.aaps.pump.common.hw.medlink.service.tasks.ResetMedLinkConfigurationTask
 
 @Module
 @Suppress("unused")

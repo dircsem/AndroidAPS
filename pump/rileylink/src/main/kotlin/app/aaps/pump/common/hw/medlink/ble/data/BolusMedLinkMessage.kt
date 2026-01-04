@@ -1,10 +1,10 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data
+package app.aaps.pump.common.hw.medlink.ble.data
 
 
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleBolusCommand
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.command.BleBolusCommand
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import java.util.function.Function
 import java.util.function.Supplier
 import java.util.stream.Stream
@@ -22,8 +22,8 @@ class BolusMedLinkMessage(
     bleBolusCommand: BleBolusCommand,
     shouldBeSuspended: Boolean,
     bolusAmount: Double
-) : StartStopMessage<String,String>(command, bolusArgument, bolusCallback, null, btSleepTime, bleBolusCommand, shouldBeSuspended,
-                             if(bolusAmount>=10) " $bolusAmount" else "  ${(bolusAmount * 100.0).roundToInt()/100.0}") {
+) : StartStopMessage<String, String>(command, bolusArgument, bolusCallback, null, btSleepTime, bleBolusCommand, shouldBeSuspended,
+                                     if(bolusAmount>=10) " $bolusAmount" else "  ${(bolusAmount * 100.0).roundToInt()/100.0}") {
 
     init {
         bolusProgressMessage?.let { supplementaryCommands.addAll(it.commands) }
@@ -42,7 +42,7 @@ class BolusMedLinkMessage(
         ): BolusMedLinkMessage {
             bolusArgument.insulinAmount = (detailedBolusInfo.insulin * 100.0).roundToInt()/100.0
             return BolusMedLinkMessage(command, bolusArgument, bolusCallback, bolusProgressMessage, btSleepTime, bleBolusCommand, shouldBeSuspended,
-            detailedBolusInfo.insulin)
+                                       detailedBolusInfo.insulin)
         }
         private val bolusArgument = MedLinkCommandType.BolusAmount
     }

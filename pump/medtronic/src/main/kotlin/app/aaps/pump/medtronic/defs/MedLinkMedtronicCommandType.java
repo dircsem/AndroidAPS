@@ -1,15 +1,14 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.defs;
+package app.aaps.pump.medtronic.defs;
 
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType;
+import app.aaps.pump.medtronic.comm.message.MessageBody;
+import app.aaps.pump.medtronic.comm.message.PumpAckMessageBody;
+import app.aaps.pump.medtronic.comm.message.UnknownMessageBody;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType;
 import info.nightscout.androidaps.plugins.pump.medtronic.R;
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.MessageBody;
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.PumpAckMessageBody;
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.UnknownMessageBody;
-
 /**
  * Taken from GNU Gluco Control diabetes management software (ggc.sourceforge.net)
  * <p>

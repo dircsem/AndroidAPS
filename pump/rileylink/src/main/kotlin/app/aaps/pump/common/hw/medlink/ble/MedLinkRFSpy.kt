@@ -1,12 +1,12 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble
+package app.aaps.pump.common.hw.medlink.ble
 
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkUtil
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.BaseCallback
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.GattAttributes
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkEncodingType
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.MedLinkUtil
+import app.aaps.pump.common.hw.medlink.activities.BaseCallback
+import app.aaps.pump.common.hw.medlink.ble.data.GattAttributes
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RFSpyResponse
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.CC111XRegister
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RXFilterMode
@@ -219,7 +219,7 @@ class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector,
     }
 
     fun transmitThenReceive(
-        msg: MedLinkPumpMessage<*,*>?, sendChannel: Byte, repeatCount: Byte, delay_ms: Byte,
+        msg: MedLinkPumpMessage<*, *>?, sendChannel: Byte, repeatCount: Byte, delay_ms: Byte,
         listenChannel: Byte, timeout_ms: Int, retryCount: Byte
     ): RFSpyResponse {
         return transmitThenReceive(msg, sendChannel, repeatCount, delay_ms, listenChannel, timeout_ms, retryCount)
@@ -229,7 +229,7 @@ class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector,
     //    public RFSpyResponse transmitThenReceive(RadioPacket pkt, int timeout_ms) {
     //        return transmitThenReceive(pkt, (byte) 0, (byte) 0, (byte) 0, (byte) 0, timeout_ms, (byte) 0);
     //    }
-    fun <B,C>transmitThenReceive(pumpMessage: MedLinkPumpMessage<B,C>) {
+    fun <B,C>transmitThenReceive(pumpMessage: MedLinkPumpMessage<B, C>) {
         medLinkBle.addWriteCharacteristic(radioServiceUUID, radioDataUUID, pumpMessage)
     }
 

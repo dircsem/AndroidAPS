@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.service
+package app.aaps.pump.common.hw.medlink.service
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
@@ -8,11 +8,11 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import app.aaps.core.data.model.TE
 import dagger.android.DaggerBroadcastReceiver
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.MedLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkError
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkServiceState
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
+import app.aaps.pump.common.hw.medlink.MedLinkConst
+import app.aaps.pump.common.hw.medlink.defs.MedLinkError
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
+import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
+import app.aaps.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.DiscoverGattServicesTask
 import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
@@ -137,13 +137,15 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
         aapsLogger!!.debug("processMedLinkBroadcasts $action")
         return if (action == MedLinkConst.Intents.MedLinkDisconnected) {
             if (BluetoothAdapter.getDefaultAdapter().isEnabled) {
-                medLinkServiceData!!.setServiceState(MedLinkServiceState.BluetoothError,
-                                                     MedLinkError.MedLinkUnreachable)
+                medLinkServiceData!!.setServiceState(
+                    MedLinkServiceState.BluetoothError,
+                    MedLinkError.MedLinkUnreachable)
                 //                medLinkServiceData.activePlugin
                 //TODO schedule bg reading
             } else {
-                medLinkServiceData!!.setServiceState(MedLinkServiceState.BluetoothError,
-                                                     MedLinkError.BluetoothDisabled)
+                medLinkServiceData!!.setServiceState(
+                    MedLinkServiceState.BluetoothError,
+                    MedLinkError.BluetoothDisabled)
             }
             true
         } else if (action!!.startsWith(MedLinkConst.Intents.MedLinkReady)) {
@@ -218,8 +220,9 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
                 }
         }
         aapsLogger!!.info(LTag.PUMP, "pump unreachable")
-        medLinkServiceData!!.setServiceState(MedLinkServiceState.PumpConnectorError,
-                                             MedLinkError.NoContactWithDevice)
+        medLinkServiceData!!.setServiceState(
+            MedLinkServiceState.PumpConnectorError,
+            MedLinkError.NoContactWithDevice)
         val tuneUpMessage = Intent()
         tuneUpMessage.action = RileyLinkConst.IPC.MSG_PUMP_tunePump
         processMedLinkBroadcasts(tuneUpMessage, context)

@@ -1,10 +1,10 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data
+package app.aaps.pump.common.hw.medlink.ble.data
 
 import app.aaps.core.interfaces.profile.Profile
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.CommandPriority
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.command.BleCommand
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
+import app.aaps.pump.common.hw.medlink.ble.CommandPriority
+import app.aaps.pump.common.hw.medlink.ble.command.BleCommand
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import java.util.*
 import java.util.function.Function
 import java.util.function.Supplier
@@ -18,10 +18,11 @@ class BasalMedLinkMessage<B>(
     profileCallback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<Profile?>>,
     btSleepSize: Long,
     bleCommand: BleCommand
-) : MedLinkPumpMessage<B, Profile?>(MedLinkCommandType.ActiveBasalProfile,
-                                    baseCallBack,
-                                    btSleepSize, bleCommand,
-                                    CommandPriority.NORMAL) {
+) : MedLinkPumpMessage<B, Profile?>(
+    MedLinkCommandType.ActiveBasalProfile,
+    baseCallBack,
+    btSleepSize, bleCommand,
+    CommandPriority.NORMAL) {
     init {
         this.supplementaryCommands = mutableListOf(
             CommandStructure(MedLinkCommandType.BaseProfile, Optional.of(profileCallback), Optional.of(bleCommand), CommandPriority.NORMAL)

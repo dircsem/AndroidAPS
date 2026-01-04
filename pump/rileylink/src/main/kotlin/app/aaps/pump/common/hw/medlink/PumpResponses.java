@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink;
+package app.aaps.pump.common.hw.medlink;
 
 public enum PumpResponses {
     StatusFullProcessed("Status complete parse success"),

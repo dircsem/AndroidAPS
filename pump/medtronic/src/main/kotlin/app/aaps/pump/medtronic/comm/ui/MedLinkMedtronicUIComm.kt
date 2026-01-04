@@ -1,7 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.medtronic.comm.ui
 
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
+import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
 import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -38,13 +38,13 @@ class MedLinkMedtronicUIComm(
     //        return task;
     //
     //    }
-    @Synchronized fun <B,C,D,E>executeCommandCP(pumpMessage1: MedLinkPumpMessage<B,C>, pumpMessage2: MedLinkPumpMessage<D, E>) {
+    @Synchronized fun <B,C,D,E>executeCommandCP(pumpMessage1: MedLinkPumpMessage<B, C>, pumpMessage2: MedLinkPumpMessage<D, E>) {
          this.executeCommandCP(pumpMessage1)
         this.executeCommandCP(pumpMessage2)
 
     }
 
-    @Synchronized fun <B,C>executeCommandCP(pumpMessage: MedLinkPumpMessage<B,C>): MedLinkMedtronicUITaskCp {
+    @Synchronized fun <B,C>executeCommandCP(pumpMessage: MedLinkPumpMessage<B, C>): MedLinkMedtronicUITaskCp {
         aapsLogger.info(LTag.PUMP, "Execute Command: " + pumpMessage.firstCommand().code)
         val task = MedLinkMedtronicUITaskCp(injector, aapsLogger)
         medtronicUtil.currentCommand = pumpMessage.firstCommand()

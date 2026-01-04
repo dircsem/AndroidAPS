@@ -485,7 +485,7 @@ enum class PumpType(
         extendedBolusSettings = DoseSettings(0.1, 30, 8 * 60, 0.1), //
         pumpTempBasalType = PumpTempBasalType.Percent, //
         tbrSettings = DoseSettings(1.0, 5, 24 * 60, 0.0, 500.0),
-        specialBasalDurations = PumpCapability.BasalRate_Duration30minAllowed, //
+        specialBasalDurations = arrayOf(Capability.BasalRate_Duration30minAllowed), //
         baseBasalMinValue = 0.025,
         baseBasalMaxValue = 3.0,
         baseBasalStep = 0.025,

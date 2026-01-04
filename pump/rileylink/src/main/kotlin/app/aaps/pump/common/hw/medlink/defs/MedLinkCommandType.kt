@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.hw.medlink.defs
+package app.aaps.pump.common.hw.medlink.defs
 
 import java.nio.charset.StandardCharsets
 import java.util.*
@@ -84,7 +84,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
 
     override fun toString(): String {
         return when {
-            (this == BolusAmount) -> {
+            (this == BolusAmount)                -> {
                 super.toString() +
                     " bolusAmount: $insulinAmount"
             }
@@ -94,7 +94,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
 
             }
 
-            (this == CalibrateValue) -> {
+            (this == CalibrateValue)             -> {
                 super.toString() +
                     "bgValue: $bgValue"
 
