@@ -13,15 +13,14 @@ import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
-import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress.t
 
 import org.json.JSONObject
+import java.util.Optional
 import java.util.function.Supplier
 import java.util.stream.Stream
 import kotlin.math.roundToInt
 
 data class BolusProgressCallback(
-    val pumpStatus: MedLinkPumpStatus,
     val resourceHelper: ResourceHelper,
     val rxBus: RxBus,
     val aapsLogger: AAPSLogger,
@@ -43,44 +42,48 @@ data class BolusProgressCallback(
                 break
             }
         }
-        MedLinkStatusParser.parseBolusInfo(ans, pumpStatus)
-        aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.lastBolusAmount)
-        aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.bolusDeliveredAmount)
-        aapsLogger.info(LTag.PUMPBTCOMM, "" + pumpStatus.lastBolusInfo)
+        MedLinkStatusParser.parseBolusInfo(ans, medLinkPumpPlugin.medLinkPumpStatus, aapsLogger)
+        aapsLogger.info(LTag.PUMPBTCOMM, "" + medLinkPumpPlugin.medLinkPumpStatus.lastBolusAmount)
+        aapsLogger.info(LTag.PUMPBTCOMM, "" + medLinkPumpPlugin.medLinkPumpStatus.bolusDeliveredAmount)
+        aapsLogger.info(LTag.PUMPBTCOMM, "" + medLinkPumpPlugin.medLinkPumpStatus.lastBolusInfo)
         aapsLogger.info(LTag.PUMPBTCOMM, detailedBolusInfo.toString())
-        if (pumpStatus.lastBolusAmount != null) {
+        if (medLinkPumpPlugin.medLinkPumpStatus.lastBolusAmount != null) {
             aapsLogger.info(LTag.PUMPBTCOMM, "lastbolusAmount")
-            val bolusEvent = EventOverviewBolusProgress
-            bolusEvent.t = t
-            bolusEvent.status = resourceHelper.gs(app.aaps.core.ui.R.string.bolus_delivering, pumpStatus.bolusDeliveredAmount, pumpStatus.lastBolusAmount)
-            bolusEvent.percent = ((pumpStatus.bolusDeliveredAmount?.div(detailedBolusInfo.insulin))?.times(100)?.roundToInt())?.or(0) ?: 0
+            val deliveredAmount: Double = if (medLinkPumpPlugin.medLinkPumpStatus.bolusDeliveredAmount != null) {
+                medLinkPumpPlugin.medLinkPumpStatus.bolusDeliveredAmount!!
+            } else {
+                0.0
+            }
+            var bolusEvent =
+                EventOverviewBolusProgress(resourceHelper, deliveredAmount)
+
 
             rxBus.send(bolusEvent)
-            if (bolusEvent.percent == 100 || pumpStatus.bolusDeliveredAmount == 0.0) {
+            if (deliveredAmount == detailedBolusInfo.insulin || medLinkPumpPlugin.medLinkPumpStatus.bolusDeliveredAmount == 0.0) {
                 aapsLogger.info(LTag.PUMPBTCOMM, "boluscompleted")
 
                 // medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(detailedBolusInfo.toJsonString())))
 
-                pumpStatus.lastBolusInfo.let {
-                    it?.timestamp = pumpStatus.lastBolusTime?.time ?: it!!.timestamp
+                medLinkPumpPlugin.medLinkPumpStatus.lastBolusInfo.let {
+                    it?.timestamp = medLinkPumpPlugin.medLinkPumpStatus.lastBolusTime?.time ?: it.timestamp
 
-                    it?.insulin = pumpStatus.lastBolusAmount ?: it!!.insulin
+                    it?.insulin = medLinkPumpPlugin.medLinkPumpStatus.lastBolusAmount ?: it.insulin
 
                     it?.bolusType = detailedBolusInfo.bolusType
                     it?.carbs = detailedBolusInfo.carbs
                     it?.eventType = detailedBolusInfo.eventType
-                    aapsLogger.info(LTag.PUMP,it!!.toJsonString())
-                    medLinkPumpPlugin.handleNewTreatmentData(Stream.of(JSONObject(it?.toJsonString())))
+//                    aapsLogger.info(LTag.PUMP, it!!.toJsonString())?
+                    medLinkPumpPlugin.handleNewTreatmentData(it!!)
                 }
 
                 SystemClock.sleep(200)
-                bolusEvent.status = resourceHelper.gs(app.aaps.core.ui.R.string.bolus_delivering, pumpStatus.lastBolusAmount)
-                bolusEvent.percent = 100
+
+                bolusEvent = EventOverviewBolusProgress(resourceHelper, percent = 100)
                 rxBus.send(bolusEvent)
                 SystemClock.sleep(1000)
 
                 // rxBus.send(bolusEvent)
-                rxBus.send(EventDismissBolusProgressIfRunning(null, pumpStatus.lastBolusTime?.time))
+                rxBus.send(EventDismissBolusProgressIfRunning(null, medLinkPumpPlugin.medLinkPumpStatus.lastBolusTime?.time))
                 resend = false
             }
             //else commandExecutor?.clearExecutedCommand()

@@ -1,14 +1,14 @@
 package app.aaps.pump.common.hw.medlink.ble.command
 
-import app.aaps.pump.common.hw.medlink.MedLinkConst
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.pump.common.hw.medlink.keys.MedLinkLongKey
 
 open class BleCommandReader(
-    aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData,
+    aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData?,
     private val medLinkPumpPluginAbstract: MedLinkPumpPluginBase?
 ) : BleCommand(aapsLogger, medLinkServiceData) {
 
@@ -41,7 +41,7 @@ open class BleCommandReader(
 
     private fun rememberLastGoodDeviceCommunicationTime() {
         val lastGoodReceiverCommunicationTime = System.currentTimeMillis()
-        medLinkPumpPluginAbstract?.sp?.putLong(MedLinkConst.Prefs.LastGoodDeviceCommunicationTime, lastGoodReceiverCommunicationTime)
-        medLinkPumpPluginAbstract?.pumpStatusData?.setLastCommunicationToNow()
+        medLinkPumpPluginAbstract?.preferences?.get(MedLinkLongKey.LastGoodDeviceCommunicationTime)
+        medLinkPumpPluginAbstract?.medLinkPumpStatus?.setLastCommunicationToNow()
     }
 }

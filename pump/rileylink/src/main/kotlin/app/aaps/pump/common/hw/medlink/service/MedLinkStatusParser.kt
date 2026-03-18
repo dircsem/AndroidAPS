@@ -3,10 +3,9 @@ package app.aaps.pump.common.hw.medlink.service
 import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
-import app.aaps.core.interfaces.pump.PumpRunningState
-import dagger.android.HasAndroidInjector
+import app.aaps.core.interfaces.source.BgSync
+import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 import java.lang.Exception
 import java.text.ParsePosition
@@ -27,7 +26,7 @@ class MedLinkStatusParser {
 
     fun partialMatch(pumpStatus: MedLinkPumpStatus): Boolean {
         return pumpStatus.lastBGTimestamp != 0L || pumpStatus.lastBolusTime != null || pumpStatus.batteryVoltage != 0.0 || pumpStatus.reservoirRemainingUnits != 0.0 || pumpStatus.currentBasal != 0.0 ||
-            pumpStatus.dailyTotalUnits != null
+                pumpStatus.dailyTotalUnits != null
     }
 
     fun fullMatch(pumpStatus: MedLinkPumpStatus): Boolean {
@@ -44,7 +43,12 @@ class MedLinkStatusParser {
         private var bgUpdated = false
 
         @JvmStatic
-        fun parseStatus(pumpAnswer: Array<String>, pumpStatus: MedLinkPumpStatus, injector: HasAndroidInjector, aapsLogger: AAPSLogger): MedLinkPumpStatus {
+        fun parseStatus(
+            pumpAnswer: Array<String>,
+            pumpStatus: MedLinkPumpStatus,
+
+            aapsLogger: AAPSLogger
+        ): MedLinkPumpStatus {
 
 //        13‑12‑2020 18:36  54%
 //        String ans = "1623436309132\n" +
@@ -78,7 +82,8 @@ class MedLinkStatusParser {
 //        pumpAnswer = ans.split("\n");
             return try {
                 val messageIterator =
-                    Arrays.stream(pumpAnswer).map{ f: String -> f.replace("\r","")}.map { f: String -> f.lowercase() }.iterator()
+                    Arrays.stream(pumpAnswer).map { f: String -> f.replace("\r", "") }
+                        .map { f: String -> f.lowercase() }.iterator()
                 var message: String? = null
                 while (messageIterator.hasNext()) {
                     message = messageIterator.next().trim { it <= ' ' }
@@ -87,9 +92,10 @@ class MedLinkStatusParser {
                     }
                 }
                 val timeMedLinkPumpStatus = parsePumpTimeMedLinkBattery(message, pumpStatus)
-                val bgMedLinkPumpStatus = parseBG(messageIterator, timeMedLinkPumpStatus, injector)
-                val lastBolusStatus = parseBolusInfo(messageIterator, bgMedLinkPumpStatus) as MedLinkPumpStatus
+                val bgMedLinkPumpStatus = parseBG(messageIterator, timeMedLinkPumpStatus)
+                val lastBolusStatus = parseBolusInfo(messageIterator, bgMedLinkPumpStatus, aapsLogger)
                 //                18:36:49.381
+
 //        18:36:49.495 Last bolus: 0.2u 13‑12‑20 18:32
 
 //        18:36:49.496 Square bolus: 0.0u delivered: 0.000u
@@ -99,7 +105,8 @@ class MedLinkStatusParser {
                 //        18:36:49.570 ISIG: 20.62nA
                 val calibrationFactorStatus = parseCalibrationFactor(messageIterator, isigStatus)
                 //        18:36:49.607 Calibration factor: 6.419
-                val nextCalibrationStatus = parseNextCalibration(messageIterator, calibrationFactorStatus, injector)
+                val nextCalibrationStatus =
+                    parseNextCalibration(messageIterator, calibrationFactorStatus)
                 //        18:36:49.681 Next calibration time:  5:00
 //        moveIterator(messageIterator);
 //        18:36:49.683 Sensor uptime: 1483min
@@ -144,23 +151,45 @@ class MedLinkStatusParser {
             }
         }
 
-        fun parseBolusInfo(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        fun parseBolusInfo(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus, aapsLogger: AAPSLogger
+        ): MedLinkPumpStatus {
+            val partialBolus = parseBolusInfo(messageIterator, MedLinkPartialBolus(), aapsLogger)
+            pumpStatus.lastBolusAmount = partialBolus.lastBolusAmount
+            pumpStatus.lastBolusTime = partialBolus.lastBolusTime
+            pumpStatus.bolusDeliveredAmount = partialBolus.bolusDeliveredAmount
+            return pumpStatus
+        }
+
+        fun parseBolusInfo(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPartialBolus, aapsLogger: AAPSLogger
+        ): MedLinkPartialBolus {
             var status = pumpStatus
             while (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 if (currentLine.contains("last bolus")) {
+                    aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
                     status = parseLastBolus(currentLine, pumpStatus)
-                }
-                if (currentLine.contains("square bolus")) {
-
-                    status = squareBolus(currentLine, status)
+                    aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
                     return status
                 }
+                if (currentLine.contains("square bolus")) {
+                    aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
+                    val squareStatus = squareBolus(currentLine, MedLinkPartialBolus())
+                    if(squareStatus.lastBolusAmount > 0)
+                        status = squareStatus
+                    aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
+                }
             }
-            return pumpStatus
+            return status
         }
 
-        private fun squareBolus(currentLine: String, lastBolusStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun squareBolus(
+            currentLine: String,
+            lastBolusStatus: MedLinkPartialBolus
+        ): MedLinkPartialBolus {
             if (currentLine.contains("square bolus:")) {
                 val bolusPat = Pattern.compile("\\d+\\.\\d+")
                 val bolusMatcher = bolusPat.matcher(currentLine)
@@ -169,9 +198,10 @@ class MedLinkStatusParser {
                     if (bolusAmount > 0.0 && bolusMatcher.find()) {
                         lastBolusStatus.lastBolusAmount = bolusAmount
                         lastBolusStatus.bolusDeliveredAmount = bolusMatcher.group().toDouble()
-                    } else {
-                        lastBolusStatus.bolusDeliveredAmount = 0.0
                     }
+//                    else {
+//                        lastBolusStatus.bolusDeliveredAmount = 0.0
+//                    }
                 }
             }
             //                "square bolus: 0.0u delivered: 0.000u\n" +
@@ -180,7 +210,10 @@ class MedLinkStatusParser {
             return lastBolusStatus
         }
 
-        private fun parseBgLevelAlarms(pumpStatus: MedLinkPumpStatus, messageIterator: Iterator<String>): MedLinkPumpStatus {
+        private fun parseBgLevelAlarms(
+            pumpStatus: MedLinkPumpStatus,
+            messageIterator: Iterator<String>
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 //        18:36:49.681 Next calibration time:  5:00
@@ -192,7 +225,6 @@ class MedLinkStatusParser {
         private fun parseNextCalibration(
             messageIterator: Iterator<String>,
             pumpStatus: MedLinkPumpStatus,
-            injector: HasAndroidInjector,
         ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
@@ -279,11 +311,11 @@ class MedLinkStatusParser {
                 if (currentLine.contains("pump status")) {
                     val status = currentLine.split(":".toRegex()).toTypedArray()[1]
                     if (status.contains("normal")) {
-                        pumpStatus.pumpRunningState = PumpRunningState.Running
+                        pumpStatus.setPumpRunning()
                     } else if (status.contains("suspend")) {
-                        pumpStatus.pumpRunningState = PumpRunningState.Suspended
+                        pumpStatus.setPumpSuspended()
                     } else {
-                        pumpStatus.pumpRunningState = PumpRunningState.Unknow
+                        pumpStatus.setPumpUnknow()
                     }
                     break
                 } else if (currentLine.contains("eomeom") || currentLine.contains("ready")) {
@@ -293,7 +325,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseSensorAgeStatus(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseSensorAgeStatus(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 //        18:36:49.683 Sensor uptime: 1483min
@@ -310,7 +345,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseDayInsulin(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseDayInsulin(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 //        Insulin today: 37.625u
@@ -319,12 +357,14 @@ class MedLinkStatusParser {
                 if (currentLine.contains("insulin today:")) {
                     if (matcher.find()) {
                         val totalInsulinToday = matcher.group()
-                        pumpStatus.dailyTotalUnits = totalInsulinToday.substring(0, totalInsulinToday.length - 1).toDouble()
+                        pumpStatus.dailyTotalUnits =
+                            totalInsulinToday.substring(0, totalInsulinToday.length - 1).toDouble()
                     }
                 } else if (currentLine.contains("insulin yesterday:")) {
                     if (matcher.find()) {
                         val totalInsulinToday = matcher.group()
-                        pumpStatus.yesterdayTotalUnits = totalInsulinToday.substring(0, totalInsulinToday.length - 1).toDouble()
+                        pumpStatus.yesterdayTotalUnits =
+                            totalInsulinToday.substring(0, totalInsulinToday.length - 1).toDouble()
                     }
                 } else {
                     pumpStatus.readProfile = System.currentTimeMillis()
@@ -333,7 +373,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseTempBasal(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseTempBasal(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 //        18:36:50.020 TBR: 100%   0h:00m
@@ -342,7 +385,8 @@ class MedLinkStatusParser {
                     val matcher = reservoirPattern.matcher(currentLine)
                     if (matcher.find()) {
                         val tempBasalRatio = matcher.group()
-                        pumpStatus.tempBasalAmount = tempBasalRatio.substring(0, tempBasalRatio.length - 1).toDouble()
+                        pumpStatus.tempBasalAmount =
+                            tempBasalRatio.substring(0, tempBasalRatio.length - 1).toDouble()
                         val remTempTimePattern = Pattern.compile("\\d+h:\\d+m")
                         val remTempTimeMatcher = remTempTimePattern.matcher(currentLine)
                         if (remTempTimeMatcher.find()) {
@@ -350,7 +394,8 @@ class MedLinkStatusParser {
                             val hourMinute = remaingTime.split(":".toRegex()).toTypedArray()
                             val hour = hourMinute[0]
                             val minute = hourMinute[1]
-                            pumpStatus.tempBasalRemainMin = 60 * hour.substring(0, hour.length - 1).toInt() + minute.substring(0, minute.length - 1).toInt()
+                            pumpStatus.tempBasalRemainMin = 60 * hour.substring(0, hour.length - 1)
+                                .toInt() + minute.substring(0, minute.length - 1).toInt()
                         }
                     }
                 }
@@ -358,23 +403,28 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseCurrentBasal(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus, aapsLogger: AAPSLogger): MedLinkPumpStatus {
+        private fun parseCurrentBasal(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus,
+            aapsLogger: AAPSLogger
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 var currentLine = messageIterator.next()
-                aapsLogger.info(LTag.EVENTS, "Current Basal Line "+currentLine)
+                aapsLogger.info(LTag.EVENTS, "Current Basal Line " + currentLine)
                 //        18:36:49.983 Basal: 0.600u/h
 
                 if (currentLine.contains("basal scheme:")) {
                     val basalScheme = currentLine.split(":".toRegex()).toTypedArray()
                     pumpStatus.activeProfileName = basalScheme[1].trim { it <= ' ' }
                     currentLine = messageIterator.next()
-                    aapsLogger.info(LTag.EVENTS, "Current Basal Line "+currentLine)
+                    aapsLogger.info(LTag.EVENTS, "Current Basal Line " + currentLine)
                     if (currentLine.contains("basal:")) {
                         val reservoirPattern = Pattern.compile("\\d+\\.\\d+u/h")
                         val matcher = reservoirPattern.matcher(currentLine)
                         if (matcher.find()) {
                             val currentBasal = matcher.group()
-                            pumpStatus.currentBasal = currentBasal.substring(0, currentBasal.length - 3).toDouble()
+                            pumpStatus.currentBasal =
+                                currentBasal.substring(0, currentBasal.length - 3).toDouble()
                         }
                     }
                 }
@@ -382,7 +432,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseReservoir(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseReservoir(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
                 //        18:36:49.907 Reservoir:  66.12u
@@ -391,9 +444,11 @@ class MedLinkStatusParser {
                     val matcher = reservoirPattern.matcher(currentLine)
                     if (matcher.find()) {
                         val reservoirRemaining = matcher.group()
-                        val reservoirRemainingDouble = reservoirRemaining.substring(0, reservoirRemaining.length - 1).toDouble()
+                        val reservoirRemainingDouble =
+                            reservoirRemaining.substring(0, reservoirRemaining.length - 1)
+                                .toDouble()
                         previousReservoirRemaining = pumpStatus.reservoirRemainingUnits
-                        if (reservoirRemainingDouble != 0.0 ) {
+                        if (reservoirRemainingDouble != 0.0) {
                             pumpStatus.reservoirRemainingUnits = reservoirRemainingDouble
                         }
                         if (pumpStatus.sensorAge != 0) {
@@ -411,7 +466,10 @@ class MedLinkStatusParser {
             }
         }
 
-        private fun parseBatteryVoltage(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseBatteryVoltage(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
 //        18:36:49.832 Pump battery voltage: 1.43V
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
@@ -420,11 +478,17 @@ class MedLinkStatusParser {
                     val matcher = lastBolusPattern.matcher(currentLine)
                     if (matcher.find()) {
                         val batteryVoltage = matcher.group()
-                        val batteryVoltageValue = java.lang.Double.valueOf(batteryVoltage.substring(0, batteryVoltage.length - 1))
-                        pumpStatus.isBatteryChanged = pumpStatus.batteryVoltage != null && batteryVoltageValue > 0.01 + pumpStatus.batteryVoltage!! &&
-                            pumpStatus.lastBatteryChanged >= System
-                            .currentTimeMillis() -
-                            1800000L
+                        val batteryVoltageValue = java.lang.Double.valueOf(
+                            batteryVoltage.substring(
+                                0,
+                                batteryVoltage.length - 1
+                            )
+                        )
+                        pumpStatus.isBatteryChanged =
+                            pumpStatus.batteryVoltage != null && batteryVoltageValue > 0.01 + pumpStatus.batteryVoltage!! &&
+                                    pumpStatus.lastBatteryChanged >= System
+                                .currentTimeMillis() -
+                                    1800000L
                         pumpStatus.batteryVoltage = batteryVoltageValue
                     }
                 }
@@ -432,14 +496,19 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseLastBolus(currentLine: String, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parseLastBolus(
+            currentLine: String,
+            pumpStatus: MedLinkPartialBolus
+        ): MedLinkPartialBolus {
             //        18:36:49.495 Last bolus: 0.2u 13‑12‑20 18:32
             if (currentLine.contains("last bolus")) {
                 val lastBolusPattern = Pattern.compile("\\d{1,2}\\.\\du")
                 val matcher = lastBolusPattern.matcher(currentLine)
                 if (matcher.find()) {
                     val lastBolusAmount = matcher.group()
-                    pumpStatus.lastBolusAmount = java.lang.Double.valueOf(lastBolusAmount.substring(0, lastBolusAmount.length - 1))
+                    pumpStatus.lastBolusAmount = java.lang.Double.valueOf(
+                        lastBolusAmount.dropLast(1)
+                    )
                     val dateTime = parseDateTime(currentLine, dateTimePartialPattern, false)
                     if (dateTime != null) {
                         pumpStatus.lastBolusTime = dateTime
@@ -450,7 +519,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseBG(messageIterator: Iterator<String>, pumpStatus: MedLinkPumpStatus, injector: HasAndroidInjector): MedLinkPumpStatus {
+        private fun parseBG(
+            messageIterator: Iterator<String>,
+            pumpStatus: MedLinkPumpStatus,
+        ): MedLinkPumpStatus {
             if (messageIterator.hasNext()) {
                 val currentLine = messageIterator.next()
 
@@ -477,7 +549,10 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parsePumpTimeMedLinkBattery(currentLine: String?, pumpStatus: MedLinkPumpStatus): MedLinkPumpStatus {
+        private fun parsePumpTimeMedLinkBattery(
+            currentLine: String?,
+            pumpStatus: MedLinkPumpStatus
+        ): MedLinkPumpStatus {
             if (currentLine != null) {
 //            String currentLine = messageIterator.next();
 //            while(currentLine.startsWith("ready")){
@@ -498,7 +573,11 @@ class MedLinkStatusParser {
             return pumpStatus
         }
 
-        private fun parseDateTime(currentLine: String, pattern: Pattern, fourDigitYear: Boolean): Date? {
+        private fun parseDateTime(
+            currentLine: String,
+            pattern: Pattern,
+            fourDigitYear: Boolean
+        ): Date? {
             val matcher = pattern.matcher(currentLine)
             return if (matcher.find()) {
                 val datePattern: String

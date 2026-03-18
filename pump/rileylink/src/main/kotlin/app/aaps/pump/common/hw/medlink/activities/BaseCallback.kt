@@ -1,18 +1,11 @@
-package app.aaps.pump.common.hw.medlink.activities;
+package app.aaps.pump.common.hw.medlink.activities
 
-import java.util.function.Function;
+import java.util.function.Function
 
 /**
  * Created by Dirceu on 26/11/20.
  * For Medlink implementation
  */
-public abstract class BaseCallback<B,A> implements Function<A, MedLinkStandardReturn<B>> {
-
-    public BaseCallback(){
-    }
-
-    @Override public MedLinkStandardReturn<B> apply(A streamSupplier) {
-
-        return null;
-    }
+abstract class BaseCallback<B, A> : Function<A, MedLinkStandardReturn<B>> {
+    abstract override fun apply(answer: A): MedLinkStandardReturn<B>
 }

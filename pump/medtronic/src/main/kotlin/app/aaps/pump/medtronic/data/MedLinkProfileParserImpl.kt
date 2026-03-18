@@ -1,18 +1,19 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data
+package app.aaps.pump.medtronic.data
 
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.objects.extensions.pureProfileFromJson
 import app.aaps.core.objects.profile.ProfileSealed
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfileEntry
+import app.aaps.pump.medtronic.data.dto.BasalProfile
+import app.aaps.pump.medtronic.data.dto.BasalProfileEntry
 import info.nightscout.interfaces.db.WizardSettings
 import org.json.JSONException
 import org.json.JSONObject
+import java.lang.Double
 import java.util.*
 import java.util.function.Supplier
 import java.util.regex.Matcher
@@ -26,7 +27,7 @@ import javax.inject.Inject
  */
 
 class MedLinkProfileParserImpl<T> @Inject constructor(
-    private val hasAndroidInjector: HasAndroidInjector, private val aapsLogger: AAPSLogger,
+    val activePlugin: ActivePlugin, private val aapsLogger: AAPSLogger,
     private val dateUtil: DateUtil
 ): MedLinkProfileParser<T, BasalProfile> {
 
@@ -77,7 +78,7 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         return pureProfileFromJson(json, dateUtil,
                                                           units!!.uppercase(Locale.getDefault()))?.let {
             ProfileSealed.Pure(
-                it)
+                it,activePlugin)
         }
     }
 
@@ -211,7 +212,7 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         aapsLogger.info(LTag.PUMPBTCOMM, "$ratioText $carbs")
         var ratio = 0
         ratio = if (carbs.contains("\\.")) {
-            val rat = java.lang.Double.valueOf(carbs)
+            val rat = Double.valueOf(carbs)
             Math.toIntExact(Math.round(rat * 10))
         } else {
             Integer.valueOf(carbs)

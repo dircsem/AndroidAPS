@@ -1,19 +1,19 @@
-package info.nightscout.pump.common
+package app.aaps.pump.common
 
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
 import app.aaps.core.data.model.BS
-import app.aaps.core.data.plugin.PluginDescription
 import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.objects.Instantiator
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
@@ -29,37 +29,56 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import info.nightscout.pump.common.defs.PumpDriverState
-import info.nightscout.pump.common.sync.PumpSyncStorage
-import org.json.JSONException
-import org.json.JSONObject
+import app.aaps.core.keys.interfaces.NonPreferenceKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.pump.common.defs.PumpDriverState
+import app.aaps.pump.common.defs.PumpRunningState
+import app.aaps.pump.common.sync.PumpSyncEntriesCreator
+import app.aaps.pump.common.sync.PumpSyncStorage
+
+import javax.inject.Provider
 
 /**
  * Created by Dirceu on 06/04/21.
  */
 abstract class MedLinkPumpPluginAbstract protected constructor(
     pluginDescription: PluginDescription,
+    ownPreferences: List<Class<out NonPreferenceKey>> = emptyList(),
     pumpType: PumpType,
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     commandQueue: CommandQueue,
+    preferences: Preferences,
     rxBus: RxBus,
-    activePlugin: ActivePlugin,
-    sp: SP,
     context: Context,
     fabricPrivacy: FabricPrivacy,
-    dateUtil: DateUtil,
+    var dateUtil: DateUtil,
     aapsSchedulers: AapsSchedulers,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
-    decimalFormatter: DecimalFormatter,
+    val decimalFormatter: DecimalFormatter,
     override var uiInteraction: UiInteraction,
-    instantiator: Instantiator
-) : PumpPluginAbstract(pluginDescription, pumpType, rh, aapsLogger, commandQueue, rxBus, activePlugin, sp, context, fabricPrivacy, dateUtil, aapsSchedulers, pumpSync, pumpSyncStorage,
-                       decimalFormatter, instantiator), Pump, info.nightscout.pump.common.sync.PumpSyncEntriesCreator, MedLinkPumpPluginBase {
+    pumpEnactResultProvider: Provider<PumpEnactResult>
 
+) : PumpPluginAbstract(
+    pluginDescription,
+    ownPreferences,
+    pumpType,
+    rh,
+    aapsLogger,
+    preferences,
+    commandQueue,
+    rxBus,
+    context,
+    fabricPrivacy,
+    aapsSchedulers,
+    pumpSync,
+    pumpSyncStorage,
+    pumpEnactResultProvider
+), Pump, PumpSyncEntriesCreator, MedLinkPumpPluginBase {
+
+    abstract fun  setPumpRunningState(value: PumpRunningState)
     abstract val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
-
 
 
     // Pump capabilities
@@ -95,7 +114,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
                 rxBus
                     .toObservable(EventAppExit::class.java)
                     .observeOn(aapsSchedulers.io)
-                    .subscribe({ context.unbindService(serviceConnection) }, fabricPrivacy::logException)
+                    .subscribe(
+                        { context.unbindService(serviceConnection) },
+                        fabricPrivacy::logException
+                    )
             )
         }
         serviceRunning = true
@@ -123,48 +145,69 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
      * @return Class
      */
     // abstract val serviceClass: Class<*>?
-    // abstract val pumpStatusData: PumpStatus
 
     override fun isInitialized(): Boolean = pumpState.isInitialized()
     override fun isSuspended(): Boolean = pumpState == PumpDriverState.Suspended
     override fun isBusy(): Boolean = pumpState == PumpDriverState.Busy
 
     override fun isConnected(): Boolean {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "isConnected [PumpPluginAbstract].")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "isConnected [PumpPluginAbstract]."
+        )
         return pumpState.isConnected()
     }
 
     override fun isConnecting(): Boolean {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "isConnecting [PumpPluginAbstract].")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "isConnecting [PumpPluginAbstract]."
+        )
         return pumpState === PumpDriverState.Connecting
     }
 
     override fun connect(reason: String) {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "connect (reason={}) [PumpPluginAbstract] - default (empty) implementation.$reason")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "connect (reason={}) [PumpPluginAbstract] - default (empty) implementation.$reason"
+        )
     }
 
     override fun disconnect(reason: String) {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "disconnect (reason={}) [PumpPluginAbstract] - default (empty) implementation.$reason")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "disconnect (reason={}) [PumpPluginAbstract] - default (empty) implementation.$reason"
+        )
     }
 
     override fun stopConnecting() {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "stopConnecting [PumpPluginAbstract] - default (empty) implementation.")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "stopConnecting [PumpPluginAbstract] - default (empty) implementation."
+        )
     }
 
     override fun isHandshakeInProgress(): Boolean {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "isHandshakeInProgress [PumpPluginAbstract] - default (empty) implementation.")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "isHandshakeInProgress [PumpPluginAbstract] - default (empty) implementation."
+        )
         return false
     }
 
     override fun finishHandshaking() {
-        if (displayConnectionMessages) aapsLogger.debug(LTag.PUMP, "finishHandshaking [PumpPluginAbstract] - default (empty) implementation.")
+        if (displayConnectionMessages) aapsLogger.debug(
+            LTag.PUMP,
+            "finishHandshaking [PumpPluginAbstract] - default (empty) implementation."
+        )
     }
 
     // Upload to pump new basal profile
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "setNewBasalProfile [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(
-            R.string.pump_operation_not_supported_by_pump_driver)
+            R.string.pump_operation_not_supported_by_pump_driver
+        )
     }
 
     override fun isThisProfileSet(profile: Profile): Boolean {
@@ -172,10 +215,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return true
     }
 
-    override fun lastDataTime(): Long {
-        aapsLogger.debug(LTag.PUMP, "lastDataTime [PumpPluginAbstract].")
-        return pumpStatusData.lastConnection
-    }
+//    override fun lastDataTime(): Long {
+//        aapsLogger.debug(LTag.PUMP, "lastDataTime [PumpPluginAbstract].")
+//        return pumpStatusData.lastConnection
+//    }
 
     // base basal rate, not temp basal
     override val baseBasalRate: Double
@@ -188,12 +231,24 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         aapsLogger.debug(LTag.PUMP, "stopBolusDelivering [PumpPluginAbstract] - Not implemented.")
     }
 
-    override fun setTempBasalAbsolute(absoluteRate: Double, durationInMinutes: Int, profile: Profile, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult {
+    override fun setTempBasalAbsolute(
+        absoluteRate: Double,
+        durationInMinutes: Int,
+        profile: Profile,
+        enforceNew: Boolean,
+        tbrType: PumpSync.TemporaryBasalType
+    ): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "setTempBasalAbsolute [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    override fun setTempBasalPercent(percent: Int, durationInMinutes: Int, profile: Profile, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult {
+    override fun setTempBasalPercent(
+        percent: Int,
+        durationInMinutes: Int,
+        profile: Profile,
+        enforceNew: Boolean,
+        tbrType: PumpSync.TemporaryBasalType
+    ): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "setTempBasalPercent [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
@@ -210,10 +265,11 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    fun cancelTempBasal(isstartCommand:Boolean, enforceNew: Boolean): PumpEnactResult {
+    fun cancelTempBasal(isstartCommand: Boolean, enforceNew: Boolean): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "cancelTempBasal [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
+
     override fun cancelExtendedBolus(): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "cancelExtendedBolus [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
@@ -231,7 +287,10 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     // Short info for SMS, Wear etc
     override val isFakingTempsByExtendedBoluses: Boolean
         get() {
-            aapsLogger.debug(LTag.PUMP, "isFakingTempsByExtendedBoluses [PumpPluginAbstract] - Not implemented.")
+            aapsLogger.debug(
+                LTag.PUMP,
+                "isFakingTempsByExtendedBoluses [PumpPluginAbstract] - Not implemented."
+            )
             return false
         }
 
@@ -240,71 +299,91 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    override fun getJSONStatus(profile: Profile, profileName: String, version: String): JSONObject {
-        if (pumpStatusData.lastConnection + 60 * 60 * 1000L < System.currentTimeMillis()) {
-            return JSONObject()
-        }
-        val now = System.currentTimeMillis()
-        val pump = JSONObject()
-        val battery = JSONObject()
-        val status = JSONObject()
-        val extended = JSONObject()
-        try {
-            battery.put("percent", pumpStatusData.batteryRemaining)
-            status.put("status", pumpStatusData.pumpRunningState.status)
-            extended.put("Version", version)
-            try {
-                extended.put("ActiveProfile", profileName)
-            } catch (ignored: Exception) {
-            }
-            val tb = pumpSync.expectedPumpState().temporaryBasal
-            if (tb != null) {
-                extended.put("TempBasalAbsoluteRate", tb.convertedToAbsolute(now, profile))
-                extended.put("TempBasalStart", dateUtil.dateAndTimeString(tb.timestamp))
-                extended.put("TempBasalRemaining", tb.plannedRemainingMinutes)
-            }
-            val eb = pumpSync.expectedPumpState().extendedBolus
-            if (eb != null) {
-                extended.put("ExtendedBolusAbsoluteRate", eb.rate)
-                extended.put("ExtendedBolusStart", dateUtil.dateAndTimeString(eb.timestamp))
-                extended.put("ExtendedBolusRemaining", eb.plannedRemainingMinutes)
-            }
-            status.put("timestamp", dateUtil.toISOString(dateUtil.now()))
-            pump.put("battery", battery)
-            pump.put("status", status)
-            pump.put("extended", extended)
-            pump.put("reservoir", pumpStatusData.reservoirRemainingUnits)
-            pump.put("clock", dateUtil.toISOString(dateUtil.now()))
-        } catch (e: JSONException) {
-            aapsLogger.error("Unhandled exception", e)
-        }
-        return pump
-    }
+//    override fun getJSONStatus(profile: Profile, profileName: String, version: String): JSONObject {
+//        if (pumpStatusData.lastConnection + 60 * 60 * 1000L < System.currentTimeMillis()) {
+//            return JSONObject()
+//        }
+//        val now = System.currentTimeMillis()
+//        val pump = JSONObject()
+//        val battery = JSONObject()
+//        val status = JSONObject()
+//        val extended = JSONObject()
+//        try {
+//            battery.put("percent", pumpStatusData.batteryRemaining)
+//            status.put("status", pumpStatusData.pumpRunningState.status)
+//            extended.put("Version", version)
+//            try {
+//                extended.put("ActiveProfile", profileName)
+//            } catch (ignored: Exception) {
+//            }
+//            val tb = pumpSync.expectedPumpState().temporaryBasal
+//            if (tb != null) {
+//                extended.put("TempBasalAbsoluteRate", tb.convertedToAbsolute(now, profile))
+//                extended.put("TempBasalStart", dateUtil.dateAndTimeString(tb.timestamp))
+//                extended.put("TempBasalRemaining", tb.plannedRemainingMinutes)
+//            }
+//            val eb = pumpSync.expectedPumpState().extendedBolus
+//            if (eb != null) {
+//                extended.put("ExtendedBolusAbsoluteRate", eb.rate)
+//                extended.put("ExtendedBolusStart", dateUtil.dateAndTimeString(eb.timestamp))
+//                extended.put("ExtendedBolusRemaining", eb.plannedRemainingMinutes)
+//            }
+//            status.put("timestamp", dateUtil.toISOString(dateUtil.now()))
+//            pump.put("battery", battery)
+//            pump.put("status", status)
+//            pump.put("extended", extended)
+//            pump.put("reservoir", pumpStatusData.reservoirRemainingUnits)
+//            pump.put("clock", dateUtil.toISOString(dateUtil.now()))
+//        } catch (e: JSONException) {
+//            aapsLogger.error("Unhandled exception", e)
+//        }
+//        return pump
+//    }
 
     // FIXME i18n, null checks: iob, TDD
-    override fun shortStatus(veryShort: Boolean): String {
-        var ret = ""
-
-        ret += if (pumpStatusData.lastConnection == 0L) {
-            "LastConn: never\n"
-        } else {
-            val agoMin = ((System.currentTimeMillis() - pumpStatusData.lastConnection) / 60.0 / 1000.0).toInt()
-            "LastConn: $agoMin min ago\n"
-        }
-
-        pumpStatusData.lastBolusTime?.let {
-
-            if (it.time != 0L) {
-                ret += "LastBolus: ${decimalFormatter.to2Decimal(pumpStatusData.lastBolusAmount!!)}U @${DateFormat.format("HH:mm", it)}\n"
-            }
-        }
-        pumpSync.expectedPumpState().temporaryBasal?.let { ret += "Temp: ${it.toStringFull(dateUtil, decimalFormatter)}\n" }
-        pumpSync.expectedPumpState().extendedBolus?.let { ret += "Extended: ${it.toStringFull(dateUtil, decimalFormatter)}\n" }
-        ret += "IOB: ${pumpStatusData.iob}U\n"
-        ret += "Reserv: ${decimalFormatter.to0Decimal(pumpStatusData.reservoirRemainingUnits)}U\n"
-        ret += "Batt: ${pumpStatusData.batteryRemaining}\n"
-        return ret
-    }
+//    override fun shortStatus(veryShort: Boolean): String {
+//        var ret = ""
+//
+//        ret += if (pumpStatusData.lastConnection == 0L) {
+//            "LastConn: never\n"
+//        } else {
+//            val agoMin =
+//                ((System.currentTimeMillis() - pumpStatusData.lastConnection) / 60.0 / 1000.0).toInt()
+//            "LastConn: $agoMin min ago\n"
+//        }
+//
+//        pumpStatusData.lastBolusTime?.let {
+//
+//            if (it.time != 0L) {
+//                ret += "LastBolus: ${decimalFormatter.to2Decimal(pumpStatusData.lastBolusAmount!!)}U @${
+//                    DateFormat.format(
+//                        "HH:mm",
+//                        it
+//                    )
+//                }\n"
+//            }
+//        }
+//        pumpSync.expectedPumpState().temporaryBasal?.let {
+//            ret += "Temp: ${
+//                it.toStringFull(
+//                    dateUtil,
+//                    rh
+//                )
+//            }\n"
+//        }
+//        pumpSync.expectedPumpState().extendedBolus?.let {
+//            ret += "Extended: ${
+//                it.toStringFull(
+//                    dateUtil,
+//                    rh
+//                )
+//            }\n"
+//        }
+//        ret += "IOB: ${pumpStatusData.iob}U\n"
+//        ret += "Reserv: ${decimalFormatter.to0Decimal(pumpStatusData.reservoirRemainingUnits)}U\n"
+//        ret += "Batt: ${pumpStatusData.batteryRemaining}\n"
+//        return ret
+//    }
 
     override fun deliverTreatment(
         detailedBolusInfo: DetailedBolusInfo,
@@ -315,7 +394,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
                 // neither carbs nor bolus requested
                 aapsLogger.error("deliverTreatment: Invalid input")
                 func.invoke(
-                    instantiator.providePumpEnactResult().success(false).enacted(false).bolusDelivered(0.0)
+                    pumpEnactResultProvider.get().success(false).enacted(false).bolusDelivered(0.0)
                         .comment(rh.gs(app.aaps.core.ui.R.string.invalid_input))
                 )
             } else if (detailedBolusInfo.insulin > 0) {
@@ -327,16 +406,13 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
 
                 // no bolus required, carb only treatment
                 pumpSyncStorage.addBolusWithTempId(detailedBolusInfo, true, this)
-                val bolusingEvent = EventOverviewBolusProgress
-                bolusingEvent.t = EventOverviewBolusProgress.Treatment(detailedBolusInfo.insulin, detailedBolusInfo.carbs.toInt(), detailedBolusInfo.bolusType == BS.Type.SMB,
-                                                                       detailedBolusInfo.id)
-                bolusingEvent.percent = 100
+                val bolusingEvent = EventOverviewBolusProgress(rh, 100, detailedBolusInfo.id)
                 rxBus.send(bolusingEvent)
 
                 aapsLogger.debug(LTag.PUMP, "deliverTreatment: Carb only treatment.")
                 func.invoke(
-                    instantiator.providePumpEnactResult().success(true).enacted(true).bolusDelivered(0.0)
-                        .comment(rh.gs(R.string.common_resultok))
+                    pumpEnactResultProvider.get().success(true).enacted(true).bolusDelivered(0.0)
+                        .comment(rh.gs(app.aaps.core.ui.R.string.virtualpump_resultok))
                 )
             }
         } finally {
@@ -348,7 +424,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     //     rxBus.send(EventCustomActionsChanged())
     // }
 
-    override fun manufacturer(): ManufacturerType = pumpType.manufacturer!!
+    override fun manufacturer(): ManufacturerType = pumpType.manufacturer()
     override fun model(): PumpType = pumpType
     override fun canHandleDST(): Boolean = false
 
@@ -357,7 +433,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     // protected abstract fun triggerUIChange()
 
     private fun getOperationNotSupportedWithCustomText(resourceId: Int): PumpEnactResult =
-        instantiator.providePumpEnactResult().success(false).enacted(false).comment(resourceId)
+        pumpEnactResultProvider.get().success(false).enacted(false).comment(resourceId)
 
     init {
         pumpDescription.fillFor(pumpType)
@@ -370,8 +446,8 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     )
 
     abstract fun storeCancelTempBasal()
-    override abstract fun  postInit()
-    override abstract fun setMedtronicPumpModel(model: String)
+    override abstract fun postInit()
+    override abstract fun setMedtronicPumpModel(models: String)
     abstract override fun setBatteryLevel(batteryLevel: Int)
     abstract override fun getBatteryType(): String
     abstract fun changeStatusTime(currentTimeMillis: Long)

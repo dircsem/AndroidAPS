@@ -1961,18 +1961,20 @@ class PersistenceLayerImpl @Inject constructor(
                 }
                 transactionResult
             }
-}
+
 
     override fun getLastTherapyEvent(eventType: TE.Type): TE? =
         repository.getLastTherapyRecordUpToNow(eventType.toDb()).blockingGet()?.fromDb()
 
+
     override fun getLastNonTBRBolusTime(): PumpSync.PumpState.Bolus? {
-        val bolus = repository.getLastNonTBRBolusRecord()
-        if (bolus != null) {
-            return PumpSync.PumpState.Bolus(bolus.timestamp, bolus.amount)
-        } else {
-            return null
+            val bolus = repository.getLastNonTBRBolusRecord()
+            if (bolus != null) {
+                    return PumpSync.PumpState.Bolus(bolus.timestamp, bolus.amount)
+                } else {
+                    return null
+                }
         }
-    }
+
 
 }

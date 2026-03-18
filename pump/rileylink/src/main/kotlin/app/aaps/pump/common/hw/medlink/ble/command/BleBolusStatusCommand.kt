@@ -1,6 +1,5 @@
 package app.aaps.pump.common.hw.medlink.ble.command
 
-import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.pump.common.hw.medlink.activities.BolusProgressCallback
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
@@ -10,19 +9,21 @@ import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 class BleBolusStatusCommand(
     aapsLogger: AAPSLogger,
-    medLinkServiceData: MedLinkServiceData,
+    medLinkServiceData: MedLinkServiceData?,
     val medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
-    private var status: MedLinkPartialBolus = MedLinkPartialBolus(PumpType.MEDLINK_MEDTRONIC_554_754_VEO)
+private var status: MedLinkPartialBolus = MedLinkPartialBolus()
 
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
+        var pumpStatus = medLinkPumpPluginAbstract.medLinkPumpStatus
         if(bleComm.currentCommand!!.hasFinished() || answer.contains("time to powerdown 5")) {
             bleComm.nextCommand()
         } else if (answer.contains("ready")) {
@@ -30,9 +31,10 @@ class BleBolusStatusCommand(
             val fullResponse = pumpResponse.toString()
             if(fullResponse.contains("last")) {
                 val responseIterator = fullResponse.substring(fullResponse.indexOf("last")).split("\n").iterator()
-                status = MedLinkStatusParser.parseBolusInfo(
-                    responseIterator, status
-                ) as MedLinkPartialBolus
+                val bolusStatus = MedLinkStatusParser.parseBolusInfo(
+                    responseIterator, status, aapsLogger
+                )
+                pumpStatus = convertToPumpStatus(bolusStatus)
                 if (bleComm.needToCheckOnHold && bleComm.onHoldCommandQueue.isNotEmpty()) {
                     val onHoldCommand = bleComm.onHoldCommandQueue.first
                     val firstCommand = onHoldCommand.commandList.first()
@@ -56,8 +58,8 @@ class BleBolusStatusCommand(
             }
             aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
             aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
-            if (status.lastBolusAmount != null && status.bolusDeliveredAmount!! > 0 &&
-                status.bolusDeliveredAmount!! < status.lastBolusAmount!!
+            if (pumpStatus.bolusDeliveredAmount!! > 0 &&
+                pumpStatus.bolusDeliveredAmount!! < (pumpStatus.lastBolusAmount ?: 0.0)
             ) {
                 bleComm.clearExecutedCommand()
             } else {
@@ -68,5 +70,12 @@ class BleBolusStatusCommand(
         } else if (!(lastCharacteristic+answer).contains("time to powerdown") || answer.contains("confirmed")) {
             super.characteristicChanged(answer, bleComm, lastCharacteristic)
         }
+    }
+
+    private fun convertToPumpStatus(bolusStatus: MedLinkPartialBolus): MedLinkPumpStatus {
+        val status = medLinkPumpPluginAbstract.medLinkPumpStatus
+        status.bolusDeliveredAmount = bolusStatus.bolusDeliveredAmount
+        status.lastBolusTime = bolusStatus.lastBolusTime
+        return status
     }
 }

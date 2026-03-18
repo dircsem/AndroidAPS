@@ -59,7 +59,7 @@ open class MedLinkPumpMessage<B, C> //implements RLMessage
 
     constructor(
         commandType: MedLinkCommandType,
-        baseCallback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<B>>,
+        baseCallback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<B>>?,
         btSleepTime: Long,
         bleCommand: BleCommand,
         commandPriority: CommandPriority
@@ -72,7 +72,7 @@ open class MedLinkPumpMessage<B, C> //implements RLMessage
     constructor(
         commandType: MedLinkCommandType,
         argument: MedLinkCommandType,
-        baseCallback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<B>>,
+        baseCallback: Function<Supplier<Stream<String>>, MedLinkStandardReturn<B>>?,
         btSleepTime: Long,
         bleCommand: BleCommand,
         commandPriority: CommandPriority,

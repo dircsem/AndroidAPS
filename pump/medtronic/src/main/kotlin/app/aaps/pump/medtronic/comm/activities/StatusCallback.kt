@@ -1,12 +1,12 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
+package app.aaps.pump.medtronic.comm.activities
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.BGReadingStatus
-import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
-import app.aaps.pump.common.hw.medlink.activities.BaseStatusCallback
+import app.aaps.core.interfaces.source.BgSync
+import app.aaps.pump.common.hw.medlink.activities. BaseStatusCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser.Companion.parseStatus
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
@@ -24,11 +24,11 @@ class StatusCallback(
     private val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin, private val medLinkPumpStatus: MedLinkPumpStatus
 ) : BaseStatusCallback<MedLinkPumpStatus>(medLinkPumpStatus) {
 
-    override fun apply(s: Supplier<Stream<String>>): MedLinkStandardReturn<MedLinkPumpStatus> {
-        val f = MedLinkStandardReturn<MedLinkPumpStatus>(s, medLinkPumpStatus)
+    override fun apply(streamSupplier: Supplier<Stream<String>>): MedLinkStandardReturn<MedLinkPumpStatus> {
+        val f = MedLinkStandardReturn(streamSupplier, medLinkPumpStatus)
         val answer = f.getAnswer()
         aapsLogger.info(LTag.PUMPBTCOMM, "BaseResultActivity")
-        aapsLogger.info(LTag.PUMPBTCOMM, s.get().collect(Collectors.joining()))
+        aapsLogger.info(LTag.PUMPBTCOMM, streamSupplier.get().collect(Collectors.joining()))
         val messages: Array<String> = answer.toArray().map { it.toString() }.toTypedArray()
         aapsLogger.debug("ready")
         val pattern = Pattern.compile("\\d+")
@@ -36,8 +36,8 @@ class StatusCallback(
         if (matcher.find()) {
             medLinkPumpStatus.lastConnection = Objects.requireNonNull(matcher.group(0)).toLong()
         }
-        val pumpStatus = medLinkPumpPlugin.pumpStatusData
-        parseStatus(messages, medLinkPumpStatus, medLinkPumpPlugin.injector, aapsLogger)
+        val pumpStatus = medLinkPumpPlugin.medLinkPumpStatus
+        parseStatus(messages, medLinkPumpStatus,  aapsLogger)
         aapsLogger.debug("Pumpstatus")
         aapsLogger.debug(pumpStatus.toString())
         medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active

@@ -3,18 +3,18 @@ package app.aaps.core.interfaces.pump
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
-import java.util.Date
+import app.aaps.core.keys.interfaces.Preferences
 
 interface MedLinkPumpPluginBase {
 
-    abstract val lastBolusTime: Date
+    val preferences: Preferences
+    val medLinkPumpStatus: MedLinkPumpStatus
+//    abstract val lastBolusTime: Date
     abstract val lastConnection: Long
-    abstract val pumpStatusData: MedLinkPumpStatus
+//    abstract val pumpStatusData: MedLinkPumpStatus
     abstract val serviceClass: Class<*>?
     val rh: ResourceHelper
-    val sp: SP?
     abstract val uiInteraction: UiInteraction
     val pumpSync: PumpSync
 
@@ -35,11 +35,11 @@ interface MedLinkPumpPluginBase {
                           func: Function1<PumpEnactResult, *>): PumpEnactResult
 
   fun setTempBasalAbsolute(
-        absoluteRate: Double,
-        durationInMinutes: Int,
-        profile: Profile,
-        enforceNew: Boolean,
-        callback: Function1<PumpEnactResult, *>
+      absoluteRate: Double,
+      durationInMinutes: Int,
+      profile: Profile,
+      enforceNew: Boolean,
+      callback: Function1<PumpEnactResult, *>
     )
  fun cancelTempBasal(isStartCommand:Boolean, enforceNew: Boolean, callback: Callback?): PumpEnactResult
 
@@ -50,7 +50,9 @@ interface MedLinkPumpPluginBase {
     fun setLastCommunicationToNow()
     abstract fun handleBolusDelivered(lastBolusInfo: DetailedBolusInfo?)
     abstract fun isInitialized(): Boolean
-    abstract fun setMedtronicPumpModel(s: String)
+    abstract fun setMedtronicPumpModel(model: String)
     fun postInit()
     fun reDeliverBolus(detailedBolusInfo: DetailedBolusInfo)
+    fun setSuspended()
+
 }
