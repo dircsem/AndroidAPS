@@ -1,250 +1,230 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.dialog;
+package app.aaps.pump.medtronic.dialog
 
-import android.os.Bundle;
-import android.os.SystemClock;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.Spinner;
-import android.widget.TextView;
+import android.os.Bundle
+import android.os.SystemClock
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.pump.common.defs.PumpHistoryEntryGroup
+import app.aaps.pump.medtronic.R
+import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
+import app.aaps.pump.medtronic.data.MedLinkMedtronicHistoryData
+import dagger.android.DaggerActivity
+import javax.inject.Inject
 
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import javax.inject.Inject;
-
-import dagger.android.DaggerActivity;
-import info.nightscout.androidaps.plugins.pump.medtronic.R;
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntry;
-import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkMedtronicHistoryData;
-import info.nightscout.pump.common.defs.PumpHistoryEntryGroup;
-import app.aaps.core.interfaces.resources.ResourceHelper;
-
-
-public class MedLinkMedtronicHistoryActivity extends DaggerActivity {
-
-    @Inject MedLinkMedtronicHistoryData medtronicHistoryData;
-    @Inject ResourceHelper resourceHelper;
-
-    Spinner historyTypeSpinner;
-    TextView statusView;
-    RecyclerView recyclerView;
-    LinearLayoutManager llm;
-
-    static TypeList showingType = null;
-    static PumpHistoryEntryGroup selectedGroup = PumpHistoryEntryGroup.All;
-    List<PumpHistoryEntry> filteredHistoryList = new ArrayList<>();
-
-    RecyclerViewAdapter recyclerViewAdapter;
-    boolean manualChange = false;
-
-    List<TypeList> typeListFull;
+class MedLinkMedtronicHistoryActivity : DaggerActivity() {
+    @JvmField
+    @Inject
+    var medtronicHistoryData: MedLinkMedtronicHistoryData? = null
 
 
-    private void filterHistory(PumpHistoryEntryGroup group) {
+    @Inject
+    lateinit var resourceHelper: ResourceHelper
 
-        this.filteredHistoryList.clear();
+    lateinit var historyTypeSpinner: Spinner
+    var statusView: TextView? = null
+    var recyclerView: RecyclerView? = null
+    var llm: LinearLayoutManager? = null
 
-        List<PumpHistoryEntry> list = new ArrayList<>();
-        list.addAll(medtronicHistoryData.getAllHistory());
+    var filteredHistoryList: MutableList<PumpHistoryEntry> = ArrayList()
+
+    var recyclerViewAdapter: RecyclerViewAdapter? = null
+    var manualChange: Boolean = false
+
+    lateinit var typeListFull: List<TypeList>
+
+
+    private fun filterHistory(group: PumpHistoryEntryGroup?) {
+        this.filteredHistoryList.clear()
+
+        val list: MutableList<PumpHistoryEntry> = ArrayList<PumpHistoryEntry>()
+        list.addAll(medtronicHistoryData!!.allHistory)
 
         //LOG.debug("Items on full list: {}", list.size());
-
         if (group == PumpHistoryEntryGroup.All) {
-            this.filteredHistoryList.addAll(list);
+            this.filteredHistoryList.addAll(list)
         } else {
-            for (PumpHistoryEntry pumpHistoryEntry : list) {
-                if (pumpHistoryEntry.getEntryType().getGroup() == group) {
-                    this.filteredHistoryList.add(pumpHistoryEntry);
+            for (pumpHistoryEntry in list) {
+                if (pumpHistoryEntry.entryType.group == group) {
+                    this.filteredHistoryList.add(pumpHistoryEntry)
                 }
             }
         }
 
         if (this.recyclerViewAdapter != null) {
-            this.recyclerViewAdapter.setHistoryList(this.filteredHistoryList);
-            this.recyclerViewAdapter.notifyDataSetChanged();
+            this.recyclerViewAdapter!!.historyList = this.filteredHistoryList
+            this.recyclerViewAdapter!!.notifyDataSetChanged()
         }
 
         //LOG.debug("Items on filtered list: {}", filteredHistoryList.size());
     }
 
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        filterHistory(selectedGroup);
-        setHistoryTypeSpinner();
+    override fun onResume() {
+        super.onResume()
+        filterHistory(selectedGroup)
+        setHistoryTypeSpinner()
     }
 
 
-    private void setHistoryTypeSpinner() {
-        this.manualChange = true;
+    private fun setHistoryTypeSpinner() {
+        this.manualChange = true
 
-        for (int i = 0; i < typeListFull.size(); i++) {
-            if (typeListFull.get(i).entryGroup == selectedGroup) {
-                historyTypeSpinner.setSelection(i);
-                break;
+        for (i in typeListFull!!.indices) {
+            if (typeListFull!!.get(i)!!.entryGroup == selectedGroup) {
+                historyTypeSpinner!!.setSelection(i)
+                break
             }
         }
 
-        SystemClock.sleep(200);
-        this.manualChange = false;
+        SystemClock.sleep(200)
+        this.manualChange = false
     }
 
 
-    @Override
-    protected void onPause() {
-        super.onPause();
+    override fun onPause() {
+        super.onPause()
     }
 
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.medtronic_history_activity);
+    public override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.medtronic_history_activity)
 
-        historyTypeSpinner = findViewById(R.id.medtronic_historytype);
-        statusView = findViewById(R.id.medtronic_historystatus);
-        recyclerView = findViewById(R.id.medtronic_history_recyclerview);
+        historyTypeSpinner = findViewById<Spinner>(R.id.medtronic_historytype)
+        statusView = findViewById<TextView>(R.id.medtronic_historystatus)
+        recyclerView = findViewById<RecyclerView>(R.id.medtronic_history_recyclerview)
 
-        recyclerView.setHasFixedSize(true);
-        llm = new LinearLayoutManager(this);
-        recyclerView.setLayoutManager(llm);
+        recyclerView!!.setHasFixedSize(true)
+        llm = LinearLayoutManager(this)
+        recyclerView!!.setLayoutManager(llm)
 
-        recyclerViewAdapter = new RecyclerViewAdapter(filteredHistoryList);
-        recyclerView.setAdapter(recyclerViewAdapter);
+        recyclerViewAdapter = RecyclerViewAdapter(filteredHistoryList)
+        recyclerView!!.setAdapter(recyclerViewAdapter)
 
-        statusView.setVisibility(View.GONE);
+        statusView!!.setVisibility(View.GONE)
 
-        typeListFull = getTypeList(PumpHistoryEntryGroup.Companion.getTranslatedList(resourceHelper));
+        typeListFull =
+            getTypeList(PumpHistoryEntryGroup.Companion.getTranslatedList(resourceHelper!!))
 
-        ArrayAdapter<TypeList> spinnerAdapter = new ArrayAdapter<>(this, app.aaps.core.ui.R.layout.spinner_centered, typeListFull);
-        historyTypeSpinner.setAdapter(spinnerAdapter);
+        val spinnerAdapter =
+            ArrayAdapter(this, app.aaps.core.ui.R.layout.spinner_centered, typeListFull)
+        historyTypeSpinner!!.setAdapter(spinnerAdapter)
 
-        historyTypeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (manualChange)
-                    return;
-                TypeList selected = (TypeList) historyTypeSpinner.getSelectedItem();
-                showingType = selected;
-                selectedGroup = selected.entryGroup;
-                filterHistory(selectedGroup);
+        historyTypeSpinner!!.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                if (manualChange) return
+                val selected = historyTypeSpinner!!.getSelectedItem() as TypeList
+                showingType = selected
+                selectedGroup = selected.entryGroup
+                filterHistory(selectedGroup)
             }
 
 
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-                if (manualChange)
-                    return;
-                filterHistory(PumpHistoryEntryGroup.All);
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                if (manualChange) return
+                filterHistory(PumpHistoryEntryGroup.All)
             }
-        });
-
+        })
     }
 
 
-    private List<TypeList> getTypeList(List<PumpHistoryEntryGroup> list) {
+    private fun getTypeList(list: List<PumpHistoryEntryGroup>): List<TypeList> {
+        val typeList = ArrayList<TypeList>()
 
-        ArrayList<TypeList> typeList = new ArrayList<>();
-
-        for (PumpHistoryEntryGroup pumpHistoryEntryGroup : list) {
-            typeList.add(new TypeList(pumpHistoryEntryGroup));
+        for (pumpHistoryEntryGroup in list) {
+            typeList.add(TypeList(pumpHistoryEntryGroup))
         }
 
-        return typeList;
+        return typeList
     }
 
-    public static class TypeList {
+    class TypeList internal constructor(entryGroup: PumpHistoryEntryGroup) {
+        var entryGroup: PumpHistoryEntryGroup?
+        var name: String?
 
-        PumpHistoryEntryGroup entryGroup;
-        String name;
 
-
-        TypeList(PumpHistoryEntryGroup entryGroup) {
-            this.entryGroup = entryGroup;
-            this.name = entryGroup.getTranslated();
+        init {
+            this.entryGroup = entryGroup
+            this.name = entryGroup.translated
         }
 
 
-        @Override
-        public String toString() {
-            return name;
+        override fun toString(): String {
+            return name!!
         }
     }
 
-    public static class RecyclerViewAdapter extends RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder> {
+    class RecyclerViewAdapter internal constructor(var historyList: MutableList<PumpHistoryEntry>) :
+        RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder>() {
+//        fun setHistoryList(historyList: MutableList<PumpHistoryEntry>) {
+//            // this.historyList.clear();
+//            // this.historyList.addAll(historyList);
+//
+//            this.historyList = historyList
+//
+//            // this.notifyDataSetChanged();
+//        }
 
-        List<PumpHistoryEntry> historyList;
 
-
-        RecyclerViewAdapter(List<PumpHistoryEntry> historyList) {
-            this.historyList = historyList;
+        override fun onCreateViewHolder(viewGroup: ViewGroup, viewType: Int): HistoryViewHolder {
+            val v = LayoutInflater.from(viewGroup.getContext()).inflate(
+                R.layout.medtronic_history_item,  //
+                viewGroup, false
+            )
+            return HistoryViewHolder(v)
         }
 
 
-        public void setHistoryList(List<PumpHistoryEntry> historyList) {
-            // this.historyList.clear();
-            // this.historyList.addAll(historyList);
-
-            this.historyList = historyList;
-
-            // this.notifyDataSetChanged();
-        }
-
-
-        @Override
-        public HistoryViewHolder onCreateViewHolder(ViewGroup viewGroup, int viewType) {
-            View v = LayoutInflater.from(viewGroup.getContext()).inflate(R.layout.medtronic_history_item, //
-                    viewGroup, false);
-            return new HistoryViewHolder(v);
-        }
-
-
-        @Override
-        public void onBindViewHolder(HistoryViewHolder holder, int position) {
-            PumpHistoryEntry record = historyList.get(position);
+        override fun onBindViewHolder(holder: HistoryViewHolder, position: Int) {
+            val record = historyList.get(position)
 
             if (record != null) {
-                holder.timeView.setText(record.getDateTimeString());
-                holder.typeView.setText(record.getEntryType().getDescription());
-                holder.valueView.setText(record.getDisplayableValue());
+                holder.timeView.setText(record.dateTimeString)
+                holder.typeView.setText(record.entryType.description)
+                holder.valueView.setText(record.displayableValue)
             }
         }
 
 
-        @Override
-        public int getItemCount() {
-            return historyList.size();
+        override fun getItemCount(): Int {
+            return historyList.size
         }
 
 
-        @Override
-        public void onAttachedToRecyclerView(RecyclerView recyclerView) {
-            super.onAttachedToRecyclerView(recyclerView);
+        override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+            super.onAttachedToRecyclerView(recyclerView)
         }
 
-        static class HistoryViewHolder extends RecyclerView.ViewHolder {
+        class HistoryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            var timeView: TextView
+            var typeView: TextView
+            var valueView: TextView
 
-            TextView timeView;
-            TextView typeView;
-            TextView valueView;
 
-
-            HistoryViewHolder(View itemView) {
-                super(itemView);
+            init {
                 // cv = (CardView)itemView.findViewById(R.id.rileylink_history_item);
-                timeView = itemView.findViewById(R.id.medtronic_history_time);
-                typeView = itemView.findViewById(R.id.medtronic_history_source);
-                valueView = itemView.findViewById(R.id.medtronic_history_description);
+                timeView = itemView.findViewById<TextView>(R.id.medtronic_history_time)
+                typeView = itemView.findViewById<TextView>(R.id.medtronic_history_source)
+                valueView = itemView.findViewById<TextView>(R.id.medtronic_history_description)
             }
         }
     }
 
+    companion object {
+        var showingType: TypeList? = null
+        var selectedGroup: PumpHistoryEntryGroup? = PumpHistoryEntryGroup.All
+    }
 }

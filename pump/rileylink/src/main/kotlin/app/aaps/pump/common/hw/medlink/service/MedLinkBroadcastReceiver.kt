@@ -13,19 +13,23 @@ import app.aaps.pump.common.hw.medlink.defs.MedLinkError
 import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
 import app.aaps.pump.common.hw.medlink.service.tasks.InitializeMedLinkPumpManagerTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.DiscoverGattServicesTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.pump.common.hw.rileylink.RileyLinkConst
+import app.aaps.pump.common.hw.rileylink.service.tasks.DiscoverGattServicesTask
+import app.aaps.pump.common.hw.rileylink.service.tasks.InitializePumpManagerTask
+import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTask
+import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
+import app.aaps.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask
 
 import javax.inject.Inject
+import javax.inject.Provider
 
 /**
  * Created by Dirceu on 29/09/20.
@@ -34,9 +38,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
 
     @Inject
     lateinit var medLinkServiceData: MedLinkServiceData
-
-    @Inject
-    lateinit var injector: HasAndroidInjector
+    @Inject lateinit var initializePumpManagerTaskProvider: Provider<InitializeMedLinkPumpManagerTask>
 
     @JvmField @Inject
     var sp: SP? = null
@@ -49,6 +51,8 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
 
     @Inject
     lateinit var activePlugin: ActivePlugin
+    @Inject
+    lateinit var rxBus: RxBus
     private val broadcastIdentifiers: MutableMap<String, List<String>> = HashMap()
     private fun createBroadcastIdentifiers() {
 
@@ -71,10 +75,10 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
     }
 
     fun getServiceInstance(): MedLinkService? {
-        val pump = activePlugin!!.activePump
+        val pump = activePlugin.activePump
         return if (pump is MedLinkPumpDevice) {
             val pumpDevice = pump as MedLinkPumpDevice
-            pumpDevice.getRileyLinkService()
+            pumpDevice.medLinkService
         } else {
             null
         }
@@ -83,12 +87,12 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
     fun processBluetoothBroadcasts(action: String): Boolean {
         return if (action == MedLinkConst.Intents.BluetoothConnected) {
             aapsLogger!!.info(LTag.PUMPBTCOMM, "Bluetooth - Connected")
-            serviceTaskExecutor!!.startTask(DiscoverGattServicesTask(injector!!, true))
+            serviceTaskExecutor.startTask(DiscoverGattServicesTask(activePlugin))
             true
         } else if (action == MedLinkConst.Intents.BluetoothReconnected) {
             aapsLogger!!.info(LTag.PUMPBTCOMM, "Bluetooth - Reconnecting")
             getServiceInstance()!!.bluetoothInit()
-            serviceTaskExecutor!!.startTask(DiscoverGattServicesTask(injector!!, true))
+            serviceTaskExecutor.startTask(DiscoverGattServicesTask(activePlugin))
             true
         } else {
             false
@@ -97,9 +101,9 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
 
     private fun processTuneUpBroadcasts(action: String): Boolean =
         if (broadcastIdentifiers["TuneUp"]?.contains(action) == true) {
-            if (medLinkServiceData.targetDevice?.isTuneUpEnabled == true) serviceTaskExecutor.startTask(
-                info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask(
-                    injector
+            if (medLinkServiceData.targetDevice!!.tuneUpEnabled) serviceTaskExecutor.startTask(
+                WakeAndTuneTask(
+                    activePlugin, rxBus
                 )
             )
             true
@@ -137,13 +141,13 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
         aapsLogger!!.debug("processMedLinkBroadcasts $action")
         return if (action == MedLinkConst.Intents.MedLinkDisconnected) {
             if (BluetoothAdapter.getDefaultAdapter().isEnabled) {
-                medLinkServiceData!!.setServiceState(
+                medLinkServiceData.setServiceState(
                     MedLinkServiceState.BluetoothError,
                     MedLinkError.MedLinkUnreachable)
                 //                medLinkServiceData.activePlugin
                 //TODO schedule bg reading
             } else {
-                medLinkServiceData!!.setServiceState(
+                medLinkServiceData.setServiceState(
                     MedLinkServiceState.BluetoothError,
                     MedLinkError.BluetoothDisabled)
             }
@@ -157,7 +161,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
             val actions = action.split("\n").toTypedArray()
             getServiceInstance()!!.rfSpy.initializeMedLink()
             //            String bleVersion = medLinkService.getMedLinkRFSpy().getBLEVersionCached();
-            val rlVersion = medLinkServiceData!!.firmwareVersion
+            val rlVersion = medLinkServiceData.firmwareVersion
 
 //            if (isLoggingEnabled())
 //            aapsLogger.debug(LTag.PUMPCOMM, "RfSpy version (BLE113): " + bleVersion);
@@ -168,14 +172,14 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
                     pump.setBatteryLevel(message.getIntExtra("BatteryLevel", 0))
                 }
                 medLinkService.medLinkServiceData.versionBLE113 = message.getStringExtra("FirmwareVersion")
-                medLinkServiceData!!.batteryLevel = message.getIntExtra("BatteryLevel", 0)
+                medLinkServiceData.batteryLevel = message.getIntExtra("BatteryLevel", 0)
             } else {
-                medLinkServiceData!!.versionBLE113 = ""
+                medLinkServiceData.versionBLE113 = ""
             }
-            aapsLogger!!.debug(LTag.PUMPCOMM, "RfSpy Radio version (CC110): " + rlVersion.name)
-            medLinkServiceData!!.versionCC110 = rlVersion.name
-            val task: ServiceTask = InitializeMedLinkPumpManagerTask(injector!!)
-            serviceTaskExecutor!!.startTask(task)
+            aapsLogger!!.debug(LTag.PUMPCOMM, "RfSpy Radio version (CC110): " + rlVersion!!.name)
+            medLinkServiceData.versionCC110 = rlVersion.name
+            val task: ServiceTask = initializePumpManagerTaskProvider.get()
+            serviceTaskExecutor.startTask(task)
             aapsLogger!!.info(LTag.PUMPCOMM, "Announcing MedLink open For business")
             true
         } else if (action == MedLinkConst.Intents.MedLinkNewAddressSet) {
@@ -183,7 +187,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
             if (medLinkBLEAddress == "") {
                 aapsLogger!!.error("No MedLink BLE Address saved in app")
                 aapsLogger!!.error(sp.toString())
-                aapsLogger!!.error("ERROR" + sp!!.getString(RileyLinkConst.Prefs.RileyLinkAddress, ""))
+//                aapsLogger!!.error("ERROR" + sp!!.getString(RileyLinkConst..Prefs.RileyLinkAddress, ""))
             } else {
                 aapsLogger!!.error("MedLink BLE Address saved in app")
                 // showBusy("Configuring Service", 50);
@@ -201,7 +205,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
         true
     } else if (action == MedLinkConst.Intents.MedLinkConnected)
     {
-        medLinkServiceData!!.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
+        medLinkServiceData.medLinkServiceState = MedLinkServiceState.PumpConnectorReady
         true
     } else if (action == MedLinkConst.Intents.MedLinkConnectionError)
     {
@@ -220,7 +224,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
                 }
         }
         aapsLogger!!.info(LTag.PUMP, "pump unreachable")
-        medLinkServiceData!!.setServiceState(
+        medLinkServiceData.setServiceState(
             MedLinkServiceState.PumpConnectorError,
             MedLinkError.NoContactWithDevice)
         val tuneUpMessage = Intent()

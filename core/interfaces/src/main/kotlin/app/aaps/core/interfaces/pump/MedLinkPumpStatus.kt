@@ -1,7 +1,9 @@
 package app.aaps.core.interfaces.pump
 
 import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
+
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
+import app.aaps.core.interfaces.source.BgSync
 import java.time.ZonedDateTime
 import java.util.Date
 
@@ -11,7 +13,7 @@ interface MedLinkPumpStatus {
     val lastBolusInfo: DetailedBolusInfo?
     var lastReadingStatus: BGReadingStatus
     var pumpDeviceState: PumpDeviceState
-    val batteryRemaining: Int
+    val batteryRemaining: Int?
     val iob: String?
     var lastConnection: Long
     var bolusDeliveredAmount: Double?
@@ -21,14 +23,14 @@ interface MedLinkPumpStatus {
     var isBatteryChanged: Boolean
     var lastDataTime: Long
     var reservoirRemainingUnits: Double
-    var batteryVoltage: Double
+    var batteryVoltage: Double?
     var currentBasal: Double
     var activeProfileName: String
     var tempBasalRemainMin: Int
     var tempBasalAmount: Double?
     var yesterdayTotalUnits: Double?
     var dailyTotalUnits: Double?
-    var pumpRunningState: PumpRunningState
+//    var pumpRunningState: PumpRunningState
     var sensorAge: Int?
     var isig: Double?
     var bgReading:  EnliteInMemoryGlucoseValue?
@@ -40,18 +42,21 @@ interface MedLinkPumpStatus {
     var lastBGTimestamp: Long
 
     abstract fun setLastCommunicationToNow()
+    fun setPumpRunning()
+    fun setPumpSuspended()
+    fun setPumpUnknow()
 }
 
-enum class PumpRunningState(val status: String) {
-    Running("normal"),
-    Suspended("suspended"),
-    TempBasalSuspended("tempBasalSuspended"),
-    Unknow("unknow");
-
-    fun isSuspended():Boolean {
-       return status == "suspended" || status == "tempBasalSuspended" || status == "unknow"
-    }
-}
+//enum class PumpRunningState(val status: String) {
+//    Running("normal"),
+//    Suspended("suspended"),
+//    TempBasalSuspended("tempBasalSuspended"),
+//    Unknow("unknow");
+//
+//    fun isSuspended():Boolean {
+//       return status == "suspended" || status == "tempBasalSuspended" || status == "unknow"
+//    }
+//}
 
 enum class BGReadingStatus {
     SUCCESS,

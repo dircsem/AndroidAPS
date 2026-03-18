@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.common.dialog
+package app.aaps.pump.common.dialog
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -21,19 +21,22 @@ import app.aaps.pump.common.hw.medlink.MedLinkConst
 import app.aaps.pump.common.hw.medlink.MedLinkConst.DEVICE_NAME
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.GattAttributes
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.MedLinkBleConfigActivityBinding
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.BlePreCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.core.ui.dialogs.OKDialog
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
+import app.aaps.pump.common.hw.medlink.ble.data.GattAttributes
+import app.aaps.pump.common.hw.medlink.keys.MedLinkIntentPreferenceKey
+import app.aaps.pump.common.hw.medlink.keys.MedLinkStringKey
+import app.aaps.pump.common.hw.medlink.keys.MedLinkStringPreferenceKey
+import app.aaps.pump.common.hw.rileylink.R
+import app.aaps.pump.common.hw.rileylink.RileyLinkConst
+import app.aaps.pump.common.hw.rileylink.databinding.MedLinkBleConfigActivityBinding
 import org.apache.commons.lang3.StringUtils
 import java.util.*
 import javax.inject.Inject
@@ -41,7 +44,7 @@ import javax.inject.Inject
 // IMPORTANT: This activity needs to be called from RileyLinkSelectPreference (see pref_medtronic.xml as example)
 class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var blePreCheck: BlePreCheck
     @Inject lateinit var medLinkUtil: MedLinkUtil
     @Inject lateinit var activePlugin: ActivePlugin
@@ -50,7 +53,9 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var rh: ResourceHelper
 
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
-    private val bluetoothAdapter: BluetoothAdapter? get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
+    private val bluetoothAdapter: BluetoothAdapter? get() = (context.getSystemService(
+        BLUETOOTH_SERVICE
+    ) as BluetoothManager?)?.adapter
     private var deviceListAdapter = LeDeviceListAdapter()
     private var settings: ScanSettings? = null
     private var filters: List<ScanFilter>? = null
@@ -76,13 +81,13 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
             // stop scanning if still active
             if (scanning) stopLeDeviceScan()
 
-            val bleAddress = (view.findViewById(R.id.med_link_ble_config_scan_item_device_address) as TextView).text.toString()
-            val deviceName = (view.findViewById(R.id.med_link_ble_config_scan_item_device_name) as TextView).text.toString()
-            sp.putString(MedLinkConst.Prefs.MedLinkAddress, bleAddress)
-            sp.putString(MedLinkConst.Prefs.MedLinkName, deviceName)
-            val rileyLinkPump = activePlugin.activePump as MedLinkPumpDevice
-            rileyLinkPump.getRileyLinkService()?.verifyConfiguration() // force reloading of address to assure that the RL gets reconnected (even if the address didn't change)
-            rileyLinkPump.triggerPumpConfigurationChangedEvent()
+            val bleAddress = view.findViewById<TextView>(R.id.med_link_ble_config_scan_item_device_address).text.toString()
+            val deviceName = view.findViewById<TextView>(R.id.med_link_ble_config_scan_item_device_name).text.toString()
+            preferences.put(MedLinkStringPreferenceKey.MacAddress, bleAddress)
+            preferences.put(MedLinkStringKey.Name, deviceName)
+            val medLinkPump = activePlugin.activePump as MedLinkPumpDevice
+            medLinkPump.medLinkService?.verifyConfiguration() // force reloading of address to assure that the RL gets reconnected (even if the address didn't change)
+            medLinkPump.triggerPumpConfigurationChangedEvent()
             finish()
         }
         binding.medLinkBleConfigScanStart.setOnClickListener {
@@ -101,10 +106,10 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
                 this@MedLinkBLEConfigActivity,
                 rh.gs(R.string.med_link_ble_config_remove_med_link_confirmation_title),
                 rh.gs(R.string.med_link_ble_config_remove_med_link_confirmation),
-                Runnable {
+                 {
                     medLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkDisconnect, this@MedLinkBLEConfigActivity)
-                    sp.remove(MedLinkConst.Prefs.MedLinkAddress)
-                    sp.remove(MedLinkConst.Prefs.MedLinkName)
+                    preferences.remove(MedLinkStringPreferenceKey.MacAddress)
+                     preferences.remove(MedLinkStringKey.Name)
                     updateCurrentlySelectedRileyLink()
                 })
             // AlertDialog.Builder(this)
@@ -123,7 +128,7 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
     }
 
     private fun updateCurrentlySelectedRileyLink() {
-        val address = sp.getString(MedLinkConst.Prefs.MedLinkAddress, "")
+        val address = preferences.get(MedLinkStringPreferenceKey.MacAddress)
         if (StringUtils.isEmpty(address)) {
             binding.medLinkBleConfigCurrentlySelectedMedLinkName.setText(R.string.med_link_ble_config_no_med_link_selected)
             binding.medLinkBleConfigCurrentlySelectedMedLinkAddress.visibility = View.GONE
@@ -131,7 +136,7 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
         } else {
             binding.medLinkBleConfigCurrentlySelectedMedLinkAddress.visibility = View.VISIBLE
             binding.medLinkBleConfigButtonRemoveMedLink.visibility = View.VISIBLE
-            binding.medLinkBleConfigCurrentlySelectedMedLinkName.text = sp.getString(MedLinkConst.Prefs.MedLinkName, "MedLink (?)")
+            binding.medLinkBleConfigCurrentlySelectedMedLinkName.text = preferences.get(MedLinkStringKey.Name)
             binding.medLinkBleConfigCurrentlySelectedMedLinkAddress.text = address
         }
     }
@@ -285,7 +290,7 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
             var deviceName = device.name
             if (StringUtils.isBlank(deviceName)) deviceName = "MedLink (?)"
             deviceName += " [" + rileyLinkDevices[device] + "]"
-            val currentlySelectedAddress = sp.getString(MedLinkConst.Prefs.MedLinkAddress, "")
+            val currentlySelectedAddress = preferences.get(MedLinkStringPreferenceKey.MacAddress)
             if (currentlySelectedAddress == device.address) {
                 deviceName += " (" + resources.getString(R.string.riley_link_ble_config_scan_selected) + ")"
             }

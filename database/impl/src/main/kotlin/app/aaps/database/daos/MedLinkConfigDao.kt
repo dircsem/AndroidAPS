@@ -1,4 +1,4 @@
-package app.aaps.database.impl.daos// package info.nightscout.database.impl.daos
+package app.aaps.database.daos// package info.nightscout.database.impl.daos
 //
 // import androidx.room.Dao
 // import androidx.room.Query

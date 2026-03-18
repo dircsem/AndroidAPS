@@ -6,9 +6,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import dagger.android.DaggerBroadcastReceiver
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.pump.common.hw.rileylink.RileyLinkConst
 import javax.inject.Inject
 
 class MedLinkBluetoothStateReceiver : DaggerBroadcastReceiver() {

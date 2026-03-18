@@ -7,13 +7,13 @@ import android.view.ViewGroup
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import dagger.android.support.DaggerFragment
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.RileylinkStatusGeneralBinding
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.pump.common.hw.rileylink.R
+import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusGeneralBinding
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import org.joda.time.LocalDateTime
 import javax.inject.Inject
 
@@ -53,10 +53,10 @@ class MedLinkStatusGeneralFragment : DaggerFragment() {
 
     private fun refreshData() {
         val targetDevice = medLinkServiceData.targetDevice
-        binding.connectionStatus.text = resourceHelper.gs(medLinkServiceData.medLinkServiceState.resourceId)
+        binding.connectionStatus.text = resourceHelper.gs(medLinkServiceData.medLinkServiceState!!.resourceId)
         binding.configuredRileyLinkAddress.text = medLinkServiceData.rileylinkAddress ?: EMPTY
         binding.configuredRileyLinkName.text = medLinkServiceData.rileylinkName ?: EMPTY
-        if (sp.getBoolean(resourceHelper.gs(R.string.key_riley_link_show_battery_level), false)) {
+        if (sp.getBoolean(resourceHelper.gs(R.string.riley_link_show_battery_level), false)) {
             binding.batteryLevelRow.visibility = View.VISIBLE
             val batteryLevel = medLinkServiceData.batteryLevel
             binding.batteryLevel.text = batteryLevel?.let { resourceHelper.gs(R.string.rileylink_battery_level_value, it) } ?: EMPTY

@@ -1,8 +1,7 @@
-package app.aaps.database.impl.daos
+package app.aaps.database.daos
 
 import androidx.room.Dao
 import androidx.room.Query
-import app.aaps.database.daos.TraceableDao
 import app.aaps.database.entities.MedLinkConfig
 import app.aaps.database.entities.TABLE_MEDLINK_CONFIG
 

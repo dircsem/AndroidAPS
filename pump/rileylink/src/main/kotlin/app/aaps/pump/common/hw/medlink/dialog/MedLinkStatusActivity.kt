@@ -6,9 +6,9 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import dagger.android.support.DaggerAppCompatActivity
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.databinding.RileylinkStatusBinding
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.pump.common.hw.rileylink.R
+import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusBinding
 import javax.inject.Inject
 
 class MedLinkStatusActivity : DaggerAppCompatActivity() {

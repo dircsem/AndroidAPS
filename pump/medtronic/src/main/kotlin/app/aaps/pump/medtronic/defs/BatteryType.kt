@@ -1,7 +1,7 @@
 package app.aaps.pump.medtronic.defs
 
 import androidx.annotation.StringRes
-import info.nightscout.androidaps.plugins.pump.medtronic.R
+import app.aaps.pump.medtronic.R
 
 /**
  * Created by andy on 6/4/18.

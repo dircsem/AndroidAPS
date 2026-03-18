@@ -1,12 +1,11 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
+package app.aaps.pump.medtronic.comm.activities
 
-import dagger.android.HasAndroidInjector
 import app.aaps.pump.common.hw.medlink.activities.BaseCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.source.BgSync
 
 import java.util.*
 import java.util.function.Consumer
@@ -42,16 +41,16 @@ class IsigHistoryCallback     //        BGHistoryCallback.BGHistoryAccumulator h
 //
 //        return result.get().toArray(BgReading[]::new);
     (
-    private val injector: HasAndroidInjector,
+
     private val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin,
     private val aapsLogger: AAPSLogger, private val handleBG: Boolean, private val bgHistoryCallback: BGHistoryCallback
-) : BaseCallback<BgSync.BgHistory, Supplier<Stream<String>>>() {
+) : BaseCallback<BgSync.BgHistory?, Supplier<Stream<String>>>() {
 
     override fun apply(ans: Supplier<Stream<String>>): MedLinkStandardReturn<BgSync.BgHistory?> {
         aapsLogger.info(LTag.PUMPBTCOMM, "isig")
         val toParse = ans.get()
         aapsLogger.info(LTag.PUMPBTCOMM, "isig2")
-        val readings: BgSync.BgHistory? = parseAnswer(ans, bgHistoryCallback.history)
+        val readings: BgSync.BgHistory = parseAnswer(ans, bgHistoryCallback.history)
         if (readings != null) {
             medLinkPumpPlugin.handleNewSensorData(readings)
         }
@@ -65,8 +64,8 @@ class IsigHistoryCallback     //        BGHistoryCallback.BGHistoryAccumulator h
 
     private fun parseAnswer(
         ans: Supplier<Stream<String>>,
-        bgReadings: BgSync.BgHistory?
-    ): BgSync.BgHistory? {
+        bgReadings: BgSync.BgHistory
+    ): BgSync.BgHistory {
         aapsLogger.info(LTag.PUMPBTCOMM, "isig")
         val answers = ans.get().iterator()
         val answer = ans.get().collect(Collectors.joining())
@@ -121,7 +120,7 @@ class IsigHistoryCallback     //        BGHistoryCallback.BGHistoryAccumulator h
         bgReadings?.bgValue = bfValue!!
         // val result: MutableList<EnliteInMemoryGlucoseValue?> = ArrayList()
         aapsLogger.info(LTag.PUMPBTCOMM, "isigs s" + isigs.size)
-        aapsLogger.info(LTag.PUMPBTCOMM, "readings s" + bgReadings.bgValue.size)
+        aapsLogger.info(LTag.PUMPBTCOMM, "readings s" + bgReadings?.bgValue?.size)
         return bgReadings
         //        if (isigs.size() == bgReadingsList.size()) {
         // var delta = 0

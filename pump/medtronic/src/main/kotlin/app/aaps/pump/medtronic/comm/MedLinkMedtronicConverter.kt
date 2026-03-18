@@ -4,11 +4,11 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.utils.pump.ByteUtil.asUINT8
 import app.aaps.core.utils.pump.ByteUtil.makeUnsignedShort
 import app.aaps.core.utils.pump.ByteUtil.toInt
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.PumpSettingDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicDeviceType
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicDeviceType.Companion.isSameDevice
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.PumpConfigurationGroup
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicUtil
+import app.aaps.pump.medtronic.data.dto.PumpSettingDTO
+import app.aaps.pump.medtronic.defs.MedtronicDeviceType
+import app.aaps.pump.medtronic.defs.MedtronicDeviceType.Companion.isSameDevice
+import app.aaps.pump.medtronic.defs.PumpConfigurationGroup
+import app.aaps.pump.medtronic.util.MedtronicUtil
 import javax.inject.Inject
 import javax.inject.Singleton
 

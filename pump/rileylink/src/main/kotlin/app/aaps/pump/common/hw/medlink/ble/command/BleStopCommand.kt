@@ -8,7 +8,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 
 class BleStopCommand(aapsLogger: AAPSLogger,
-                     medLinkServiceData: MedLinkServiceData,
+                     medLinkServiceData: MedLinkServiceData?,
                      medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {

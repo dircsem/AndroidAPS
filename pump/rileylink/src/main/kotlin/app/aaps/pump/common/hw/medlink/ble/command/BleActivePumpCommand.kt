@@ -10,7 +10,7 @@ import java.util.*
 
 open class BleActivePumpCommand(
     aapsLogger: AAPSLogger,
-    medLinkServiceData: MedLinkServiceData,
+    medLinkServiceData: MedLinkServiceData?,
     medLinkPumpPluginAbstract: MedLinkPumpPluginBase
 ) :
     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {

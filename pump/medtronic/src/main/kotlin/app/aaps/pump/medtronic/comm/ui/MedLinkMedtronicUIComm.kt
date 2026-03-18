@@ -1,9 +1,8 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.ui
+package app.aaps.pump.medtronic.comm.ui
 
-import dagger.android.HasAndroidInjector
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
+import app.aaps.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 
@@ -12,7 +11,6 @@ import app.aaps.core.interfaces.logging.LTag
  * copied from [MedtronicUIComm]
  */
 class MedLinkMedtronicUIComm(
-    private val injector: HasAndroidInjector,
     private val aapsLogger: AAPSLogger,
     private val medtronicUtil: MedLinkMedtronicUtil,
     private val medtronicUIPostprocessor: MedLinkMedtronicUIPostprocessor,
@@ -46,7 +44,7 @@ class MedLinkMedtronicUIComm(
 
     @Synchronized fun <B,C>executeCommandCP(pumpMessage: MedLinkPumpMessage<B, C>): MedLinkMedtronicUITaskCp {
         aapsLogger.info(LTag.PUMP, "Execute Command: " + pumpMessage.firstCommand().code)
-        val task = MedLinkMedtronicUITaskCp(injector, aapsLogger)
+        val task = MedLinkMedtronicUITaskCp( aapsLogger)
         medtronicUtil.currentCommand = pumpMessage.firstCommand()
         task.execute(medtronicCommunicationManager, medtronicUIPostprocessor,pumpMessage)
         if (!task.isReceived) {

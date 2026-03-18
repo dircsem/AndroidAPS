@@ -36,7 +36,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
     PreviousBolusHistory("G", listCommand = true),
     RemoveStopCommand("");
 
-    @JvmField val code: String?
+    val code: String
     var config: Iterator<String>? = null
     var insulinAmount = 0.0
     var bgValue = 0.0

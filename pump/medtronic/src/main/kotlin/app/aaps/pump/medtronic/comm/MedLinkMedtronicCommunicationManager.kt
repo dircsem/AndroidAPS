@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm
+package app.aaps.pump.medtronic.comm
 
 import android.content.Context
 import dagger.android.HasAndroidInjector
@@ -13,19 +13,8 @@ import app.aaps.pump.common.hw.medlink.ble.command.BleConnectCommand
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RLMessage
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.message.PumpMessage
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.PumpSettingDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.TempBasalPair
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCommandType
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -33,6 +22,17 @@ import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.utils.DateTimeUtil
+import app.aaps.pump.common.hw.medlink.MedLinkConst
+import app.aaps.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
+import app.aaps.pump.common.hw.rileylink.ble.data.RLMessage
+import app.aaps.pump.common.hw.rileylink.ble.defs.RLMessageType
+import app.aaps.pump.medtronic.comm.message.PumpMessage
+import app.aaps.pump.medtronic.data.dto.BasalProfile
+import app.aaps.pump.medtronic.data.dto.PumpSettingDTO
+import app.aaps.pump.medtronic.data.dto.TempBasalPair
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicCommandType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import java.util.*
 import java.util.function.Function
 import java.util.function.Supplier
@@ -50,15 +50,12 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     rfSpy: MedLinkRFSpy,
     aapsLogger: AAPSLogger,
     medLinkServiceData: MedLinkServiceData,
+    val medLinkPumpPlugin: MedLinkMedtronicPumpPlugin
 ) :
     MedLinkCommunicationManager
         (injector, rfSpy, aapsLogger, medLinkServiceData) {
 
-    var medtronicPumpStatus: MedLinkMedtronicPumpStatus? = null
-        @Inject set
-
-    var medLinkPumpPlugin: MedLinkMedtronicPumpPlugin? = null
-        @Inject set
+    override var notConnectedCount: Int = 0
 
     var medtronicConverter: MedtronicConverter? = null
         @Inject set
@@ -83,18 +80,28 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     var profile: BasalProfile? = null
     @Inject fun onInit() {
         // we can't do this in the constructor, as sp only gets injected after the constructor has returned
-        medtronicPumpStatus!!.previousConnection = sp?.getLong(
-            RileyLinkConst.Prefs.LastGoodDeviceCommunicationTime, 0L
-        )!!
+        if(medLinkPumpPlugin!=null && medLinkPumpPlugin.medLinkPumpStatus != null && medLinkPumpPlugin.medLinkPumpStatus.previousConnection != null) {
+            if(medLinkPumpPlugin.medLinkService != null) {
+                aapsLogger.info(LTag.PUMPBTCOMM, medLinkPumpPlugin.toString())
+            }
+            aapsLogger.info(LTag.PUMPBTCOMM, medLinkPumpPlugin.medLinkPumpStatus.toString())
+            aapsLogger.info(
+                LTag.PUMPBTCOMM,
+                medLinkPumpPlugin.medLinkPumpStatus.previousConnection.toString()
+            )
+            medLinkPumpPlugin.medLinkPumpStatus.previousConnection = sp?.getLong(
+                MedLinkConst.Prefs.LastGoodDeviceCommunicationTime, 0L
+            )!!
+        }
     }
 
     override fun createResponseMessage(payload: ByteArray): RLMessage {
-        return PumpMessage(medLinkPumpPlugin!!.aapsLogger, payload)
+        return PumpMessage(medLinkPumpPlugin.aapsLogger, payload)
     }
 
 
     override fun setPumpDeviceState(pumpDeviceState: PumpDeviceState) {
-        medtronicPumpStatus!!.pumpDeviceState = pumpDeviceState
+        medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState = pumpDeviceState
     }
 
     override fun setDoWakeUpBeforeCommand(doWakeUp: Boolean) {
@@ -107,9 +114,9 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
      *
      * @return
      */
-    fun isDeviceReachable(canPreventTuneUp: Boolean): Boolean {
-        val state = medtronicPumpStatus!!.pumpDeviceState
-        if (state !== PumpDeviceState.PumpUnreachable) medtronicPumpStatus!!.pumpDeviceState = PumpDeviceState.WakingUp
+    fun deviceReachable(): Boolean {
+        val state = medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState
+        if (state !== PumpDeviceState.PumpUnreachable) medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState = PumpDeviceState.WakingUp
 
 
         aapsLogger.debug(LTag.PUMPCOMM, "isDeviceReachable. Waking pump... first shot")
@@ -119,7 +126,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     }
 
     private fun connectToDevice(): Boolean {
-        val state = medtronicPumpStatus!!.pumpDeviceState
+        val state = medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState
 
         // check connection
 
@@ -134,7 +141,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     }
 
     override fun tryToConnectToDevice(): Boolean {
-        return isDeviceReachable(true)
+        return deviceReachable()
     }
 
 
@@ -158,6 +165,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
             ) // maybe this is better FIXME
             RLMessageType.ReadSimpleData -> //                return medLinkMedtronicUtil.buildCommandPayload(medLinkServiceData, MedLinkMedtronicCommandType.RFPowerOn.PumpModel, null);
                 MedLinkCommandType.GetState.getRaw()
+
         }
         return ByteArray(0)
     }
@@ -185,13 +193,13 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     @Throws(RileyLinkCommunicationException::class) private fun <B> sendAndGetResponse(msg: MedLinkPumpMessage<B, Any>) {
         // wakeUp
         if (doWakeUpBeforeCommand) wakeUp(receiverDeviceAwakeForMinutes, false)
-        medtronicPumpStatus!!.pumpDeviceState = PumpDeviceState.Active
+        medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active
 
         // create message
 
         // send and wait for response
         sendAndListen(msg)
-        medtronicPumpStatus!!.pumpDeviceState = PumpDeviceState.Sleeping
+        medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Sleeping
 
     }
 
@@ -324,6 +332,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
             }
             s
         })
+        val x: MedLinkMedtronicDeviceType
         if (System.currentTimeMillis() - lastGoodReceiverCommunicationTime > 400000) {
             rfspy.transmitThenReceive(
                 MedLinkPumpMessage<String, Any>(
@@ -339,9 +348,9 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
     }
 
     override val pumpStatus: MedLinkPumpStatus?
-        get() = medLinkPumpPlugin!!.pumpStatusData
+        get() = medLinkPumpPlugin!!.medLinkPumpStatus
     override val isDeviceReachable: Boolean
-        get() = TODO("Not yet implemented")
+        get() = deviceReachable()
 
 //     fun getBasalProfile(
 //         function: Function<MedLinkStandardReturn<BasalProfile>, MedLinkStandardReturn<BasalProfile>>?,
@@ -508,6 +517,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
 
     fun <B, C> getBolusHistory(pumpMessage: MedLinkPumpMessage<B, C>): Boolean {
         try {
+
             runCommandWithArgs(pumpMessage)
         } catch (e: RileyLinkCommunicationException) {
             e.printStackTrace()
@@ -539,8 +549,6 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
         return setCommand(pumpMessage)
     }
 
-    override val bolusHistory: Boolean
-        get() = TODO("Not yet implemented")
 
     fun <B, C> setBolus(pumpMessage: MedLinkPumpMessage<B, C>): Boolean {
         aapsLogger.info(LTag.PUMPCOMM, "setBolus: $pumpMessage")

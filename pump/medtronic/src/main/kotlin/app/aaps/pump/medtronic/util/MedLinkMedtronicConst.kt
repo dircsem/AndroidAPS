@@ -1,40 +1,37 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.util;
+package app.aaps.pump.medtronic.util
 
-import info.nightscout.androidaps.plugins.pump.medtronic.R;
+import app.aaps.pump.medtronic.R
+
 
 /**
  * Created by dirceu on 25/09/20
  * used at medlink
  */
+object MedLinkMedtronicConst {
+    const val Prefix: String = "AAPS.Medtronic."
 
-public class MedLinkMedtronicConst {
-
-    static final String Prefix = "AAPS.Medtronic.";
-
-   public static class Prefs {
-        public static final int PumpSerial = R.string.key_medtronic_serial;
-        public static final int PumpType = R.string.key_medtronic_pump_type;
-        public static final int PumpFrequency = R.string.key_medtronic_frequency;
-        public static final int MaxBolus = R.string.key_medtronic_max_bolus;
-        public static final int MaxBasal = R.string.key_medtronic_max_basal;
-        public static final int BolusDelay = R.string.key_medtronic_bolus_delay;
-        public static final int Encoding = R.string.key_medtronic_encoding;
-        public static final int BatteryType = R.string.key_medtronic_battery_type;
-        public static final int BolusDebugEnabled = R.string.key_medtronic_bolus_debug;
-        public static final int PumpInitCommands = R.string.key_medlink_init_command;
+    object Prefs {
+        val PumpSerial: Int = R.string.medtronic_serial_number
+        val PumpType: Int = R.string.medtronic_pump_type
+        val PumpFrequency: Int = R.string.medtronic_pump_frequency
+        val MaxBolus: Int = R.string.medtronic_pump_max_bolus
+        val MaxBasal: Int = R.string.medtronic_pump_max_basal
+        val BolusDelay: Int = R.string.medtronic_pump_bolus_delay
+        val Encoding: Int = R.string.medtronic_pump_encoding
+        val BatteryType: Int = R.string.medtronic_history_type
+        val BolusDebugEnabled: Int = R.string.medtronic_bolus_debugging
+        val PumpInitCommands: Int = R.string.key_medlink_init_command
     }
 
-    public class Statistics {
-
-        public static final String StatsPrefix = "medtronic_";
-        public static final String FirstPumpStart = Prefix + "first_pump_use";
-        public static final String LastGoodPumpCommunicationTime = Prefix + "lastGoodPumpCommunicationTime";
-        public static final String LastGoodPumpFrequency = Prefix + "LastGoodPumpFrequency";
-        public static final String TBRsSet = StatsPrefix + "tbrs_set";
-        public static final String StandardBoluses = StatsPrefix + "std_boluses_delivered";
-        public static final String SMBBoluses = StatsPrefix + "smb_boluses_delivered";
-        public static final String LastPumpHistoryEntry = StatsPrefix + "pump_history_entry";
-        public static final String LastPrime = StatsPrefix + "last_sent_prime";
+    object Statistics {
+        const val StatsPrefix: String = "medtronic_"
+        val FirstPumpStart: String = Prefix + "first_pump_use"
+        val LastGoodPumpCommunicationTime: String = Prefix + "lastGoodPumpCommunicationTime"
+        val LastGoodPumpFrequency: String = Prefix + "LastGoodPumpFrequency"
+        val TBRsSet: String = StatsPrefix + "tbrs_set"
+        val StandardBoluses: String = StatsPrefix + "std_boluses_delivered"
+        val SMBBoluses: String = StatsPrefix + "smb_boluses_delivered"
+        val LastPumpHistoryEntry: String = StatsPrefix + "pump_history_entry"
+        val LastPrime: String = StatsPrefix + "last_sent_prime"
     }
-
 }

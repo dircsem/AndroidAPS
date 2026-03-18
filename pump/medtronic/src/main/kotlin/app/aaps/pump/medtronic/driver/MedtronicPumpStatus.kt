@@ -110,8 +110,8 @@ class MedtronicPumpStatus @Inject constructor(
             if (System.currentTimeMillis() > tempBasalEnd!!) {
                 tempBasalStart = null
                 tempBasalEnd = null
-                tempBasalLength = null
-                tempBasalAmount = null
+                tempBasalLength = 0
+                tempBasalAmount = 0.0
                 return null
             }
             val timeMinutes = (tempBasalEnd!! - System.currentTimeMillis()) / (1000 * 60)

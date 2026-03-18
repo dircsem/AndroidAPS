@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data
+package app.aaps.pump.medtronic.data
 
 
 import app.aaps.core.data.pump.defs.PumpType
@@ -10,28 +10,31 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.MedtronicPumpHistoryDecoder
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntry
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.history.pump.PumpHistoryEntryType
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BolusWizardDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.ClockDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicUtil
+
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.StringUtil
-import info.nightscout.pump.common.sync.PumpSyncStorage
+import app.aaps.pump.common.sync.PumpSyncStorage
+import app.aaps.pump.medtronic.comm.history.pump.MedtronicPumpHistoryDecoder
+import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
+import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntryType
+import app.aaps.pump.medtronic.data.dto.BasalProfile
+import app.aaps.pump.medtronic.data.dto.BolusWizardDTO
+import app.aaps.pump.medtronic.data.dto.ClockDTO
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
+import app.aaps.pump.medtronic.driver.MedtronicPumpStatus
+import app.aaps.pump.medtronic.util.MedtronicUtil
 
 import org.apache.commons.lang3.StringUtils
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.text.get
 
 /**
  * Created by dirceu
@@ -47,11 +50,10 @@ import javax.inject.Singleton
 @Singleton
 class MedLinkMedtronicHistoryData @Inject constructor(
     injector: HasAndroidInjector,
-    aapsLogger: AAPSLogger,
+    var aapsLogger: AAPSLogger,
     sp: SP,
     rh: ResourceHelper,
-    rxBus: RxBus,
-    activePlugin: ActivePlugin,
+    preferences: Preferences,
     medtronicUtil: MedtronicUtil,
     medtronicPumpHistoryDecoder: MedtronicPumpHistoryDecoder,
     medtronicPumpStatus: MedtronicPumpStatus,
@@ -59,7 +61,7 @@ class MedLinkMedtronicHistoryData @Inject constructor(
     pumpSyncStorage: PumpSyncStorage,
     uiInteraction: UiInteraction,
     profileUtil: ProfileUtil
-): MedtronicHistoryData(injector, aapsLogger, sp, rh, rxBus, activePlugin, medtronicUtil, medtronicPumpHistoryDecoder, medtronicPumpStatus, pumpSync, pumpSyncStorage,
+): MedtronicHistoryData( aapsLogger, preferences, rh, medtronicUtil, medtronicPumpHistoryDecoder, medtronicPumpStatus, pumpSync, pumpSyncStorage,
 uiInteraction, profileUtil ) {
 
     private var newHistory: MutableList<PumpHistoryEntry> = ArrayList<PumpHistoryEntry>()

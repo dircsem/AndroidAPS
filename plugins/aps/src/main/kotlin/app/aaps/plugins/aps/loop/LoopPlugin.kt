@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpEnactResult
+import app.aaps.core.interfaces.pump.PumpPluginBase
 import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.VirtualPump
@@ -670,7 +671,7 @@ class LoopPlugin @Inject constructor(
                             waiting
                         rxBus.send(EventLoopUpdateGui())
                         fabricPrivacy.logCustom("APSRequest")
-                        if (pump is MedLinkPumpPluginBase) {
+                        if (pump is PumpPluginBase) {
                             aapsLogger.info(LTag.AUTOMATION, resultAfterConstraints.toString())
                             applySMBRequest(resultAfterConstraints, object : Callback() {
                                 override fun run() {

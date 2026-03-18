@@ -1,54 +1,37 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
+package app.aaps.pump.medtronic.data.dto
 
-import com.google.gson.annotations.Expose;
-
-import app.aaps.core.interfaces.logging.AAPSLogger;
-
-
+import app.aaps.core.interfaces.logging.AAPSLogger
+import com.google.gson.annotations.Expose
 
 /**
  * used by medlink
  */
-public class TempBasalMicroBolusDTO extends TempBasalPair {
+class TempBasalMicroBolusDTO : TempBasalPair {
+    @Expose
+    var endTimeInSeconds: Int = 0
 
     @Expose
-    protected int endTimeInSeconds = 0;
+    var sartTimeInSeconds: Int = 0
 
-    @Expose
-    protected int sartTimeInSeconds = 0;
+    constructor(rateByte: Byte, startTimeByte: Int, isPercent: Boolean) : super(
+        rateByte,
+        startTimeByte,
+        isPercent
+    )
 
-    public TempBasalMicroBolusDTO(byte rateByte, int startTimeByte, boolean isPercent) {
-        super(rateByte, startTimeByte, isPercent);
-    }
+    constructor(aapsLogger: AAPSLogger, response: ByteArray) : super(aapsLogger, response)
 
-    public TempBasalMicroBolusDTO(AAPSLogger aapsLogger, byte[] response) {
-        super(aapsLogger, response);
-    }
+    constructor(insulinRate: Double, isPercent: Boolean, durationMinutes: Int) : super(
+        insulinRate,
+        isPercent,
+        durationMinutes
+    )
 
-    public TempBasalMicroBolusDTO(double insulinRate, boolean isPercent, int durationMinutes) {
-        super(insulinRate, isPercent, durationMinutes);
-    }
-
-    public TempBasalMicroBolusDTO(double profileDosage, boolean isPercent, int durationMinutes,
-                                  int startTimeInSeconds, int endTimeInSeconds) {
-        super(profileDosage, isPercent, durationMinutes);
-        this.sartTimeInSeconds = startTimeInSeconds;
-        this.endTimeInSeconds = endTimeInSeconds;
-    }
-
-    public int getEndTimeInSeconds() {
-        return endTimeInSeconds;
-    }
-
-    public void setEndTimeInSeconds(int endTimeInSeconds) {
-        this.endTimeInSeconds = endTimeInSeconds;
-    }
-
-    public int getSartTimeInSeconds() {
-        return sartTimeInSeconds;
-    }
-
-    public void setSartTimeInSeconds(int sartTimeInSeconds) {
-        this.sartTimeInSeconds = sartTimeInSeconds;
+    constructor(
+        profileDosage: Double, isPercent: Boolean, durationMinutes: Int,
+        startTimeInSeconds: Int, endTimeInSeconds: Int
+    ) : super(profileDosage, isPercent, durationMinutes) {
+        this.sartTimeInSeconds = startTimeInSeconds
+        this.endTimeInSeconds = endTimeInSeconds
     }
 }

@@ -4,7 +4,7 @@ import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import app.aaps.core.interfaces.logging.AAPSLogger
 
-open class BlePartialCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData) :
+open class BlePartialCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData?) :
     BleCommand(aapsLogger, medLinkServiceData) {
 
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {

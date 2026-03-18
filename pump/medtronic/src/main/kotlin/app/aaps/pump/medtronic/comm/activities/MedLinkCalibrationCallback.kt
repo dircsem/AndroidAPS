@@ -1,10 +1,9 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.activities
+package app.aaps.pump.medtronic.comm.activities
 
 import app.aaps.pump.common.hw.medlink.activities.BaseCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicNotificationType
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
 import java.util.function.Supplier
 import java.util.regex.Pattern
 import java.util.stream.Collectors
@@ -12,8 +11,9 @@ import java.util.stream.Stream
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.source.BgSync
+import app.aaps.pump.medtronic.defs.MedtronicNotificationType
 
 class MedLinkCalibrationCallback(
     private val aapsLogger: AAPSLogger,
@@ -23,9 +23,9 @@ class MedLinkCalibrationCallback(
     private val rxBus: RxBus
 ) : BaseCallback<BgSync.BgHistory, Supplier<Stream<String>>>() {
 
-    override fun apply(answer: Supplier<Stream<String>>): MedLinkStandardReturn<BgSync.BgHistory?> {
+    override fun apply(answer: Supplier<Stream<String>>): MedLinkStandardReturn<BgSync.BgHistory> {
         aapsLogger.info(LTag.PUMPBTCOMM, "calibration")
-        val readings: BgSync.BgHistory? = parseAnswer(answer)
+        val readings: BgSync.BgHistory = parseAnswer(answer)
         return MedLinkStandardReturn(answer,readings)
     }
 

@@ -20,7 +20,7 @@ import java.util.stream.Stream
 /**
  * Created by Dirceu on 23/03/21.
  */
-open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLinkServiceData: MedLinkServiceData) {
+open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLinkServiceData: MedLinkServiceData?) {
 
     private var lastInvalidCommand = 0L
     private val handler: Handler? = null
@@ -142,7 +142,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             return
         }
         if (answer.contains("error communication")) {
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.MedLinkError)
+            medLinkServiceData?.medLinkServiceState = MedLinkServiceState.MedLinkError
         }
         if (answer.contains("medtronic")) {
             bleComm.setPumpModel(answer)
@@ -155,7 +155,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             bleComm.setConnected(true)
             aapsLogger.info(LTag.PUMPBTCOMM, "ready command")
             aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
+            medLinkServiceData?.medLinkServiceState =MedLinkServiceState.PumpConnectorReady
             //            medLinkServiceData
 //            medtronicUtil.dismissNotification(MedtronicNotificationType.PumpUnreachable, rxBus);
             if (currentCommand?.nextFunction() != null && !(answer + lastCharacteristic).contains(
@@ -183,7 +183,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
                 }
             }
             pumpResponse = StringBuffer()
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
+            medLinkServiceData?.medLinkServiceState =MedLinkServiceState.PumpConnectorReady
             //            bleComm.nextCommand();
         }
     }

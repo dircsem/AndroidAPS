@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
+package app.aaps.pump.medtronic.data.dto;
 
 import java.util.List;
 

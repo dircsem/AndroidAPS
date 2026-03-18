@@ -1,44 +1,18 @@
-package app.aaps.pump.common.hw.medlink.ble.data;
+package app.aaps.pump.common.hw.medlink.ble.data
 
-import javax.inject.Inject;
-
-import dagger.android.HasAndroidInjector;
-import app.aaps.pump.common.hw.medlink.MedLinkUtil;
-import info.nightscout.androidaps.plugins.pump.common.utils.CRC;
-
+import app.aaps.pump.common.hw.medlink.MedLinkUtil
+import dagger.android.HasAndroidInjector
+import javax.inject.Inject
 
 /**
  * Created by dirceu on 10/12/20.
  * copied from rileylink RadioPacket
  */
+class RadioPacket(injector: HasAndroidInjector, pkt: ByteArray?) {
+    @Inject
+    lateinit var medLinkUtil: MedLinkUtil
 
-public class RadioPacket {
-
-    @Inject MedLinkUtil medLinkUtil;
-
-    private byte[] pkt;
-
-
-    public RadioPacket(HasAndroidInjector injector, byte[] pkt) {
-        injector.androidInjector().inject(this);
-        this.pkt = pkt;
-    }
-
-
-    public byte[] getRaw() {
-        return pkt;
-    }
-
-
-    private byte[] getWithCRC() {
-        byte[] withCRC = new byte[0];
-//                ByteUtil.concat(pkt, CRC.crc8(pkt));
-        return withCRC;
-    }
-
-
-    public byte[] getEncoded() {
-//        return null;
+    //        return null;
 //        switch ((MedLinkEncodingType)medLinkUtil.getEncoding()) {
 //            case Manchester: { // We have this encoding in RL firmware
 //                return pkt;
@@ -50,10 +24,22 @@ public class RadioPacket {
 //                byte[] encoded = medLinkUtil.getEncoding4b6b().encode4b6b(withCRC);
 //                return ByteUtil.concat(encoded, (byte) 0);
 //            }
-        return pkt;
 
-//            default:
+    //            default:
 //                throw new NotImplementedException(("Encoding not supported: " + medLinkUtil.getEncoding().toString()));
+    val encoded: ByteArray?
 
+
+    init {
+        injector.androidInjector().inject(this)
+        this.encoded = pkt
     }
+
+
+    private val withCRC: ByteArray
+        get() {
+            val withCRC = ByteArray(0)
+            //                ByteUtil.concat(pkt, CRC.crc8(pkt));
+            return withCRC
+        }
 }

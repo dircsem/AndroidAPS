@@ -1,11 +1,11 @@
 package app.aaps.pump.common.hw.medlink.service.tasks
 
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
-import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 
-class MedLinkWakeAndTuneTask(injector: HasAndroidInjector) : MedLinkPumpTask(injector) {
+class MedLinkWakeAndTuneTask(activePlugin: ActivePlugin) : MedLinkPumpTask(activePlugin) {
 
     @Inject lateinit var rxBus: RxBus
 

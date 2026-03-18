@@ -16,15 +16,15 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.source.BgSync
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.database.entities.GlucoseValue
-import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.XDripBroadcast
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.TrendCalculator
-import app.aaps.database.impl.AppRepository
-import app.aaps.database.impl.transactions.CgmSourceTransaction
+import app.aaps.database.AppRepository
+import app.aaps.database.transactions.CgmSourceTransaction
 import dagger.android.HasAndroidInjector
 
 import org.json.JSONException
@@ -32,6 +32,8 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Locale
 import javax.inject.Inject
+
+import app.aaps.implementation.db.toDbType
 
 class BgSyncImplementation @Inject constructor(
     private val aapsLogger: AAPSLogger,
@@ -224,6 +226,11 @@ class BgSyncImplementation @Inject constructor(
         return ret
     }
 
+//    fun tyDbType() = {
+//        val bh = BgSync
+//        val gu = GlucoseValue
+//    }
+
         override fun syncBgWithTempId(
             bgValues: List<BgSync.BgHistory.BgValue>,
             calibrations: List<BgSync.BgHistory.Calibration>
@@ -262,7 +269,7 @@ class BgSyncImplementation @Inject constructor(
         value: Double,
         noise: Double?,
         arrow: BgSync.BgArrow,
-        sourceSensor: GlucoseValue.SourceSensor,
+        sourceSensor: BgSync.SourceSensor,
         isig: Double?,
         calibrationFactor: Double?,
         sensorUptime: Int?
@@ -274,7 +281,7 @@ class BgSyncImplementation @Inject constructor(
                 noise = noise,
                 value = value,
                 trendArrow = GlucoseValue.TrendArrow.NONE,
-                sourceSensor = sourceSensor,
+                sourceSensor = sourceSensor.toDbType(),
                 isig = isig
             )
         )

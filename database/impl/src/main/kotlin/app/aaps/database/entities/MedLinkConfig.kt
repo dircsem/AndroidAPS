@@ -22,14 +22,14 @@ import app.aaps.database.entities.interfaces.TraceableDBEntry
 )
 data class MedLinkConfig(
     @PrimaryKey(autoGenerate = true)
-    override var id: kotlin.Long = 0,
-    override var version: kotlin.Int = 0,
-    override var dateCreated: kotlin.Long = -1,
-    override var isValid: kotlin.Boolean = true,
-    override var referenceId: kotlin.Long? = null,
+    override var id: Long = 0,
+    override var version: Int = 0,
+    override var dateCreated: Long = -1,
+    override var isValid: Boolean = true,
+    override var referenceId: Long? = null,
     @Embedded
     override var interfaceIDs_backing: InterfaceIDs? = null,
-    var currentFrequency: kotlin.Int,
+    var currentFrequency: Int,
     override var timestamp: Long,
     override var utcOffset: Long
 ) : TraceableDBEntry, DBEntryWithTime {

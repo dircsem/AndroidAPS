@@ -20,6 +20,19 @@
             android:exported="false"
             android:label="@string/title_activity_rileylink_settings"
             android:theme="@style/AppTheme" />
+        <activity
+            android:name="app.aaps.pump.common.dialog.MedLinkBLEConfigActivity"
+            android:theme="@style/AppTheme"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="info.nightscout.androidaps.plugins.PumpCommon.dialog.MedLinkBLEScanActivity" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="app.aaps.pump.common.hw.medlink.dialog.MedLinkStatusActivity"
+            android:label="@string/title_activity_medlink_settings"/>
     </application>
 
 </manifest>

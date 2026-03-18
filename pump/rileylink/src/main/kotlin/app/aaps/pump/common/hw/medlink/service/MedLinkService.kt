@@ -1,6 +1,7 @@
 package app.aaps.pump.common.hw.medlink.service
 
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import dagger.android.DaggerService
@@ -9,11 +10,8 @@ import app.aaps.pump.common.hw.medlink.MedLinkCommunicationManager
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
-import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
 import app.aaps.pump.common.hw.medlink.defs.MedLinkError
 import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkConst
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -21,6 +19,12 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.pump.common.hw.medlink.MedLinkConst.Prefs.LastGoodDeviceFrequency
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
+import app.aaps.pump.common.hw.medlink.keys.MedLinkDoubleKey
+
+import app.aaps.pump.common.hw.rileylink.keys.RileyLinkDoubleKey
 import javax.inject.Inject
 
 /**
@@ -34,7 +38,7 @@ abstract class MedLinkService : DaggerService() {
     lateinit var aapsLogger: AAPSLogger
 
     @Inject
-    lateinit var sp: SP
+    lateinit var preferences: Preferences
 
     @Inject
     lateinit var context: Context
@@ -60,7 +64,8 @@ abstract class MedLinkService : DaggerService() {
     @Inject
     lateinit var medLinkBLE: MedLinkBLE
 
-    protected var bluetoothAdapter: BluetoothAdapter? = null
+    protected val bluetoothAdapter: BluetoothAdapter? get() = (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
+
     protected var mBroadcastReceiver: MedLinkBroadcastReceiver? = null
     protected var bluetoothStateReceiver: MedLinkBluetoothStateReceiver? = null
     override fun onCreate() {
@@ -69,15 +74,15 @@ abstract class MedLinkService : DaggerService() {
         medLinkUtil.encoding = encoding
         initRileyLinkServiceData()
         mBroadcastReceiver = MedLinkBroadcastReceiver(this)
-        mBroadcastReceiver!!.registerBroadcasts(this)
+        mBroadcastReceiver?.registerBroadcasts(this)
         bluetoothStateReceiver = MedLinkBluetoothStateReceiver()
-        bluetoothStateReceiver!!.registerBroadcasts(this)
+        bluetoothStateReceiver?.registerBroadcasts(this)
     }
 
     /**
      * Get Encoding for RileyLink communication
      */
-    abstract val encoding: MedLinkEncodingType?
+    abstract val encoding: MedLinkEncodingType
 
     /**
      * If you have customized RileyLinkServiceData you need to override this
@@ -113,8 +118,7 @@ abstract class MedLinkService : DaggerService() {
 
     fun bluetoothInit(): Boolean {
         aapsLogger.debug(LTag.PUMPBTCOMM, "bluetoothInit: attempting to get an adapter")
-        medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.BluetoothInitializing)
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        medLinkServiceData.medLinkServiceState = MedLinkServiceState.BluetoothInitializing
         if (bluetoothAdapter == null) {
             aapsLogger.error("Unable to obtain a BluetoothAdapter.")
             medLinkServiceData.setServiceState(
@@ -127,7 +131,7 @@ abstract class MedLinkService : DaggerService() {
                     MedLinkServiceState.BluetoothError,
                     MedLinkError.BluetoothDisabled)
             } else {
-                medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.BluetoothReady)
+                medLinkServiceData.medLinkServiceState = MedLinkServiceState.BluetoothReady
                 return true
             }
         }
@@ -136,7 +140,7 @@ abstract class MedLinkService : DaggerService() {
 
     // returns true if our Rileylink configuration changed
     fun reconfigureCommunicator(deviceAddress: String): Boolean {
-        medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.MedLinkInitializing)
+        medLinkServiceData.medLinkServiceState = MedLinkServiceState.MedLinkInitializing
         return if (medLinkBLE.isConnected()) {
             if (deviceAddress == medLinkServiceData.rileylinkAddress) {
                 aapsLogger.info(LTag.PUMPBTCOMM, "No change to RL address.  Not reconnecting.")
@@ -148,12 +152,13 @@ abstract class MedLinkService : DaggerService() {
                 // prolly need to shut down listening thread too?
                 // SP.putString(MedtronicConst.Prefs.RileyLinkAddress, deviceAddress);
                 medLinkServiceData.rileylinkAddress = deviceAddress
-                medLinkBLE.findMedLink(medLinkServiceData.rileylinkAddress)
+                val medlinkAddress =
+                medLinkBLE.findMedLink(deviceAddress)
                 true
             }
         } else {
             aapsLogger.debug(LTag.PUMPBTCOMM, "Using ML $deviceAddress")
-            if (medLinkServiceData.getMedLinkServiceState() == MedLinkServiceState.NotStarted) {
+            if (medLinkServiceData.medLinkServiceState == MedLinkServiceState.NotStarted) {
                 if (!bluetoothInit()) {
                     aapsLogger.error("MedLink can't get activated, Bluetooth is not functioning correctly. {}",
                                        if (error != null) error!!.name else "Unknown error (null)")
@@ -168,19 +173,19 @@ abstract class MedLinkService : DaggerService() {
     // FIXME: This needs to be run in a session so that is interruptable, has a separate thread, etc.
     fun doTuneUpDevice() {
         aapsLogger.debug("DoTuneIp")
-        medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.TuneUpDevice)
+        medLinkServiceData.medLinkServiceState = MedLinkServiceState.TuneUpDevice
         setPumpDeviceState(PumpDeviceState.Sleeping)
         var lastGoodFrequency = 0.0
-        lastGoodFrequency = if (medLinkServiceData.lastGoodFrequency == null) {
-            sp.getDouble(RileyLinkConst.Prefs.LastGoodDeviceFrequency, 0.0)
+        lastGoodFrequency = if (medLinkServiceData.lastGoodFrequency != null) {
+            medLinkServiceData.lastGoodFrequency!!
         } else {
-            medLinkServiceData.lastGoodFrequency
+            preferences.get(MedLinkDoubleKey.LastGoodDeviceFrequency)
         }
         val newFrequency: Double
         newFrequency = deviceCommunicationManager.tuneForDevice()
         if (newFrequency != 0.0 && newFrequency != lastGoodFrequency) {
             aapsLogger.info(LTag.PUMPBTCOMM, "Saving new pump frequency of {} MHz", newFrequency)
-            sp.putDouble(RileyLinkConst.Prefs.LastGoodDeviceFrequency, newFrequency)
+            preferences.put(MedLinkDoubleKey.LastGoodDeviceFrequency, newFrequency)
             medLinkServiceData.lastGoodFrequency = newFrequency
             medLinkServiceData.tuneUpDone = true
             medLinkServiceData.lastTuneUpTime = System.currentTimeMillis()
@@ -193,28 +198,23 @@ abstract class MedLinkService : DaggerService() {
                 MedLinkError.TuneUpOfDeviceFailed)
         } else {
             deviceCommunicationManager.clearNotConnectedCount()
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
+            medLinkServiceData.medLinkServiceState = MedLinkServiceState.PumpConnectorReady
         }
     }
 
-    abstract fun setPumpDeviceState(pumpDeviceState: PumpDeviceState?)
+    abstract fun setPumpDeviceState(pumpDeviceState: PumpDeviceState)
     fun disconnectRileyLink() {
         if (medLinkBLE.isConnected()) {
             aapsLogger.info(LTag.PUMPBTCOMM, "disconnectingMedlink")
             medLinkBLE.disconnect()
             medLinkServiceData.rileylinkAddress = null
         }
-        medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.BluetoothReady)
+        medLinkServiceData.medLinkServiceState = MedLinkServiceState.BluetoothReady
     }
 
 
-    /**
-     * Get Target Device for Service
-     */
-    val rileyLinkTargetDevice: RileyLinkTargetDevice
-        get() = medLinkServiceData.targetDevice
 
-    fun changeMedLinkEncoding(encodingType: MedLinkEncodingType?) {}
+    fun changeMedLinkEncoding() {}
     val error: MedLinkError?
         get() = medLinkServiceData.medLinkError
 

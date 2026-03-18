@@ -9,7 +9,7 @@ import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE;
 
 /**
  * Created by dirceu on 12/27/20.
- * copied from @{link {@link info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.operations.BLECommOperation}}
+ * copied from @{link {@link BLECommOperation}}
  */
 public abstract class BLECommOperation {
 

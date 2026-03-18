@@ -1,175 +1,261 @@
-package app.aaps.pump.medtronic.defs;
+package app.aaps.pump.medtronic.defs
 
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
 
-import app.aaps.pump.medtronic.comm.message.MessageBody;
-import app.aaps.pump.medtronic.comm.message.PumpAckMessageBody;
-import app.aaps.pump.medtronic.comm.message.UnknownMessageBody;
-import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType;
-import info.nightscout.androidaps.plugins.pump.medtronic.R;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.R
+import app.aaps.pump.medtronic.comm.message.MessageBody
+import app.aaps.pump.medtronic.comm.message.PumpAckMessageBody
+import app.aaps.pump.medtronic.comm.message.UnknownMessageBody
+import java.io.Serializable
+
 /**
  * Taken from GNU Gluco Control diabetes management software (ggc.sourceforge.net)
- * <p>
+ *
+ *
  * Description: Medtronic Commands (Pump and CGMS) for all 512 and later models (just 5xx)
- * <p>
+ *
+ *
  * Link to original/unmodified file:
  * https://sourceforge.net/p/ggc/code/HEAD/tree/trunk/ggc-plugins/ggc-plugins-base/src/
  * main/java/ggc/plugin/device/impl/minimed/enums/MinimedCommandType.java
- * <p>
+ *
+ *
  * A lot of stuff has been removed because it is not needed anymore (historical stuff from CareLink
  * and Carelink USB communication.
- * <p>
+ *
+ *
  * Author: Andy {andy@atech-software.com}
  *
  * used by medlink
  */
-public enum MedLinkMedtronicCommandType implements Serializable // , MinimedCommandTypeInterface
+enum class MedLinkMedtronicCommandType : Serializable // , MinimedCommandTypeInterface
 {
-
-    InvalidCommand(0, "Invalid Command", null, null,
-            MedLinkCommandType.NoCommand), //
+    InvalidCommand(
+        0, "Invalid Command", null, null,
+        MedLinkCommandType.NoCommand
+    ),  //
 
     // Pump Responses (9)
-    CommandACK(),
-//            0x06, "ACK - Acknowledge", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
-//    CommandNAK(0x15, "NAK - Not Acknowledged", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
+    CommandACK,  //            0x06, "ACK - Acknowledge", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
+    //    CommandNAK(0x15, "NAK - Not Acknowledged", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
 
     // All (8)
-//    PushAck(91, "Push ACK", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(2)), //
-//
-//    PushEsc(91, "Push Esc", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(1)), //
-//
-//    PushButton(0x5b, "Push Button", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), // 91
-//
-    RFPowerOn(93, "RF Power On", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(
-            1, 10)), //
-//
-//    RFPowerOff(93, "RF Power Off", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(
-//            0, 0)), //
+    //    PushAck(91, "Push ACK", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(2)), //
+    //
+    //    PushEsc(91, "Push Esc", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(1)), //
+    //
+    //    PushButton(0x5b, "Push Button", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), // 91
+    //
+    RFPowerOn(
+        93,
+        "RF Power On",
+        MedtronicDeviceType.All,
+        MinimedCommandParameterType.FixedParameters,
+//        MedLinkMedtronicCommandType.run {
+//            getByteArray(
+//                1, 10
+//            )
+//        }
+    ),  //
+    //
+    //    RFPowerOff(93, "RF Power Off", MedtronicDeviceType.All, MinimedCommandParameterType.FixedParameters, getByteArray(
+    //            0, 0)), //
 
-    SuspendActivate(77, "Set Suspend", MedtronicDeviceType.All,
-     MinimedCommandParameterType.NoParameters, MedLinkCommandType.StopStartPump ), //a
+    SuspendActivate(
+        77, "Set Suspend", MedtronicDeviceType.All,
+        MinimedCommandParameterType.NoParameters, MedLinkCommandType.StopStartPump
+    ),  //a
 
-    Bolus(77, "Set Suspend", MedtronicDeviceType.All,
-            MinimedCommandParameterType.FixedParameters, getByteArray()), //a
-
+    Bolus(
+        77,
+        "Bolus",
+        MedtronicDeviceType.All,
+        MinimedCommandParameterType.FixedParameters,
+//        MedLinkMedtronicCommandType.Companion.getByteArray()
+    ),  //a
     // SetSuspend(77, "Set Suspend", MinimedTargetType.InitCommand, MedtronicDeviceType.All,
     // MinimedCommandParameterType.FixedParameters, getByteArray(1)), //
-
     // CancelSuspend(77, "Cancel Suspend", MinimedTargetType.InitCommand, MedtronicDeviceType.All,
     // MinimedCommandParameterType.FixedParameters, getByteArray(0)), //
-
-//    PumpState(131, "Pump State", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
-//
-//    ReadPumpErrorStatus(117, "Pump Error Status", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
-
+    //    PumpState(131, "Pump State", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
+    //
+    //    ReadPumpErrorStatus(117, "Pump Error Status", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
     // 511 (InitCommand = 2, Config 7, Data = 1(+3)
-//    DetectBolus(75, "Detect Bolus", MedtronicDeviceType.Medtronic_511, MinimedCommandParameterType.FixedParameters, getByteArray(
-//        0, 0, 0)), //
-
+    //    DetectBolus(75, "Detect Bolus", MedtronicDeviceType.Medtronic_511, MinimedCommandParameterType.FixedParameters, getByteArray(
+    //        0, 0, 0)), //
     // RemoteControlIds(118, "Remote Control Ids", MinimedTargetType.PumpConfiguration_NA, MedtronicDeviceType.All,
     // MinimedCommandParameterType.NoParameters), //
-
     // FirmwareVersion(116, "Firmware Version", MinimedTargetType.InitCommand, MedtronicDeviceType.All,
     // MinimedCommandParameterType.NoParameters), //
-
     // PumpId(113, "Pump Id", MinimedTargetType.PumpConfiguration, MedtronicDeviceType.All,
     // MinimedCommandParameterType.NoParameters), // init
 
-    SetRealTimeClock(0x40, "Set Pump Time", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters, //
-            0), //
-//
-    GetRealTimeClock(112, "Get Pump Time", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters, //
-            7, R.string.medtronic_cmd_desc_get_time, MedLinkCommandType.GetState), // 0x70
-//
-    GetBatteryStatus(0x72, "Get Battery Status", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters), //
-     GetBattery((byte) 0x72), //
+    SetRealTimeClock(
+        0x40,
+        "Set Pump Time",
+        MedtronicDeviceType.All,
+        MinimedCommandParameterType.NoParameters,  //
+        0
+    ),  //
 
-    GetRemainingInsulin(0x73, "Read Remaining Insulin", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters, 2), // 115
+    //
+    GetRealTimeClock(
+        112, "Get Pump Time", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters,  //
+        7, R.string.medtronic_cmd_desc_get_time, MedLinkCommandType.GetState
+    ),  // 0x70
 
-    SetBolus(0x42, "Set Bolus", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters, //
-            0, R.string.medtronic_cmd_desc_set_bolus, MedLinkCommandType.Bolus), // 66
-//
+    //
+    GetBatteryStatus(
+        0x72,
+        "Get Battery Status",
+        MedtronicDeviceType.All,
+        MinimedCommandParameterType.NoParameters
+    ),  //
+    GetBattery(0x72),  //
+
+    GetRemainingInsulin(
+        0x73,
+        "Read Remaining Insulin",
+        MedtronicDeviceType.All,
+        MinimedCommandParameterType.NoParameters,
+        2
+    ),  // 115
+
+    SetBolus(
+        0x42, "Set Bolus", MedtronicDeviceType.All, MinimedCommandParameterType.NoParameters,  //
+        0, R.string.medtronic_cmd_desc_set_bolus, MedLinkCommandType.Bolus
+    ),  // 66
+
+    //
     // 512
     //TODO not needed
-    ReadTemporaryBasal(0x98, "Read Temporary Basal", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-            5, R.string.medtronic_cmd_desc_get_tbr,
-        MedLinkCommandType.NoCommand), // 152
-//
-//    SetTemporaryBasal(76, "Set Temporay Basal", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-//            0, R.string.medtronic_cmd_desc_set_tbr),
+    ReadTemporaryBasal(
+        0x98,
+        "Read Temporary Basal",
+        MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        5,
+        R.string.medtronic_cmd_desc_get_tbr,
+        MedLinkCommandType.NoCommand
+    ),  // 152
+    //
+    //    SetTemporaryBasal(76, "Set Temporay Basal", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
+    //            0, R.string.medtronic_cmd_desc_set_tbr),
 
     // 512 Config
-    PumpModel(141, "Pump Model", MedtronicDeviceType.Medtronic_512andHigher,
-            MinimedCommandParameterType.NoParameters, //
-            5, R.string.medtronic_cmd_desc_get_model,MedLinkCommandType.Connect), // 0x8D
-
+    PumpModel(
+        141, "Pump Model", MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        5, R.string.medtronic_cmd_desc_get_model, MedLinkCommandType.Connect
+    ),  // 0x8D
     // BGTargets_512(140, "BG Targets", MinimedTargetType.PumpConfiguration, MedtronicDeviceType.Medtronic_512_712,
     // MinimedCommandParameterType.NoParameters), //
-
     // BGUnits(137, "BG Units", MinimedTargetType.PumpConfiguration, MedtronicDeviceType.Medtronic_512andHigher,
     // MinimedCommandParameterType.NoParameters), //
-
     // Language(134, "Language", MinimedTargetType.PumpConfiguration, MedtronicDeviceType.Medtronic_512andHigher,
     // MinimedCommandParameterType.NoParameters), //
 
-    Settings_512(145, "Configuration", MedtronicDeviceType.Medtronic_512_712, MinimedCommandParameterType.NoParameters, //
-            64, 1, 18, R.string.medtronic_cmd_desc_get_settings), //
-
+    Settings_512(
+        145,
+        "Configuration",
+        MedtronicDeviceType.Medtronic_512_712,
+        MinimedCommandParameterType.NoParameters,  //
+        64,
+        1,
+        18,
+        R.string.medtronic_cmd_desc_get_settings
+    ),  //
     // BGAlarmClocks(142, "BG Alarm Clocks", MinimedTargetType.PumpConfiguration,
     // MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters), //
-
     // BGAlarmEnable(151, "BG Alarm Enable", MinimedTargetType.PumpConfiguration,
     // MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters), //
-
     // BGReminderEnable(144, "BG Reminder Enable", MinimedTargetType.PumpConfiguration,
     // MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters), //
-
     // ReadInsulinSensitivities(0x8b, "Read Insulin Sensitivities", MinimedTargetType.PumpConfiguration,
     // MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters), // 139
 
     // 512 Data
-    GetHistoryData(128, "Get History", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.SubCommands, //
-            1024, 16, 1024, R.string.medtronic_cmd_desc_get_history), // 0x80
-//
-    GetBasalProfileSTD(146, "Get Profile Standard", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-            64, 3, 192, R.string.medtronic_cmd_desc_get_basal_profile, MedLinkCommandType.GetState), // 146
-//
-    GetBasalProfileA(147, "Get Profile A", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-            64, 3, 192, R.string.medtronic_cmd_desc_get_basal_profile),
+    GetHistoryData(
+        128,
+        "Get History",
+        MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.SubCommands,  //
+        1024,
+        16,
+        1024,
+        R.string.medtronic_cmd_desc_get_history
+    ),  // 0x80
 
-    GetBasalProfileB(148, "Get Profile B", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-            64, 3, 192, R.string.medtronic_cmd_desc_get_basal_profile), // 148
+    //
+    GetBasalProfileSTD(
+        146,
+        "Get Profile Standard",
+        MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        64,
+        3,
+        192,
+        R.string.medtronic_cmd_desc_get_basal_profile,
+        MedLinkCommandType.GetState
+    ),  // 146
 
-//    SetBasalProfileSTD(0x6f, "Set Profile Standard", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-//            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 111
-//
-//    SetBasalProfileA(0x30, "Set Profile A", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-//            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 48
+    //
+    GetBasalProfileA(
+        147,
+        "Get Profile A",
+        MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        64,
+        3,
+        192,
+        R.string.medtronic_cmd_desc_get_basal_profile
+    ),
 
-//    SetBasalProfileB(0x31, "Set Profile B", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
-//            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 49
+    GetBasalProfileB(
+        148,
+        "Get Profile B",
+        MedtronicDeviceType.Medtronic_512andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        64,
+        3,
+        192,
+        R.string.medtronic_cmd_desc_get_basal_profile
+    ),  // 148
+    //    SetBasalProfileSTD(0x6f, "Set Profile Standard", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
+    //            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 111
+    //
+    //    SetBasalProfileA(0x30, "Set Profile A", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
+    //            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 48
+    //    SetBasalProfileB(0x31, "Set Profile B", MedtronicDeviceType.Medtronic_512andHigher, MinimedCommandParameterType.NoParameters, //
+    //            64, 3, 192, R.string.medtronic_cmd_desc_set_basal_profile), // 49
 
     // 515
-    PumpStatus(206, "Pump Status", MedtronicDeviceType.Medtronic_515andHigher,
-            MinimedCommandParameterType.NoParameters, MedLinkCommandType.GetState), // PumpConfiguration
+    PumpStatus(
+        206, "Pump Status", MedtronicDeviceType.Medtronic_515andHigher,
+        MinimedCommandParameterType.NoParameters, MedLinkCommandType.GetState
+    ),  // PumpConfiguration
 
-    Settings(192, "Configuration", MedtronicDeviceType.Medtronic_515andHigher, MinimedCommandParameterType.NoParameters, //
-            64, 1, 21, R.string.medtronic_cmd_desc_get_settings), //
-
+    Settings(
+        192,
+        "Configuration",
+        MedtronicDeviceType.Medtronic_515andHigher,
+        MinimedCommandParameterType.NoParameters,  //
+        64,
+        1,
+        21,
+        R.string.medtronic_cmd_desc_get_settings
+    ),
+    ; //
     // 522
-//    SensorSettings_522(153, "Sensor Configuration", MedtronicDeviceType.Medtronic_522andHigher, MinimedCommandParameterType.NoParameters), //
-//
-//    GlucoseHistory(154, "Glucose History", MedtronicDeviceType.Medtronic_522andHigher, MinimedCommandParameterType.SubCommands, 1024, 32, 0, null), //
-
+    //    SensorSettings_522(153, "Sensor Configuration", MedtronicDeviceType.Medtronic_522andHigher, MinimedCommandParameterType.NoParameters), //
+    //
+    //    GlucoseHistory(154, "Glucose History", MedtronicDeviceType.Medtronic_522andHigher, MinimedCommandParameterType.SubCommands, 1024, 32, 0, null), //
     // 523
-//    SensorSettings(207, "Sensor Configuration", MedtronicDeviceType.Medtronic_523andHigher, MinimedCommandParameterType.NoParameters), //
-//
+    //    SensorSettings(207, "Sensor Configuration", MedtronicDeviceType.Medtronic_523andHigher, MinimedCommandParameterType.NoParameters), //
+    //
     // 553
     // 554
-
     // var MESSAGES = {
     // READ_TIME : 0x70,
     // READ_BATTERY_STATUS: 0x72,
@@ -187,306 +273,292 @@ public enum MedLinkMedtronicCommandType implements Serializable // , MinimedComm
     // READ_SETTINGS : 0xC0, 192
     // READ_CURRENT_CBG_PAGE : 0xCD
     // };
-
     // Fake Commands
+    //    CancelTBR(),
 
-//    CancelTBR(),
-    ;
+    var command: MedLinkCommandType? = null
+    var commandCode: Byte = 0
+    lateinit var commandDescription: String
+    var commandParameters: ByteArray? = null
+    var commandParametersCount: Int = 0
+    var maxRecords: Int = 1
+    var resourceId: Int? = null
+        private set
+    var command_type: Int = 0
+    var allowedRetries: Int = 2
+    var maxAllowedTime: Int = 2000
+    var parameterType: MinimedCommandParameterType? = null
+    var minimalBufferSizeToStartReading: Int = 14
+    var expectedLength: Int = 0
 
-    static Map<String, MedLinkMedtronicCommandType> mapByCode;
-
-    static {
-        MedLinkMedtronicCommandType.RFPowerOn.maxAllowedTime = 17000;
-        MedLinkMedtronicCommandType.RFPowerOn.allowedRetries = 0;
-        MedLinkMedtronicCommandType.RFPowerOn.recordLength = 0;
-        MedLinkMedtronicCommandType.RFPowerOn.minimalBufferSizeToStartReading = 1;
-
-        mapByCode = new HashMap<>();
-
-        for (MedLinkMedtronicCommandType medtronicCommandType : values()) {
-            System.out.println(medtronicCommandType.toString());
-            if(medtronicCommandType.command != null) {
-                mapByCode.put(medtronicCommandType.command.code, medtronicCommandType);
-            }
-        }
-    }
-
-    public MedLinkCommandType command ;
-    public byte commandCode = 0;
-    public String commandDescription = "";
-    public byte[] commandParameters = null;
-    public int commandParametersCount = 0;
-    public int maxRecords = 1;
-    private Integer resourceId;
-    public int command_type = 0;
-    public int allowedRetries = 2;
-    public int maxAllowedTime = 2000;
-    public MinimedCommandParameterType parameterType;
-    public int minimalBufferSizeToStartReading = 14;
-    public int expectedLength = 0;
     //MinimedTargetType targetType;
-    MedtronicDeviceType devices;
-    private int recordLength = 64;
+    var devices: MedtronicDeviceType? = null
+    var recordLength: Int = 64
+        private set
 
 
-    MedLinkMedtronicCommandType() {
+    constructor()
+    constructor(code: Int) {
         // this is for "fake" commands needed by AAPS MedtronicUITask
-    }
-    MedLinkMedtronicCommandType(int code) {
-        // this is for "fake" commands needed by AAPS MedtronicUITask
-        this.command_type = (byte) code;
+        this.command_type = code.toByte().toInt()
     }
 
     //    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-//            MinimedCommandParameterType parameterType) {
-//        this(code, description, devices, parameterType, 64, 1, 0, 0, 0, 0);
+    //            MinimedCommandParameterType parameterType) {
+    //        this(code, description, devices, parameterType, 64, 1, 0, 0, 0, 0);
+    //    }
+    //
+    //
+    //    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
+    //            MinimedCommandParameterType parameterType, int expectedLength) {
+    //        this(code, description, devices, parameterType, 64, 1, 0, 0, 0, expectedLength);
+    //    }
+    //
+    //
+    //    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
+    //            MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType) {
+    //        this(code, description, devices, parameterType, recordLength, maxRecords, 0, 0, commandType, 0);
+    //    }
+    //
+    //
+    //    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
+    //            MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType,
+    //            int expectedLength) {
+    //        this(code, description, devices, parameterType, recordLength, maxRecords, 0, 0, commandType,
+    //            expectedLength);
+    //    }
+    //
+    //
+//    constructor(
+//        code: Int, description: String, devices: MedtronicDeviceType?,
+//        parameterType: MinimedCommandParameterType?, cmd_params: ByteArray
+//    ) : this(code, description, devices, parameterType, 0, 1, 0, 0, 11, 0) {
+//        this.commandParameters = cmd_params
+//        this.commandParametersCount = cmd_params.size
 //    }
-//
-//
-//    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-//            MinimedCommandParameterType parameterType, int expectedLength) {
-//        this(code, description, devices, parameterType, 64, 1, 0, 0, 0, expectedLength);
-//    }
-//
-//
-//    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-//            MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType) {
-//        this(code, description, devices, parameterType, recordLength, maxRecords, 0, 0, commandType, 0);
-//    }
-//
-//
-//    MedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-//            MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType,
-//            int expectedLength) {
-//        this(code, description, devices, parameterType, recordLength, maxRecords, 0, 0, commandType,
-//            expectedLength);
-//    }
-//
-//
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-                                MinimedCommandParameterType parameterType, byte[] cmd_params) {
-        this(code, description, devices, parameterType, 0, 1, 0, 0, 11, 0);
-
-        this.commandParameters = cmd_params;
-        this.commandParametersCount = cmd_params.length;
-    }
 
 
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, //
-                                MinimedCommandParameterType parameterType, MedLinkCommandType command) {
-
-        this(code, description, devices, parameterType, 64, 1, 0, null, command);
-    }
+    constructor(
+        code: Int, description: String, devices: MedtronicDeviceType?,  //
+        parameterType: MinimedCommandParameterType?, command: MedLinkCommandType?
+    ) : this(code, description, devices, parameterType, 64, 1, 0, null, command)
 
 
     // NEW
-//    MedlinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices,
-//                         MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType) {
-//        this(code, description, devices, parameterType, recordLength, maxRecords, 0, null);
-//    }
-
+    //    MedlinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices,
+    //                         MinimedCommandParameterType parameterType, int recordLength, int maxRecords, int commandType) {
+    //        this(code, description, devices, parameterType, recordLength, maxRecords, 0, null);
+    //    }
+    // NEW
+    constructor(
+        code: Int,
+        description: String,
+        devices: MedtronicDeviceType?,  //
+        parameterType: MinimedCommandParameterType?,
+        expectedLength: Int,
+        command: MedLinkCommandType?
+    ) : this(code, description, devices, parameterType, 64, 1, expectedLength, null, command)
 
     // NEW
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, //
-                                MinimedCommandParameterType parameterType, int expectedLength, MedLinkCommandType command) {
-        this(code, description, devices, parameterType, 64, 1, expectedLength, null, command);
-    }
-
-
-    // NEW
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, //
-                                MinimedCommandParameterType parameterType, int expectedLength,
-                                int resourceId, MedLinkCommandType command) {
-        this(code, description, devices, parameterType, 64, 1, expectedLength, resourceId, command);
-    }
-
-    MedLinkMedtronicCommandType(int code, String description,
-                                MedtronicDeviceType devices, //
-                                MinimedCommandParameterType parameterType, int recordLength, int max_recs, int expectedLength,
-                                Integer resourceId) {
-        this(code,description, devices, parameterType, recordLength, max_recs, expectedLength, resourceId, null);
-    }
+    constructor(
+        code: Int, description: String, devices: MedtronicDeviceType?,  //
+        parameterType: MinimedCommandParameterType?, expectedLength: Int,
+        resourceId: Int, command: MedLinkCommandType?
+    ) : this(code, description, devices, parameterType, 64, 1, expectedLength, resourceId, command)
 
     // NEW
-    MedLinkMedtronicCommandType(int code, String description,
-                                MedtronicDeviceType devices, //
-                                MinimedCommandParameterType parameterType, int recordLength, int max_recs, int expectedLength,
-                                Integer resourceId, MedLinkCommandType command) {
-        this.command = command;
-        this.commandCode = (byte) code;
-        this.commandDescription = description;
-        this.devices = devices;
-        this.recordLength = recordLength;
-        this.maxRecords = max_recs;
-        this.resourceId = resourceId;
 
-        this.commandParametersCount = 0;
-        this.allowedRetries = 2;
-        this.parameterType = parameterType;
-        this.expectedLength = expectedLength;
+    constructor(
+        code: Int,
+        description: String,
+        devices: MedtronicDeviceType?,  //
+        parameterType: MinimedCommandParameterType?,
+        recordLength: Int,
+        max_recs: Int,
+        expectedLength: Int,
+        resourceId: Int?,
+        command: MedLinkCommandType? = null
+    ) {
+        this.command = command
+        this.commandCode = code.toByte()
+        this.commandDescription = description
+        this.devices = devices
+        this.recordLength = recordLength
+        this.maxRecords = max_recs
+        this.resourceId = resourceId
+
+        this.commandParametersCount = 0
+        this.allowedRetries = 2
+        this.parameterType = parameterType
+        this.expectedLength = expectedLength
 
         if (this.parameterType == MinimedCommandParameterType.SubCommands) {
-            this.minimalBufferSizeToStartReading = 200;
+            this.minimalBufferSizeToStartReading = 200
         }
     }
 
-
-    @Deprecated MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, //
-                                            MinimedCommandParameterType parameterType, int recordLength, int max_recs, int addy, //
-                                            int addy_len, int cmd_type, int expectedLength) {
-        this.commandCode = (byte) code;
-        this.commandDescription = description;
+    @Deprecated("")
+    constructor(
+        code: Int,
+        description: String,
+        devices: MedtronicDeviceType?,  //
+        parameterType: MinimedCommandParameterType?,
+        recordLength: Int,
+        max_recs: Int,
+//        addy: Int,  //
+//        addy_len: Int,
+        cmd_type: Int,
+        expectedLength: Int
+    ) {
+        this.commandCode = code.toByte()
+        this.commandDescription = description
         //this.targetType = targetType;
-        this.devices = devices;
-        this.recordLength = recordLength;
-        this.maxRecords = max_recs;
+        this.devices = devices
+        this.recordLength = recordLength
+        this.maxRecords = max_recs
 
-        this.command_type = cmd_type;
-        this.commandParametersCount = 0;
-        this.allowedRetries = 2;
-        this.parameterType = parameterType;
-        this.expectedLength = expectedLength;
+        this.command_type = cmd_type
+        this.commandParametersCount = 0
+        this.allowedRetries = 2
+        this.parameterType = parameterType
+        this.expectedLength = expectedLength
 
         if (this.parameterType == MinimedCommandParameterType.SubCommands) {
-            this.minimalBufferSizeToStartReading = 200;
+            this.minimalBufferSizeToStartReading = 200
         }
-
     }
 
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, MinimedCommandParameterType parameterType, int recordLength) {
-        this(code,description,devices,parameterType,recordLength,null);
-    }
+    constructor(
+        code: Int,
+        description: String,
+        devices: MedtronicDeviceType?,
+        parameterType: MinimedCommandParameterType?,
+        recordLength: Int = 0
+    ) : this(code, description, devices, parameterType, recordLength, null)
 
-    MedLinkMedtronicCommandType(int code, String description, MedtronicDeviceType devices, MinimedCommandParameterType parameterType) {
-        this(code,description,devices,parameterType,0,null);
-    }
-
-    private static HashMap<MedtronicDeviceType, String> getDeviceTypesArray(MedtronicDeviceType... types) {
-        HashMap<MedtronicDeviceType, String> hashMap = new HashMap<MedtronicDeviceType, String>();
-
-        for (MedtronicDeviceType type : types) {
-            hashMap.put(type, null);
-        }
-
-        return hashMap;
-    }
-
-
-    private static byte[] getByteArray(int... data) {
-        byte[] array = new byte[data.length];
-
-        for (int i = 0; i < data.length; i++) {
-            array[i] = (byte) data[i];
-        }
-
-        return array;
-    }
-
-
-    private static int[] getIntArray(int... data) {
-        return data;
-    }
-
-
-    public MedLinkMedtronicCommandType getByCode(byte code) {
-        if (mapByCode.containsKey(code)) {
-            return mapByCode.get(code);
+    fun getByCode(code: Byte): MedLinkMedtronicCommandType? {
+        if (mapByCode.containsKey(code.toString())) {
+            return mapByCode.get(code.toString())
         } else {
-            return MedLinkMedtronicCommandType.InvalidCommand;
+            return MedLinkMedtronicCommandType.InvalidCommand
         }
     }
 
 
-    public static MessageBody constructMessageBody(MedLinkMedtronicCommandType messageType, byte[] bodyData) {
-        switch (messageType) {
-            case Bolus:
-                return new PumpAckMessageBody(bodyData);
-            default:
-                return new UnknownMessageBody(bodyData);
-        }
-    }
-
-    //TODO check if is necessary to adapt to the new firmware pumps
-    public static MedLinkMedtronicCommandType getSettings(MedLinkMedtronicDeviceType medtronicPumpModel) {
-        if (MedLinkMedtronicDeviceType.isSameDevice(medtronicPumpModel, MedLinkMedtronicDeviceType.MedLinkMedtronic_512_712))
-            return MedLinkMedtronicCommandType.Settings_512;
-        else
-            return MedLinkMedtronicCommandType.Settings;
-    }
+    val fullCommandDescription: String
+        /**
+         * Get Full Command Description
+         *
+         * @return command description
+         */
+        get() = ("Command [name=" + this.name + ", id=" + this.commandCode + ",description=" + this.commandDescription
+                + "] ")
 
 
-    /**
-     * Get Full Command Description
-     *
-     * @return command description
-     */
-    public String getFullCommandDescription() {
-        return "Command [name=" + this.name() + ", id=" + this.commandCode + ",description=" + this.commandDescription
-                + "] ";
+    fun canReturnData(): Boolean {
+        println("CanReturnData: ]id=" + this.name + "max=" + this.maxRecords + "recLen=" + recordLength)
+        return (this.maxRecords * this.recordLength) > 0
     }
 
 
-    public boolean canReturnData() {
-        System.out.println("CanReturnData: ]id=" + this.name() + "max=" + this.maxRecords + "recLen=" + recordLength);
-        return (this.maxRecords * this.recordLength) > 0;
-    }
+//    fun getCommand(): MedLinkCommandType? {
+//        return command
+//    }
 
-
-    public int getRecordLength() {
-        return recordLength;
-    }
-
-
-    public int getMaxRecords() {
-        return maxRecords;
-    }
-
-
-    public byte getCommandCode() {
-        return commandCode;
-    }
-
-    public MedLinkCommandType getCommand() {
-        return command;
-    }
-
-    public int getCommandParametersCount() {
+    fun getCommandParametersCountMet(): Int {
         if (this.commandParameters == null) {
-            return 0;
+            return 0
         } else {
-            return this.commandParameters.length;
+            return this.commandParameters!!.size
         }
     }
 
 
-    public byte[] getCommandParameters() {
-        return commandParameters;
+    fun hasCommandParameters(): Boolean {
+        return (getCommandParametersCountMet() > 0)
     }
 
 
-    public boolean hasCommandParameters() {
-        return (getCommandParametersCount() > 0);
+    override fun toString(): String {
+        return name
     }
 
 
-    public String toString() {
-        return name();
-    }
-
-
-    public String getCommandDescription() {
-        return this.commandDescription;
-    }
-
-
-    public Integer getResourceId() {
-        return resourceId;
-    }
-
-    public enum MinimedCommandParameterType {
-        NoParameters, //
-        FixedParameters, //
+    enum class MinimedCommandParameterType {
+        NoParameters,  //
+        FixedParameters,  //
         SubCommands //
     }
 
+    companion object {
+        var mapByCode: MutableMap<String, MedLinkMedtronicCommandType?>
+
+        init {
+            RFPowerOn.maxAllowedTime = 17000
+            RFPowerOn.allowedRetries = 0
+            RFPowerOn.recordLength = 0
+            RFPowerOn.minimalBufferSizeToStartReading = 1
+
+            mapByCode = HashMap<String, MedLinkMedtronicCommandType?>()
+
+            for (medtronicCommandType in entries) {
+                println(medtronicCommandType.toString())
+
+                if (medtronicCommandType.command != null) {
+                    val command = medtronicCommandType.command
+                    val code = command?.code
+                    if(code !=null)
+                        mapByCode[code] = medtronicCommandType
+                }
+            }
+        }
+
+        private fun getDeviceTypesArray(vararg types: MedtronicDeviceType?): HashMap<MedtronicDeviceType?, String?> {
+            val hashMap = HashMap<MedtronicDeviceType?, String?>()
+
+            for (type in types) {
+                hashMap.put(type, null)
+            }
+
+            return hashMap
+        }
+
+
+        private fun getByteArray(vararg data: Int): ByteArray {
+            val array = ByteArray(data.size)
+
+            for (i in data.indices) {
+                array[i] = data[i].toByte()
+            }
+
+            return array
+        }
+
+
+        private fun getIntArray(vararg data: Int): IntArray? {
+            return data
+        }
+
+
+        fun constructMessageBody(
+            messageType: MedLinkMedtronicCommandType,
+            bodyData: ByteArray
+        ): MessageBody {
+            when (messageType) {
+                MedLinkMedtronicCommandType.Bolus -> return PumpAckMessageBody(bodyData)
+                else -> return UnknownMessageBody(bodyData)
+            }
+        }
+
+        //TODO check if is necessary to adapt to the new firmware pumps
+        @JvmStatic
+        fun getSettings(medtronicPumpModel: MedLinkMedtronicDeviceType?): MedLinkMedtronicCommandType {
+            if (MedLinkMedtronicDeviceType.isSameDevice(
+                    medtronicPumpModel,
+                    MedLinkMedtronicDeviceType.MedLinkMedtronic_512_712
+                )
+            ) return MedLinkMedtronicCommandType.Settings_512
+            else return MedLinkMedtronicCommandType.Settings
+        }
+    }
 }

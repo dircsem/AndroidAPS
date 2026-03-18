@@ -1,7 +1,7 @@
-    package info.nightscout.androidaps.plugins.pump.medtronic.data
+package app.aaps.pump.medtronic.data
 
 
-    /**
+/**
      * used by medlink
      */
 object EnliteInterval {
@@ -13,15 +13,16 @@ object EnliteInterval {
     }
 
     private fun newArray() = arrayOf(
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0),
-            EnliteWaitPeriod(0, 0))
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0),
+        EnliteWaitPeriod(0, 0)
+    )
 
 
     private var index = 0

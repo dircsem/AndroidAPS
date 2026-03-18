@@ -1,95 +1,86 @@
-package app.aaps.pump.common.hw.medlink.ble;
+package app.aaps.pump.common.hw.medlink.ble
 
-import android.os.AsyncTask;
-import android.os.SystemClock;
-
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-
-import app.aaps.core.utils.pump.ThreadUtil;
-import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType;
-
-import app.aaps.core.interfaces.logging.AAPSLogger;
-import app.aaps.core.interfaces.logging.LTag;
+import android.os.AsyncTask
+import android.os.SystemClock
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 /**
  * Created by Dirceu on 06/10/20.
  */
-public class MedLinkRFSpyReader {
-    private final AAPSLogger aapsLogger;
-    private static AsyncTask<Void, Void, Void> readerTask;
-    private MedLinkBLE medLinkBle;
-    private Semaphore waitForRadioData = new Semaphore(0, true);
-    private LinkedBlockingQueue<byte[]> mDataQueue = new LinkedBlockingQueue<>();
-    private int acquireCount = 0;
-    private int releaseCount = 0;
-    private boolean stopAtNull = true;
-    private static boolean isRunning = false;
+class MedLinkRFSpyReader // xyz setRileyLinkBle(medLinkBle);
+internal constructor(private val aapsLogger: AAPSLogger, private var medLinkBle: MedLinkBLE?) {
+    private val waitForRadioData = Semaphore(0, true)
+    private val mDataQueue = LinkedBlockingQueue<ByteArray?>()
+    private val acquireCount = 0
+    private var releaseCount = 0
+    private val stopAtNull = true
 
 
-    MedLinkRFSpyReader(AAPSLogger aapsLogger, MedLinkBLE medLinkBle) {
-        this.aapsLogger = aapsLogger;
-        // xyz setRileyLinkBle(medLinkBle);
-        this.medLinkBle = medLinkBle;
-    }
-
-
-    public void setMedLinkBle(MedLinkBLE medLinkBle) {
+    fun setMedLinkBle(medLinkBle: MedLinkBLE?) {
         if (readerTask != null) {
-            readerTask.cancel(true);
+            readerTask.cancel(true)
         }
-        this.medLinkBle = medLinkBle;
+        this.medLinkBle = medLinkBle
     }
 
-    void setMedLinkEncodingType(MedLinkEncodingType encodingType) {
-        aapsLogger.debug("setRileyLinkEncodingType: " + encodingType);
-//        stopAtNull = !(encodingType == RileyLinkEncodingType.Manchester || //
+    fun setMedLinkEncodingType(encodingType: MedLinkEncodingType?) {
+        aapsLogger.debug("setRileyLinkEncodingType: " + encodingType)
+        //        stopAtNull = !(encodingType == RileyLinkEncodingType.Manchester || //
 //                encodingType == MedLinkEncodingType.FourByteSixByteLocal);
     }
 
 
     // This timeout must be coordinated with the length of the RFSpy radio operation or Bad Things Happen.
-    byte[] poll(int timeout_ms) {
-        aapsLogger.debug(LTag.PUMPBTCOMM, ThreadUtil.sig() + "Entering poll at t==" + SystemClock.uptimeMillis() + ", timeout is " + timeout_ms
-                + " mDataQueue size is " + mDataQueue.size());
+    fun poll(timeout_ms: Int): ByteArray? {
+//        aapsLogger.debug(LTag.PUMPBTCOMM, ThreadUtil.sig() + "Entering poll at t==" + SystemClock.uptimeMillis() + ", timeout is " + timeout_ms
+//                + " mDataQueue size is " + mDataQueue.size());
 
         if (mDataQueue.isEmpty()) {
             try {
                 // block until timeout or data available.
                 // returns null if timeout.
-                byte[] dataFromQueue = mDataQueue.poll(timeout_ms, TimeUnit.MILLISECONDS);
+                val dataFromQueue = mDataQueue.poll(timeout_ms.toLong(), TimeUnit.MILLISECONDS)
                 if (dataFromQueue != null) {
-                    aapsLogger.debug(LTag.PUMPBTCOMM, "Got data [" + dataFromQueue + "] at t=="
-                            + SystemClock.uptimeMillis());
+                    aapsLogger.debug(
+                        LTag.PUMPBTCOMM, ("Got data [" + dataFromQueue + "] at t=="
+                                + SystemClock.uptimeMillis())
+                    )
                 } else {
-                    aapsLogger.debug(LTag.PUMPBTCOMM, "Got data [null] at t==" + SystemClock.uptimeMillis());
+                    aapsLogger.debug(
+                        LTag.PUMPBTCOMM,
+                        "Got data [null] at t==" + SystemClock.uptimeMillis()
+                    )
                 }
-                return dataFromQueue;
-            } catch (InterruptedException e) {
-                aapsLogger.error(LTag.PUMPBTCOMM, "poll: Interrupted waiting for data");
+                return dataFromQueue
+            } catch (e: InterruptedException) {
+                aapsLogger.error(LTag.PUMPBTCOMM, "poll: Interrupted waiting for data")
             }
         }
 
-        return null;
+        return null
     }
 
 
     // Call this from the "response count" notification handler.
-    void newDataIsAvailable() {
-        releaseCount++;
+    fun newDataIsAvailable() {
+        releaseCount++
 
-        aapsLogger.debug(LTag.PUMPBTCOMM, ThreadUtil.sig() + "waitForRadioData released(count=" + releaseCount + ") at t="
-                + SystemClock.uptimeMillis());
-        waitForRadioData.release();
+        //        aapsLogger.debug(LTag.PUMPBTCOMM, ThreadUtil.sig() + "waitForRadioData released(count=" + releaseCount + ") at t="
+//                + SystemClock.uptimeMillis());
+        waitForRadioData.release()
     }
 
 
-    public void start() {
-        isRunning = true;
+    fun start() {
+        isRunning = true
 
-        aapsLogger.debug(LTag.PUMPBTCOMM, "RFSpyReader starting");
-//        readerTask = new AsyncTask<Void, Void, Void>() {
+        aapsLogger.debug(LTag.PUMPBTCOMM, "RFSpyReader starting")
+        //        readerTask = new AsyncTask<Void, Void, Void>() {
 //
 //            @Override
 //            protected Void doInBackground(Void... voids) {
@@ -138,8 +129,12 @@ public class MedLinkRFSpyReader {
 //        }.execute();
     }
 
-    public void stop() {
-        isRunning = false;
+    fun stop() {
+        isRunning = false
     }
 
+    companion object {
+        private val readerTask: AsyncTask<Void?, Void?, Void?>? = null
+        private var isRunning = false
+    }
 }

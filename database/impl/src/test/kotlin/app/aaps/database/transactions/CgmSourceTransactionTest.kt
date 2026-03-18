@@ -204,7 +204,8 @@ class CgmSourceTransactionTest {
         trendArrow = GlucoseValue.TrendArrow.FLAT,
         sourceSensor = GlucoseValue.SourceSensor.DEXCOM_G6_NATIVE,
         isValid = isValid,
-        interfaceIDs_backing = InterfaceIDs(nightscoutId = nsId)
+        interfaceIDs_backing = InterfaceIDs(nightscoutId = nsId),
+        isig = 0.0
     )
 
     private fun createTherapyEvent(

@@ -1,40 +1,35 @@
-package app.aaps.pump.medtronic.defs;
+package app.aaps.pump.medtronic.defs
 
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCommandType;
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicCommandType.Companion.getSettings
+
+
 /**
  * Created by dirceu
  *
  * used by medlink
  */
+enum class MedLinkMedtronicStatusRefreshType(
+    val refreshTime: Int,
+    commandType: MedLinkMedtronicCommandType
+) {
+    PumpHistory(5, MedLinkMedtronicCommandType.PumpStatus),  //
+    Configuration(0, MedLinkMedtronicCommandType.InvalidCommand),  //
+    RemainingInsulin(-1, MedLinkMedtronicCommandType.GetRemainingInsulin),  //
+    BatteryStatus(55, MedLinkMedtronicCommandType.GetBatteryStatus),  //
+    PumpTime(60, MedLinkMedtronicCommandType.GetRealTimeClock); //
 
-public enum MedLinkMedtronicStatusRefreshType {
-
-    PumpHistory(5, null), //
-    Configuration(0, null), //
-    RemainingInsulin(-1, MedLinkMedtronicCommandType.GetRemainingInsulin), //
-    BatteryStatus(55, MedLinkMedtronicCommandType.GetBatteryStatus), //
-    PumpTime(60, MedLinkMedtronicCommandType.GetRealTimeClock) //
-    ;
-
-    private int refreshTime;
-    private MedLinkMedtronicCommandType commandType;
+    private val commandType: MedLinkMedtronicCommandType?
 
 
-    MedLinkMedtronicStatusRefreshType(int refreshTime, MedLinkMedtronicCommandType commandType) {
-        this.refreshTime = refreshTime;
-        this.commandType = commandType;
+    init {
+        this.commandType = commandType
     }
 
 
-    public int getRefreshTime() {
-        return refreshTime;
-    }
-
-
-    public MedLinkMedtronicCommandType getCommandType(MedLinkMedtronicDeviceType medtronicDeviceType) {
-        if (this == Configuration) {
-            return MedLinkMedtronicCommandType.getSettings(medtronicDeviceType);
-        } else
-            return commandType;
+    fun getCommandType(medtronicDeviceType: MedLinkMedtronicDeviceType?): MedLinkMedtronicCommandType? {
+        if (this == MedLinkMedtronicStatusRefreshType.Configuration) {
+            return getSettings(medtronicDeviceType)
+        } else return commandType
     }
 }

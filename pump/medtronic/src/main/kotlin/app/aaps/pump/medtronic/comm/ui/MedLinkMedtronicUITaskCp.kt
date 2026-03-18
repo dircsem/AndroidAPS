@@ -1,21 +1,21 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.comm.ui
+package app.aaps.pump.medtronic.comm.ui
 
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange
+
 import app.aaps.pump.common.hw.medlink.activities.ConnectionCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.TempBasalPair
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicUIResponseType
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.events.EventMedtronicPumpValuesChanged
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
+import app.aaps.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.pump.common.events.EventRileyLinkDeviceStatusChange
+import app.aaps.pump.medtronic.data.dto.TempBasalPair
+import app.aaps.pump.medtronic.defs.MedtronicUIResponseType
+import app.aaps.pump.medtronic.driver.MedtronicPumpStatus
+import app.aaps.pump.medtronic.events.EventMedtronicPumpValuesChanged
 import java.util.function.Function
 import java.util.function.Supplier
 import java.util.stream.Stream
@@ -25,7 +25,7 @@ import javax.inject.Inject
  * Created by Dirceu on 25/09/20.
  * copied from [MedtronicUITask]
  */
-class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,val aapsLogger: AAPSLogger) {
+class MedLinkMedtronicUITaskCp @Inject constructor(val aapsLogger: AAPSLogger) {
 
 
 
@@ -52,7 +52,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(injector: HasAndroidInjector,
     //        this.commandType = commandType;
     //        this.parameters = parameters;
     //    }
-    fun <B,C>execute(communicationManager: MedLinkMedtronicCommunicationManager, medtronicUIPostprocessor: MedLinkMedtronicUIPostprocessor?,pumpMessage: MedLinkPumpMessage<B, C>) {
+    fun <B,C>execute(communicationManager: MedLinkMedtronicCommunicationManager, medtronicUIPostprocessor: MedLinkMedtronicUIPostprocessor?, pumpMessage: MedLinkPumpMessage<B, C>) {
         aapsLogger!!.info(LTag.PUMP, "MedtronicUITask: @@@ In execute. {}", pumpMessage)
         val func = pumpMessage.firstFunction()
         func.map {

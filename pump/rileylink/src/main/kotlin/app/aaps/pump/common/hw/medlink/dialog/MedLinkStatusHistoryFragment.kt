@@ -1,175 +1,153 @@
-package app.aaps.pump.common.hw.medlink.dialog;
+package app.aaps.pump.common.hw.medlink.dialog
 
-import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.TextView;
-
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import org.jetbrains.annotations.NotNull;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-import javax.inject.Inject;
-
-import app.aaps.core.interfaces.pump.defs.PumpDeviceState;
-import app.aaps.core.interfaces.utils.DateUtil;
-import dagger.android.support.DaggerFragment;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.RileyLinkUtil;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.data.RLHistoryItem;
-
-import app.aaps.core.interfaces.resources.ResourceHelper;
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import app.aaps.core.interfaces.pump.defs.PumpDeviceState
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.pump.common.hw.rileylink.R
+import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
+import app.aaps.pump.common.hw.rileylink.data.RLHistoryItem
+import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusHistoryItemBinding
+import app.aaps.pump.common.hw.rileylink.dialog.RileyLinkStatusHistoryFragment
+import dagger.android.support.DaggerFragment
+import java.util.Collections
+import javax.inject.Inject
 
 /**
  * Created by andy on 5/19/18.
  */
+class MedLinkStatusHistoryFragment : DaggerFragment() {
+    @Inject
+    lateinit var rileyLinkUtil: RileyLinkUtil
 
-public class MedLinkStatusHistoryFragment extends DaggerFragment {
+    @Inject
+    lateinit var resourceHelper: ResourceHelper
 
-    @Inject RileyLinkUtil rileyLinkUtil;
-    @Inject ResourceHelper resourceHelper;
-    @Inject DateUtil dateUtil;
+    @Inject
+    lateinit var dateUtil: DateUtil
 
-    RecyclerView recyclerView;
-    RecyclerViewAdapter recyclerViewAdapter;
+    var recyclerView: RecyclerView? = null
+    var recyclerViewAdapter: RecyclerViewAdapter? = null
 
-    LinearLayoutManager llm;
-    List<RLHistoryItem> filteredHistoryList = new ArrayList<>();
+    var llm: LinearLayoutManager? = null
+    var filteredHistoryList: MutableList<RLHistoryItem> = ArrayList<RLHistoryItem>()
 
 
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        View rootView = inflater.inflate(R.layout.rileylink_status_history, container, false);
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val rootView = inflater.inflate(R.layout.rileylink_status_history, container, false)
 
-        recyclerView = (RecyclerView) rootView.findViewById(R.id.history_list);
+        recyclerView = rootView.findViewById<View?>(R.id.history_list) as RecyclerView
 
-        recyclerView.setHasFixedSize(true);
-        llm = new LinearLayoutManager(rootView.getContext());
-        recyclerView.setLayoutManager(llm);
+        recyclerView!!.setHasFixedSize(true)
+        llm = LinearLayoutManager(rootView.getContext())
+        recyclerView!!.setLayoutManager(llm)
 
-        recyclerViewAdapter = new RecyclerViewAdapter(filteredHistoryList);
-        recyclerView.setAdapter(recyclerViewAdapter);
+        recyclerViewAdapter = RecyclerViewAdapter(filteredHistoryList)
+        recyclerView!!.setAdapter(recyclerViewAdapter)
 
-        return rootView;
+        return rootView
     }
 
 
-    @Override
-    public void onStart() {
-        super.onStart();
+    override fun onStart() {
+        super.onStart()
 
-        refreshData();
+        refreshData()
     }
 
 
     //    @Override
-    public void refreshData() {
-        if (rileyLinkUtil.getRileyLinkHistory() != null) {
-            recyclerViewAdapter.addItemsAndClean(rileyLinkUtil.getRileyLinkHistory());
+    fun refreshData() {
+        if (rileyLinkUtil!!.rileyLinkHistory != null) {
+            recyclerViewAdapter!!.addItemsAndClean(rileyLinkUtil!!.rileyLinkHistory)
         }
     }
 
 
-    public class RecyclerViewAdapter extends RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder> {
+    inner class RecyclerViewAdapter internal constructor(private val historyList: MutableList<RLHistoryItem>) : RecyclerView.Adapter<RecyclerViewAdapter.HistoryViewHolder>() {
+         fun addItemsAndClean(items: MutableList<RLHistoryItem>) {
+            this.historyList.clear()
 
-        List<RLHistoryItem> historyList;
+            Collections.sort<RLHistoryItem?>(items, RLHistoryItem.Comparator())
 
-
-        RecyclerViewAdapter(List<RLHistoryItem> historyList) {
-            this.historyList = historyList;
-        }
-
-
-        public void setHistoryList(List<RLHistoryItem> historyList) {
-            this.historyList = historyList;
-        }
-
-
-        public void addItemsAndClean(List<RLHistoryItem> items) {
-            this.historyList.clear();
-
-            Collections.sort(items, new RLHistoryItem.Comparator());
-
-            for (RLHistoryItem item : items) {
-
+            for (item in items) {
                 if (!historyList.contains(item) && isValidItem(item)) {
-                    historyList.add(item);
+                    historyList.add(item)
                 }
             }
 
-            notifyDataSetChanged();
+            notifyDataSetChanged()
         }
 
 
-        private boolean isValidItem(RLHistoryItem item) {
-
-            PumpDeviceState pumpState = item.getPumpDeviceState();
+        private fun isValidItem(item: RLHistoryItem): Boolean {
+            val pumpState = item.pumpDeviceState
 
             //
-            if ((pumpState == PumpDeviceState.Sleeping || //
-                    pumpState == PumpDeviceState.Active || //
-                    pumpState == PumpDeviceState.WakingUp //
-            ))
-                return false;
+            if ((pumpState == PumpDeviceState.Sleeping ||  //
+                        pumpState == PumpDeviceState.Active ||  //
+                        pumpState == PumpDeviceState.WakingUp //
+                        )
+            ) return false
 
-            return true;
-
+            return true
         }
 
 
-        @NotNull
-        @Override
-        public HistoryViewHolder onCreateViewHolder(ViewGroup viewGroup, int viewType) {
-            View v = LayoutInflater.from(viewGroup.getContext()).inflate(R.layout.rileylink_status_history_item, //
-                    viewGroup, false);
-            return new HistoryViewHolder(v);
+        override fun onCreateViewHolder(viewGroup: ViewGroup, viewType: Int): HistoryViewHolder {
+            val v = LayoutInflater.from(viewGroup.getContext()).inflate(
+                R.layout.rileylink_status_history_item,  //
+                viewGroup, false
+            )
+            return HistoryViewHolder(v)
         }
 
 
-        @Override
-        public void onBindViewHolder(HistoryViewHolder holder, int position) {
-            RLHistoryItem item = historyList.get(position);
+        override fun onBindViewHolder(holder: HistoryViewHolder, position: Int) {
+            val item = historyList.get(position)
 
             if (item != null) {
-                holder.timeView.setText(dateUtil.dateAndTimeAndSecondsString(item.getDateTime().toDateTime().getMillis()));
-                holder.typeView.setText(item.getSource().getDesc());
-                holder.valueView.setText(item.getDescription(resourceHelper));
+                holder.timeView.setText(
+                    dateUtil!!.dateAndTimeAndSecondsString(
+                        item.dateTime.toDateTime().getMillis()
+                    )
+                )
+                holder.typeView.setText(item.source.desc)
+                holder.valueView.setText(item.getDescription(resourceHelper!!))
             }
         }
 
 
-        @Override
-        public int getItemCount() {
-            return historyList.size();
+        override fun getItemCount(): Int {
+            return historyList.size
         }
 
 
-        @Override
-        public void onAttachedToRecyclerView(RecyclerView recyclerView) {
-            super.onAttachedToRecyclerView(recyclerView);
+        override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+            super.onAttachedToRecyclerView(recyclerView)
         }
 
-        class HistoryViewHolder extends RecyclerView.ViewHolder {
+        inner class HistoryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            var timeView: TextView
+            var typeView: TextView
+            var valueView: TextView
 
-            TextView timeView;
-            TextView typeView;
-            TextView valueView;
 
-
-            HistoryViewHolder(View itemView) {
-                super(itemView);
-
-                timeView = (TextView) itemView.findViewById(R.id.history_time);
-                typeView = (TextView) itemView.findViewById(R.id.history_source);
-                valueView = (TextView) itemView.findViewById(R.id.history_description);
+            init {
+                timeView = itemView.findViewById<View?>(R.id.history_time) as TextView
+                typeView = itemView.findViewById<View?>(R.id.history_source) as TextView
+                valueView = itemView.findViewById<View?>(R.id.history_description) as TextView
             }
         }
     }
-
 }

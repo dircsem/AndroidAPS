@@ -132,5 +132,28 @@
     <string name="orange_use_scanning_level">Use Scanning</string>
     <string name="orange_use_scanning_level_summary">Scan before connecting to OrangeLink, it should improve connections (can also be used with other RileyLink clones, if needed)</string>
     <string name="rileylink_configuration">RileyLink Configuration</string>
+    <string name="medlink_configuration">MedLink Configuration</string>
+
+    <string name="medlink_change_cannula_action">Do you change the cannula together with reservoir?</string>
+    <string name="medlink_change_cannula_summary">When you enable this option, whenever there is a reservoir change, a change cannula event will be created.</string>
+    <string name="medlink_init_commands">Commands to be executed on first connect</string>
+
+    <string name="medlink_init_commands_last_bolus_history">Last Bolus History Page(H)</string>
+    <string name="medlink_init_commands_last_bolus_history_summary">If you enable this the last bolus history command will be dispatched every now and then</string>
+
+    <string name="medlink_init_commands_previous_bolus_history">Previous Bolus History Page(G)</string>
+    <string name="medlink_init_commands_previous_bolus_history_summary">If you enable this the previous bolus history command will be dispatched every now and then</string>
+
+    <string name="medlink_init_commands_previous_bg_history">Previous BG History Page(T and J)</string>
+    <string name="medlink_init_commands_previous_bg_history_summary">If you enable this the previous bg history command will be dispatched every now and then</string>
+
+    <string name="medlink_init_commands_last_bg_history">Last BG History Page(C and I)</string>
+    <string name="medlink_init_commands_last_bg_history_summary">If you enable this the last bg history command will be dispatched every now and then</string>
+
+    <string name="medlink_init_commands_profile">Profile Data (E and F)</string>
+    <string name="medlink_handle_cannula_change_event">Automatically handle cannula and reservoir change event</string>
+    <string name="medlink_handle_sensor_change_event">Automatically handle sensor change event</string>
+    <string name="medlink_key_force_bolus_history_read">Force bolus history read after each bolus event</string>
+
 
 </resources>

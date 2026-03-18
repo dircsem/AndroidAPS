@@ -28,6 +28,9 @@ enum class PumpType(
     private val parent: PumpType? = null
 ) {
 
+
+
+
     GENERIC_AAPS(
         description = "Generic AAPS",
         manufacturer = ManufacturerType.AAPS,
@@ -548,4 +551,6 @@ enum class PumpType(
 
         fun fromString(name: String?) = entries.firstOrNull { it.name == name }
     }
+
+
 }

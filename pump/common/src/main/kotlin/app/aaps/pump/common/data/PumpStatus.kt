@@ -18,7 +18,7 @@ abstract class PumpStatus(var pumpType: PumpType) {
 
     // read before lastConnection is modified for first time).
     // last bolus
-    open var lastBolusTime: Date? = null
+    var lastBolusTime: Date? = null
     var lastBolusAmount: Double? = null
 
     // other pump settings
@@ -26,10 +26,8 @@ abstract class PumpStatus(var pumpType: PumpType) {
     var reservoirRemainingUnits = 0.0
 
     var reservoirFullUnits = 0
-
-    var batteryRemaining = 0 // percent, so 0-100
-
-    var batteryVoltage: Double = 0.0
+    var batteryRemaining : Int? = null // percent, so 0-100
+    var batteryVoltage: Double? = null
 
     // iob
     var iob: String? = null
@@ -44,7 +42,7 @@ abstract class PumpStatus(var pumpType: PumpType) {
     var tempBasalAmount: Double? = 0.0
     var tempBasalLength: Int? = 0
     var tempBasalEnd: Long? = null
-    // var pumpTime: PumpTimeDifferenceDto? = null
+    var pumpTime: PumpTimeDifferenceDto? = null
 
     fun setLastCommunicationToNow() {
         lastDataTime = System.currentTimeMillis()

@@ -23,4 +23,6 @@ enum class MedtronicIntPreferenceKey(
     MaxBasal("pref_medtronic_max_basal", 35, min = 1, max = 35),
     MaxBolus("pref_medtronic_max_bolus", 25, min = 1, max = 25),
     BolusDelay("pref_medtronic_bolus_delay", 10, min = 5, max = 15),
+
+    IntervalBetweenConnections("medlink_key_interval_between_bt_connections_summary",5)
 }

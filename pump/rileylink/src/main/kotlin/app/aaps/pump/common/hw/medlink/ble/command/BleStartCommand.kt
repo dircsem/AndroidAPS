@@ -11,7 +11,7 @@ import app.aaps.core.interfaces.queue.Callback
 
 class BleStartCommand(
     aapsLogger: AAPSLogger,
-    medLinkServiceData: MedLinkServiceData,
+    medLinkServiceData: MedLinkServiceData?,
     val medLinkPumpPluginAbstract: MedLinkPumpPluginBase,
 ) :
     BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {

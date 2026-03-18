@@ -1,5 +1,6 @@
 package app.aaps.implementation.di
 
+
 import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensData
@@ -19,10 +20,10 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.protection.PasswordCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck
-import app.aaps.core.interfaces.pump.BgSync
 import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.interfaces.pump.BlePreCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfoStorage
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.pump.PumpSync
@@ -30,6 +31,7 @@ import app.aaps.core.interfaces.pump.TemporaryBasalStorage
 import app.aaps.core.interfaces.pump.WarnColors
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.source.BgSync
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
@@ -144,5 +146,9 @@ class ImplementationModule {
         @Binds fun bindsAutosensData(autosensDataObject: AutosensDataObject): AutosensData
         @Binds fun bindsAPSResult(determineBasalResult: DetermineBasalResult): APSResult
         @Binds fun bindsPumpEnactResult(pumpEnactResultObject: PumpEnactResultObject): PumpEnactResult
+
+        @Binds fun bindsBgSyncImplementation(bgSyncImplementation: BgSyncImplementation): BgSync
+//        @Binds fun bindsMedLinkProfileParser(medLinkProfileParser: MedLinkProfilePar): MedLinkProfileParser
+
     }
 }

@@ -253,35 +253,7 @@ class LoopDialog : DaggerDialogFragment() {
             }
 
             R.id.overview_disable                         -> {
-                (loop as PluginBase).setPluginEnabled(LOOP, false)
-                (loop as PluginBase).setFragmentVisible(LOOP, false)
-                configBuilder.storeSettings("DisablingLoop")
-                rxBus.send(EventRefreshOverview("suspend_menu"))
-                commandQueue.cancelTempBasal(true, object : Callback() {
-                    override fun run() {
-                        if (!result.success) {
-                            ToastUtils.errorToast(ctx, rh.gs(app.aaps.core.ui.R.string.temp_basal_delivery_error))
-                        }
-                    }
-                })
-                disposable += persistenceLayer.insertAndCancelCurrentOfflineEvent(
-                    offlineEvent = OE(timestamp = dateUtil.now(), duration = T.days(365).msecs(), reason = OE.Reason.DISABLE_LOOP),
-                    action = Action.LOOP_DISABLED,
-                    source = Sources.LoopDialog,
-                    note = null,
-                    listValues = listOf()
-                ).subscribe()
                 loop.handleRunningModeChange(newRM = RM.Mode.DISABLED_LOOP, durationInMinutes = Int.MAX_VALUE, action = Action.LOOP_DISABLED, source = Sources.LoopDialog, profile = profile)
-
-                return true
-            }
-
-            R.id.overview_enable                          -> {
-                (loop as PluginBase).setPluginEnabled(LOOP, true)
-                (loop as PluginBase).setFragmentVisible(LOOP, true)
-                configBuilder.storeSettings("EnablingLoop")
-                rxBus.send(EventRefreshOverview("suspend_menu"))
-                disposable += persistenceLayer.cancelCurrentOfflineEvent(dateUtil.now(), Action.LOOP_ENABLED, Sources.LoopDialog).subscribe()
                 return true
             }
 

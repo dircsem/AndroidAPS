@@ -85,6 +85,7 @@ class UpdateNsIdGlucoseValueTransactionTest {
         noise = 0.0,
         trendArrow = GlucoseValue.TrendArrow.FLAT,
         sourceSensor = GlucoseValue.SourceSensor.UNKNOWN,
-        interfaceIDs_backing = InterfaceIDs(nightscoutId = nsId)
+        interfaceIDs_backing = InterfaceIDs(nightscoutId = nsId),
+        isig = 0.0
     ).also { it.id = id }
 }

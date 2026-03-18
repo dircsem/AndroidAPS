@@ -10,7 +10,7 @@ import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 
 class BleConnectCommand(
     aapsLogger: AAPSLogger,
-    medLinkServiceData: MedLinkServiceData,
+    medLinkServiceData: MedLinkServiceData?,
     medLinkPumpPluginAbstract: MedLinkPumpPluginBase?,
 ) :
     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {

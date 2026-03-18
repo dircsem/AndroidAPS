@@ -5,16 +5,13 @@ import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import app.aaps.MainApp
 import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.objects.Instantiator
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.plugin.PluginBase
-import app.aaps.core.interfaces.pump.BgSync
+import app.aaps.core.interfaces.source.BgSync
 import app.aaps.core.interfaces.ui.UiInteraction
-import app.aaps.implementation.instantiator.InstantiatorImpl
 import app.aaps.implementation.pump.BgSyncImplementation
 import app.aaps.implementations.ConfigImpl
 import app.aaps.implementations.UiInteractionImpl
-import info.nightscout.androidaps.plugins.pump.medtronic.data.MedLinkProfileParserImpl
 import dagger.Binds
 import dagger.Lazy
 import dagger.Module
@@ -22,8 +19,9 @@ import dagger.Provides
 import dagger.Reusable
 import dagger.android.HasAndroidInjector
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.data.MedLinkProfileParserImpl
+import app.aaps.pump.medtronic.data.dto.BasalProfile
 
 @Suppress("unused")
 @Module(
@@ -68,9 +66,7 @@ open class AppModule {
         @Binds fun bindConfigInterface(config: ConfigImpl): Config
 
         @Binds fun bindActivityNames(activityNames: UiInteractionImpl): UiInteraction
-        @Binds fun bindInstantiator(instantiatorImpl: InstantiatorImpl): Instantiator
 
-        @Binds fun bindBgSync(bgSyncImplementation: BgSyncImplementation): BgSync
         @Binds fun bindMedLinkProfileParser(medLinkProfileParser: MedLinkProfileParserImpl<MedLinkStandardReturn<MedLinkMedtronicDeviceType>>)
             : MedLinkProfileParser<MedLinkStandardReturn<MedLinkMedtronicDeviceType>, BasalProfile>
     }

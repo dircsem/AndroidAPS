@@ -1,6 +1,7 @@
 package app.aaps.pump.common.hw.medlink.ble.data
 
-import app.aaps.core.interfaces.pump.BgSync
+
+import app.aaps.core.interfaces.source.BgSync
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.ble.command.BleCalibrateCommand
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType

@@ -109,7 +109,6 @@ class CommandQueueImplementation @Inject constructor(
     private val pumpEnactResultProvider: Provider<PumpEnactResult>,
     private val jobName: CommandQueueName,
     private val workManager: WorkManager,
-    private val instantiator: Instantiator
 ) : CommandQueue {
 
     private val disposable = CompositeDisposable()

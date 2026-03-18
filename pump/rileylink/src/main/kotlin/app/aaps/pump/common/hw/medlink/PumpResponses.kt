@@ -1,6 +1,6 @@
-package app.aaps.pump.common.hw.medlink;
+package app.aaps.pump.common.hw.medlink
 
-public enum PumpResponses {
+enum class PumpResponses(bolusDelivered: String) {
     StatusFullProcessed("Status complete parse success"),
     StatusPartialProcessed("Status partial parse success"),
     CommandProcessed("ComandProcessed"),
@@ -8,13 +8,6 @@ public enum PumpResponses {
     BolusDelivered("BolusDelivered"),
     UnknownAnswer("UnknowAnswer: "), StatusProcessFailed("Status Process Failed: ");
 
-    private final String answer;
-
-    PumpResponses(String bolusDelivered) {
-        answer = bolusDelivered;
-    }
-
-    public String getAnswer() {
-        return answer;
-    }
+    @JvmField
+    val answer: String = bolusDelivered
 }

@@ -12,6 +12,7 @@ import app.aaps.core.interfaces.R
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
+import java.util.Optional
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt

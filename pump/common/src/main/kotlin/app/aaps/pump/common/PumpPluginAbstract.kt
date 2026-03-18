@@ -12,8 +12,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
-import app.aaps.core.interfaces.pump.MedLinkPumpStatus
+
 import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpPluginBase
@@ -35,9 +34,6 @@ import app.aaps.pump.common.sync.PumpSyncEntriesCreator
 import app.aaps.pump.common.sync.PumpSyncStorage
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import info.nightscout.pump.common.defs.PumpDriverState
-import info.nightscout.pump.common.sync.PumpSyncEntriesCreator
-import info.nightscout.pump.common.sync.PumpSyncStorage
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import javax.inject.Provider
 
@@ -121,7 +117,7 @@ abstract class PumpPluginAbstract protected constructor(
      * @return Class
      */
     abstract val serviceClass: Class<*>?
-    abstract val pumpStatusData: MedLinkPumpStatus
+    abstract val pumpStatusData: PumpStatus
 
     override fun isInitialized(): Boolean = pumpState.isInitialized()
     override fun isSuspended(): Boolean = pumpState == PumpDriverState.Suspended

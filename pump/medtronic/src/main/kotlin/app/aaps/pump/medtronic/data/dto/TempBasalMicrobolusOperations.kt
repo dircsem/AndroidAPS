@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data.dto
+package app.aaps.pump.medtronic.data.dto
 
 import com.google.gson.annotations.Expose
 import java.util.concurrent.LinkedBlockingDeque
@@ -15,9 +15,11 @@ class TempBasalMicrobolusOperations {
 
     //    private static final Logger LOG = LoggerFactory.getLogger(L.PUMPCOMM);
     var operations = LinkedBlockingDeque<TempBasalMicroBolusPair>()
-    @Expose var remainingOperations = operations.size
+    @Expose
+    var remainingOperations = operations.size
         private set
-    @Expose var totalDosage = 0.0
+    @Expose
+    var totalDosage = 0.0
         private set
 
     @Expose
@@ -40,14 +42,15 @@ class TempBasalMicrobolusOperations {
 
     override fun toString(): String {
         return "TempBasalMicrobolusOperations{" +
-            "remainingOperations=" + remainingOperations +
-            ", operationDose=" + totalDosage +
-            ", nextOperationInterval=" + nextOperationInterval +
-            ", operations=" + operations +
-            '}'
+                "remainingOperations=" + remainingOperations +
+                ", operationDose=" + totalDosage +
+                ", nextOperationInterval=" + nextOperationInterval +
+                ", operations=" + operations +
+                '}'
     }
 
-    @Synchronized fun updateOperations(
+    @Synchronized
+    fun updateOperations(
         remainingOperations: Int,
         operationDose: Double,
         operations: LinkedBlockingDeque<TempBasalMicroBolusPair>,
@@ -59,7 +62,8 @@ class TempBasalMicrobolusOperations {
         this.operations = operations
     }
 
-    @Synchronized fun clearOperations() {
+    @Synchronized
+    fun clearOperations() {
         operations.clear()
     }
 
@@ -68,6 +72,13 @@ class TempBasalMicrobolusOperations {
     }
 
     fun shouldBeSuspended(): Boolean {
-        return shouldBeSuspended
+        return shouldBeSuspended || operations.stream().findFirst().let {
+            if (it.isPresent) {
+                val oper = it.get()
+                oper.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE || absoluteRate == 0.0
+            } else {
+                false
+            }
+        }
     }
 }

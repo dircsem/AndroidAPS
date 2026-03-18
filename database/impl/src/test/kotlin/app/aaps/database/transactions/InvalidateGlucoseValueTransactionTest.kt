@@ -82,6 +82,7 @@ class InvalidateGlucoseValueTransactionTest {
         trendArrow = GlucoseValue.TrendArrow.FLAT,
         sourceSensor = GlucoseValue.SourceSensor.UNKNOWN,
         isValid = isValid,
-        interfaceIDs_backing = InterfaceIDs()
+        interfaceIDs_backing = InterfaceIDs(),
+        isig = 0.0
     ).also { it.id = id }
 }

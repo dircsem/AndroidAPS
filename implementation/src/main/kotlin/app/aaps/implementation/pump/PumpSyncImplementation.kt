@@ -105,7 +105,7 @@ class PumpSyncImplementation @Inject constructor(
             return true
         }
 
-        if (showNotification && (type.description != storedType || serialNumber != storedSerial) && timestamp >= storedTimestamp && activePlugin !is MedLinkPumpPluginBase)
+        if (showNotification && (type.description != storedType || serialNumber != storedSerial) && timestamp >= storedTimestamp && activePlugin.activePump !is MedLinkPumpPluginBase)
             rxBus.send(EventNewNotification(Notification(Notification.WRONG_PUMP_DATA, rh.gs(R.string.wrong_pump_data), Notification.URGENT)))
         aapsLogger.error(
             LTag.PUMP,

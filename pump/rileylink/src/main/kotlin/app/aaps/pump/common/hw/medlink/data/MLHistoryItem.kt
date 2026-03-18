@@ -26,7 +26,7 @@ open class MLHistoryItem {
     //        source = RLHistoryItemSource.OmnipodCommand;
     //    }
     //private MedtronicCommandType medtronicCommandType;
-    protected var dateTime: LocalDateTime
+    protected var historyDateTime: LocalDateTime
     @JvmField protected var source: MLHistoryItemSource
     @JvmField protected var serviceState: MedLinkServiceState? = null
     @JvmField protected var errorCode: MedLinkError? = null
@@ -35,7 +35,7 @@ open class MLHistoryItem {
 
     //private OmnipodCommandType omnipodCommandType;
     constructor(dateTime: LocalDateTime, source: MLHistoryItemSource, targetDevice: RileyLinkTargetDevice) {
-        this.dateTime = dateTime
+        this.historyDateTime = dateTime
         this.source = source
         this.targetDevice = targetDevice
     }
@@ -45,7 +45,7 @@ open class MLHistoryItem {
         targetDevice: RileyLinkTargetDevice
     ) {
         this.targetDevice = targetDevice
-        dateTime = LocalDateTime()
+        historyDateTime = LocalDateTime()
         this.serviceState = serviceState
         this.errorCode = errorCode
         source = MLHistoryItemSource.MedLink
@@ -53,7 +53,7 @@ open class MLHistoryItem {
 
     constructor(pumpDeviceState: PumpDeviceState?, targetDevice: RileyLinkTargetDevice) {
         this.pumpDeviceState = pumpDeviceState
-        dateTime = LocalDateTime()
+        historyDateTime = LocalDateTime()
         this.targetDevice = targetDevice
         source = MLHistoryItemSource.MedtronicPump
     }
@@ -70,17 +70,17 @@ open class MLHistoryItem {
     //        this.omnipodCommandType = omnipodCommandType;
     //        source = RLHistoryItemSource.OmnipodCommand;
     //    }
-    fun getDateTime(): LocalDateTime {
-        return dateTime
-    }
+//    fun getDateTime(): LocalDateTime {
+//        return historyDateTime
+//    }
 
-    fun getServiceState(): MedLinkServiceState? {
-        return serviceState
-    }
+//    fun getServiceState(): MedLinkServiceState? {
+//        return serviceState
+//    }
 
-    fun getErrorCode(): MedLinkError? {
-        return errorCode
-    }
+//    fun getErrorCode(): MedLinkError? {
+//        return errorCode
+//    }
 
     open fun getDescription(resourceHelper: ResourceHelper): String? {
         return when (source) {
@@ -96,9 +96,9 @@ open class MLHistoryItem {
         return source
     }
 
-    fun getPumpDeviceState(): PumpDeviceState? {
-        return pumpDeviceState
-    }
+//    fun getPumpDeviceState(): PumpDeviceState {
+//        return pumpDeviceState
+//    }
 
     enum class MLHistoryItemSource(val desc: String) {
         MedLink("MedLink"),
@@ -114,7 +114,7 @@ open class MLHistoryItem {
     class Comparator : java.util.Comparator<MLHistoryItem> {
 
         override fun compare(o1: MLHistoryItem, o2: MLHistoryItem): Int {
-            return o2.dateTime.compareTo(o1.dateTime)
+            return o2.historyDateTime.compareTo(o1.historyDateTime)
         }
     }
 }

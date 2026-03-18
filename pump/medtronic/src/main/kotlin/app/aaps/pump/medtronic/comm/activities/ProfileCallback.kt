@@ -7,11 +7,10 @@ import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.ui.toast.ToastUtils.showToastInUiThread
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.R
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.BasalProfile
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.BasalProfileStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
+import app.aaps.pump.medtronic.data.dto.BasalProfile
+import app.aaps.pump.medtronic.defs.BasalProfileStatus
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import org.json.JSONException
 import java.util.function.Function
 import java.util.function.Supplier
@@ -32,11 +31,11 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
         try {
             val profile = parser.parseProfile(answer, medLinkMedtronicPumpPlugin.basalProfile)
             result = MedLinkStandardReturn(answer, profile)
-            (medLinkMedtronicPumpPlugin.pumpStatusData as MedLinkMedtronicPumpStatus).basalProfileStatus = BasalProfileStatus.ProfileOK
+            (medLinkMedtronicPumpPlugin.medLinkPumpStatus as MedLinkMedtronicPumpStatus).basalProfileStatus = BasalProfileStatus.ProfileOK
             if (profile != null &&  !medLinkMedtronicPumpPlugin.isThisProfileSet(profile)) {
                 showToastInUiThread(
                     ctx,
-                    medLinkMedtronicPumpPlugin.rh.gs(R.string.medtronic_cmd_basal_profile_could_not_be_set)
+                    medLinkMedtronicPumpPlugin.rh.gs(app.aaps.pump.medtronic.R.string.medtronic_cmd_basal_profile_could_not_be_set)
                 )
             }
              if (profile != null){

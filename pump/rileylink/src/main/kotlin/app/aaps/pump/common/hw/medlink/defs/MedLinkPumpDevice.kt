@@ -1,24 +1,26 @@
 package app.aaps.pump.common.hw.medlink.defs
 
-import info.nightscout.androidaps.plugins.pump.common.hw.connector.defs.CommunicatorPumpDevice
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.pump.common.hw.medlink.service.MedLinkService
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkPumpInfo
 import app.aaps.core.interfaces.pump.PumpEnactResult
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpInfo
 import org.json.JSONObject
 import java.util.stream.Stream
 
 /**
  * Created by Dirceu on 30/09/20.
  */
-interface MedLinkPumpDevice : CommunicatorPumpDevice {
-
+interface MedLinkPumpDevice  {
+    val medLinkPumpStatus: MedLinkPumpStatus
+    fun handleNewTreatmentData(bolusInfo: DetailedBolusInfo, history: Boolean = false)
     fun handleNewTreatmentData(bolusInfo: Stream<JSONObject>, history: Boolean = false)
     fun getPumpInfo(): RileyLinkPumpInfo?
-    fun getRileyLinkService(): MedLinkService?
+    val medLinkService: MedLinkService?
 
     fun getBatteryInfoConfig(): String?
     fun setBusy(busy: Boolean)
-    override fun triggerPumpConfigurationChangedEvent()
+    fun triggerPumpConfigurationChangedEvent()
 
     // var medLinkService: MedLinkService?
     val lastConnectionTimeMillis: Long

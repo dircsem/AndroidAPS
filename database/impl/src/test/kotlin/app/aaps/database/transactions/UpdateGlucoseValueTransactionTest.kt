@@ -40,6 +40,7 @@ class UpdateGlucoseValueTransactionTest {
         noise = null,
         trendArrow = GlucoseValue.TrendArrow.FLAT,
         sourceSensor = GlucoseValue.SourceSensor.UNKNOWN,
-        interfaceIDs_backing = InterfaceIDs()
+        interfaceIDs_backing = InterfaceIDs(),
+        isig = 0.0
     )
 }

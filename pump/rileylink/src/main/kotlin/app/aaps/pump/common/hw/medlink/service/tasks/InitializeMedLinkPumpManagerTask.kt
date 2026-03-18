@@ -1,13 +1,14 @@
 package app.aaps.pump.common.hw.medlink.service.tasks
 
 import app.aaps.core.data.pump.defs.ManufacturerType
-import dagger.android.HasAndroidInjector
 import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpDevice
 import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTask
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTask
 import javax.inject.Inject
 
 /**
@@ -16,14 +17,13 @@ import javax.inject.Inject
  *
  * This class is intended to be run by the Service, for the Service. Not intended for clients to run.
  */
-class InitializeMedLinkPumpManagerTask(injector: HasAndroidInjector) : ServiceTask(injector) {
+class InitializeMedLinkPumpManagerTask@Inject constructor(
+    private val aapsLogger: AAPSLogger,
+    private val medLinkServiceData: MedLinkServiceData,
+    activePlugin: ActivePlugin) : ServiceTask(activePlugin ) {
 
-    @Inject
-    lateinit var aapsLogger: AAPSLogger
 
 
-    @Inject
-    lateinit var medLinkServiceData: MedLinkServiceData
     override fun run() {
         var lastGoodFrequency: Double
 
@@ -40,13 +40,13 @@ class InitializeMedLinkPumpManagerTask(injector: HasAndroidInjector) : ServiceTa
 //        } else {
 //            lastGoodFrequency = medLinkServiceData.lastGoodFrequency;
 //        }
-        val medLinkCommunicationManager = (activePlugin.activePump as MedLinkPumpDevice).getRileyLinkService()!!.deviceCommunicationManager
+        val medLinkCommunicationManager = (activePlugin.activePump as MedLinkPumpDevice).medLinkService?.deviceCommunicationManager
         aapsLogger.info(LTag.PUMPBTCOMM, activePlugin.activePump.manufacturer().description)
         if (activePlugin.activePump.manufacturer() === ManufacturerType.Medtronic) {
 
 //            if ((lastGoodFrequency > 0.0d)
 //                    && medLinkCommunicationManager.isValidFrequency(lastGoodFrequency)) {
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.MedLinkReady)
+            medLinkServiceData.medLinkServiceState = MedLinkServiceState.MedLinkReady
 
 //                aapsLogger.info(LTag.PUMPBTCOMM, "Setting radio frequency to {} MHz", lastGoodFrequency);
 
@@ -54,10 +54,10 @@ class InitializeMedLinkPumpManagerTask(injector: HasAndroidInjector) : ServiceTa
 
 //                boolean foundThePump =
 //            medLinkCommunicationManager.getPumpStatus().lastConnection;
-            if (!activePlugin.activePump.isInitialized() || medLinkCommunicationManager.pumpStatus!!.lastDataTime > 0L && System.currentTimeMillis() -
+            if (!activePlugin.activePump.isInitialized() || medLinkCommunicationManager?.pumpStatus!!.lastDataTime > 0L && System.currentTimeMillis() -
                 medLinkCommunicationManager.pumpStatus!!.lastConnection > 300000
             ) {
-                medLinkCommunicationManager.wakeUp(false)
+                medLinkCommunicationManager?.wakeUp(false)
             }
 
 //                if (foundThePump) {
@@ -86,7 +86,7 @@ class InitializeMedLinkPumpManagerTask(injector: HasAndroidInjector) : ServiceTa
 //            aapsLogger.info(LTag.PUMPBTCOMM, "Setting radio frequency to {} MHz", lastGoodFrequency);
 
 //            medLinkCommunicationManager.setRadioFrequencyForPump(lastGoodFrequency);
-            medLinkServiceData.setMedLinkServiceState(MedLinkServiceState.PumpConnectorReady)
+            medLinkServiceData.medLinkServiceState = MedLinkServiceState.PumpConnectorReady
         }
     }
 }

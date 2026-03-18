@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.service
+package app.aaps.pump.medtronic.service
 
 import android.content.Intent
 import android.content.res.Configuration
@@ -11,19 +11,22 @@ import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
 import app.aaps.pump.common.hw.medlink.service.MedLinkBluetoothStateReceiver
 import app.aaps.pump.common.hw.medlink.service.MedLinkBroadcastReceiver
 import app.aaps.pump.common.hw.medlink.service.MedLinkService
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
+
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
-import info.nightscout.androidaps.plugins.pump.medtronic.R
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.ui.MedLinkMedtronicUIComm
-import info.nightscout.androidaps.plugins.pump.medtronic.comm.ui.MedLinkMedtronicUIPostprocessor
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicConst
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedtronicConst
+import app.aaps.pump.medtronic.comm.MedLinkMedtronicCommunicationManager
+import app.aaps.pump.medtronic.comm.ui.MedLinkMedtronicUIComm
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.utils.pump.ByteUtil
+import app.aaps.pump.common.hw.medlink.keys.MedLinkStringPreferenceKey
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
+import app.aaps.pump.medtronic.R
+import app.aaps.pump.medtronic.comm.ui.MedLinkMedtronicUIPostprocessor
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
+import app.aaps.pump.medtronic.keys.MedtronicIntPreferenceKey
+import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
+import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,11 +36,11 @@ import javax.inject.Singleton
 @Singleton
 class MedLinkMedtronicService() : MedLinkService() {
 
-    override var encoding: MedLinkEncodingType? = null
+    override lateinit var encoding: MedLinkEncodingType
     @Inject override lateinit var deviceCommunicationManager: MedLinkMedtronicCommunicationManager
 
     @Inject
-    lateinit var  medtronicPumpPlugin: MedLinkMedtronicPumpPlugin
+    lateinit var  medLinkMedtronicPumpPlugin: MedLinkMedtronicPumpPlugin
 
     @Inject
     lateinit var medtronicUtil: MedLinkMedtronicUtil
@@ -96,21 +99,21 @@ class MedLinkMedtronicService() : MedLinkService() {
 //        frequencies[0] = resourceHelper.gs(R.string.key_medtronic_pump_frequency_us_ca);
 //        frequencies[1] = resourceHelper.gs(R.string.key_medtronic_pump_frequency_worldwide);
         medLinkServiceData.targetDevice = RileyLinkTargetDevice.MedtronicPump
-        setPumpIDString(sp.getString(MedLinkMedtronicConst.Prefs.PumpSerial, "000000"))
+        setPumpIDString(preferences.get(MedtronicStringPreferenceKey.Serial))
 
         // get most recently used RileyLink address
-        medLinkServiceData.rileylinkAddress = sp.getString(MedLinkConst.Prefs.MedLinkAddress, "")
+        medLinkServiceData.rileylinkAddress = preferences.get(MedLinkStringPreferenceKey.MacAddress)
 
         medLinkRFSpy.startReader();
         // init rileyLinkCommunicationManager
-        medtronicUIComm = MedLinkMedtronicUIComm(injector, aapsLogger, medtronicUtil, medtronicUIPostprocessor, medtronicCommunicationManager)
+        medtronicUIComm = MedLinkMedtronicUIComm(aapsLogger, medtronicUtil, medtronicUIPostprocessor, medtronicCommunicationManager)
         aapsLogger.debug(LTag.PUMPCOMM, "MedLinkMedtronicService newly constructed")
     }
 
 
 
 
-    override fun setPumpDeviceState(pumpDeviceState: PumpDeviceState?) {
+    override fun setPumpDeviceState(pumpDeviceState: PumpDeviceState) {
         medtronicPumpStatus.pumpDeviceState = pumpDeviceState
     }
 
@@ -130,8 +133,8 @@ class MedLinkMedtronicService() : MedLinkService() {
             aapsLogger.error("Using pump ID $pumpID")
             medLinkServiceData.setPumpID(pumpID, byteArrayOf(0, 0, 0))
         } else {
-            aapsLogger.info(LTag.PUMPBTCOMM, "Using pump ID " + pumpID + "old pumpID is" + medLinkServiceData.pumpID)
-            val oldId = medLinkServiceData.pumpID
+            aapsLogger.info(LTag.PUMPBTCOMM, "Using pump ID " + pumpID + "old pumpID is" + medLinkServiceData.pumpIDs)
+            val oldId = medLinkServiceData.pumpIDs
             medLinkServiceData.setPumpID(pumpID, pumpIDBytes)
             if (oldId != null && oldId != pumpID) {
                 medtronicUtil.medtronicPumpModel = null // if we change pumpId, model probably changed too
@@ -170,8 +173,8 @@ class MedLinkMedtronicService() : MedLinkService() {
             val regexSN = "[0-9]{6}"
             val regexMac = "([\\da-fA-F]{1,2}(?:\\:|$)){6}"
             medtronicPumpStatus.errorDescription = "-"
-            val serialNr = sp.getStringOrNull(MedtronicConst.Prefs.PumpSerial, null)
-            if (serialNr == null) {
+            val serialNr = preferences.get(Serial)
+            if (serialNr.isEmpty()) {
                 aapsLogger.debug(LTag.PUMPBTCOMM, "SerialNr is null")
                 medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_serial_not_set)
                 return false
@@ -188,8 +191,8 @@ class MedLinkMedtronicService() : MedLinkService() {
                     }
                 }
             }
-            val pumpTypePref = sp.getStringOrNull(MedLinkMedtronicConst.Prefs.PumpType, null)
-            if (pumpTypePref == null) {
+            val pumpTypePref = preferences.get(PumpType)
+            if (pumpTypePref.isEmpty()) {
                 aapsLogger.debug(LTag.PUMPBTCOMM, "Pump type not set")
                 medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_pump_type_not_set)
                 return false
@@ -200,27 +203,27 @@ class MedLinkMedtronicService() : MedLinkService() {
                     medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_pump_type_invalid)
                     return false
                 } else {
-                    val pumpType = medtronicPumpStatus.medtronicPumpMap[pumpTypePart]
-                    medtronicPumpStatus.medtronicDeviceType = medtronicPumpStatus.medtronicDeviceTypeMap[pumpTypePart]
+                    val pumpType = medtronicPumpStatus.medtronicPumpMap?.get(pumpTypePart)
+                    medtronicPumpStatus.medtronicDeviceType = medtronicPumpStatus.medtronicDeviceTypeMap?.get(pumpTypePart)
                     medtronicPumpStatus.pumpType = pumpType!!
-                    medtronicPumpPlugin.pumpType = pumpType!!
+                    medLinkMedtronicPumpPlugin.pumpType = pumpType!!
                     aapsLogger.debug(LTag.PUMPBTCOMM, "PumpTypePart $pumpTypePart")
                     if (pumpTypePart.startsWith("7")) medtronicPumpStatus.reservoirFullUnits = 300 else medtronicPumpStatus.reservoirFullUnits = 176
                 }
             }
-            val pumpFrequency = sp.getStringOrNull(MedLinkMedtronicConst.Prefs.PumpFrequency, null)
+            val pumpFrequency = preferences.get(MedtronicStringPreferenceKey.PumpFrequency)
 
-//            if (pumpFrequency == null) {
-//                aapsLogger.debug(LTag.PUMPBTCOMM,"Pump frequency is not set");
-//                medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_pump_frequency_not_set);
-//                return false;
-//            } else {
+            if (pumpFrequency.isEmpty()) {
+                aapsLogger.debug(LTag.PUMPBTCOMM,"Pump frequency is not set");
+                medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_pump_frequency_not_set);
+                return false;
+            } //else {
 //
 //
 //
 //            }
-            val rileyLinkAddress = sp.getStringOrNull(MedLinkConst.Prefs.MedLinkAddress, null)
-            if (rileyLinkAddress == null) {
+            val rileyLinkAddress = preferences.get(MedLinkStringPreferenceKey.MacAddress)
+            if (rileyLinkAddress.isEmpty()) {
                 aapsLogger.debug(LTag.PUMP, "MedLink address invalid: null")
                 medtronicPumpStatus.errorDescription = resourceHelper.gs(R.string.medtronic_error_medlink_address_invalid)
                 return false
@@ -236,17 +239,17 @@ class MedLinkMedtronicService() : MedLinkService() {
                     }
                 }
             }
-            val maxBolusLcl = checkParameterValue(MedLinkMedtronicConst.Prefs.MaxBolus, "25.0", 25.0)
+            val maxBolusLcl = preferences.get(MedtronicIntPreferenceKey.MaxBolus).toDouble()
             if (medtronicPumpStatus.maxBolus == null || medtronicPumpStatus.maxBolus != maxBolusLcl) {
                 medtronicPumpStatus.maxBolus = maxBolusLcl
                 aapsLogger.debug("Max Bolus from AAPS settings is " + medtronicPumpStatus.maxBolus)
             }
-            val maxBasalLcl = checkParameterValue(MedLinkMedtronicConst.Prefs.MaxBasal, "35.0", 35.0)
+            val maxBasalLcl = preferences.get(MedtronicIntPreferenceKey.MaxBasal).toDouble()
             if (medtronicPumpStatus.maxBasal == null || medtronicPumpStatus.maxBasal != maxBasalLcl) {
                 medtronicPumpStatus.maxBasal = maxBasalLcl
                 aapsLogger.debug("Max Basal from AAPS settings is " + medtronicPumpStatus.maxBasal)
             }
-            val encodingTypeStr = sp.getStringOrNull(MedLinkMedtronicConst.Prefs.Encoding, null)
+            val encodingTypeStr = preferences.get(MedLinkStringPreferenceKey.Encoding)
 
 //            if (encodingTypeStr == null) {
 //                aapsLogger.debug(LTag.PUMPBTCOMM,"Encoding type is null");
@@ -261,11 +264,11 @@ class MedLinkMedtronicService() : MedLinkService() {
 //                encodingType = newEncodingType;
 //                encodingChanged = true;
 //            }
-            val batteryTypeStr = sp.getStringOrNull(MedLinkMedtronicConst.Prefs.BatteryType, null)
-            if (batteryTypeStr == null) {
-                aapsLogger.debug(LTag.PUMPBTCOMM, "MedlinkL BatteryTypeStr is null")
-                return false
-            }
+            val batteryTypeStr = preferences.get(MedLinkStringPreferenceKey.Type)
+//            if (batteryTypeStr.isEmpty()) {
+//                aapsLogger.debug(LTag.PUMPBTCOMM, "MedlinkL BatteryTypeStr is null")
+//                return false
+//            }
             val batteryType = medtronicPumpStatus.getBatteryTypeByDescription(batteryTypeStr)
             if (medtronicPumpStatus.batteryType !== batteryType) {
                 medtronicPumpStatus.batteryType = batteryType
@@ -296,7 +299,7 @@ class MedLinkMedtronicService() : MedLinkService() {
                 medLinkAddressChanged = false
             }
             if (encodingChanged) {
-                changeMedLinkEncoding(encodingType)
+                changeMedLinkEncoding()
                 encodingChanged = false
             }
         }
@@ -309,21 +312,21 @@ class MedLinkMedtronicService() : MedLinkService() {
         return !medLinkAddressChanged && !serialChanged && !encodingChanged // && !targetFrequencyChanged);
     }
 
-    private fun checkParameterValue(key: Int, defaultValue: String, defaultValueDouble: Double): Double {
-        var `val`: Double
-        val value = sp.getString(key, defaultValue)
-        `val` = try {
-            value.toDouble()
-        } catch (ex: Exception) {
-            aapsLogger.error("Error parsing setting: {}, value found {}", key, value)
-            defaultValueDouble
-        }
-        if (`val` > defaultValueDouble) {
-            sp.putString(key, defaultValue)
-            `val` = defaultValueDouble
-        }
-        return `val`
-    }
+//    private fun checkParameterValue(key: Int, defaultValue: String, defaultValueDouble: Double): Double {
+//        var `val`: Double
+//        val value = sp.getString(key, defaultValue)
+//        `val` = try {
+//            value.toDouble()
+//        } catch (ex: Exception) {
+//            aapsLogger.error("Error parsing setting: {}, value found {}", key, value)
+//            defaultValueDouble
+//        }
+//        if (`val` > defaultValueDouble) {
+//            sp.putString(key, defaultValue)
+//            `val` = defaultValueDouble
+//        }
+//        return `val`
+//    }
 
     fun setNotInPreInit(): Boolean {
         inPreInit = false

@@ -7,18 +7,18 @@ import app.aaps.pump.common.hw.medlink.ble.data.GattAttributes
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import app.aaps.pump.common.hw.medlink.defs.MedLinkEncodingType
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.RFSpyResponse
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.CC111XRegister
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RXFilterMode
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkCommandType
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.utils.pump.ByteUtil
+import app.aaps.pump.common.hw.rileylink.ble.data.RFSpyResponse
+import app.aaps.pump.common.hw.rileylink.ble.defs.CC111XRegister
+import app.aaps.pump.common.hw.rileylink.ble.defs.RXFilterMode
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkCommandType
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
+import app.aaps.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,7 +28,7 @@ import javax.inject.Singleton
  * copied from @class{RFSpy}
  */
 @Singleton
-class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector, private val medLinkBle: MedLinkBLE) {
+class MedLinkRFSpy @Inject constructor(private val medLinkBle: MedLinkBLE) {
 
      @Inject
     lateinit var aapsLogger: AAPSLogger
@@ -36,14 +36,14 @@ class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector,
     @JvmField @Inject
     var resourceHelper: ResourceHelper? = null
 
-    @JvmField @Inject
-    var sp: SP? = null
+    @Inject
+    lateinit var sp: SP
 
-    @JvmField @Inject
-    var medLinkServiceData: MedLinkServiceData? = null
+    @Inject
+    lateinit var medLinkServiceData: MedLinkServiceData
 
-    @JvmField @Inject
-    var medLinkUtil: MedLinkUtil? = null
+    @Inject
+    lateinit var medLinkUtil: MedLinkUtil
     @JvmField var notConnectedCount = 0
     private var reader: MedLinkRFSpyReader? = null
     private val radioServiceUUID = UUID.fromString(GattAttributes.SERVICE_UUID)
@@ -246,7 +246,7 @@ class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector,
 //        updateRegister(CC111XRegister.freq2, (byte) ((value >> 16) & 0xff));
         aapsLogger!!.info(LTag.PUMPBTCOMM, "Set frequency to {} MHz", freqMHz)
         currentFrequencyMHz = freqMHz
-        configureRadioForRegion(medLinkServiceData!!.rileyLinkTargetFrequency)
+        configureRadioForRegion(medLinkServiceData.rileyLinkTargetFrequency)
     }
 
     private fun configureRadioForRegion(frequency: RileyLinkTargetFrequency) {
@@ -334,7 +334,7 @@ class MedLinkRFSpy @Inject constructor(private val injector: HasAndroidInjector,
 
     fun initializeMedLink() {
         if (medLinkServiceData!!.firmwareVersion == null) {
-            medLinkServiceData!!.firmwareVersion = RileyLinkFirmwareVersion.Version_4_x
+            medLinkServiceData!!.firmwareVersion = RileyLinkFirmwareVersion.Version4
         }
     }
 

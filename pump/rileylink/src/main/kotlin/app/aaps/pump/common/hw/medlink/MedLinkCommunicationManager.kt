@@ -1,23 +1,23 @@
 package app.aaps.pump.common.hw.medlink
 
 import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.hw.connector.CommunicationManager
-import info.nightscout.androidaps.plugins.pump.common.hw.connector.ConnectorUtil.isSame
+import app.aaps.pump.common.hw.connector.CommunicationManager
 import app.aaps.pump.common.hw.medlink.activities.BaseCallback
 import app.aaps.pump.common.hw.medlink.activities.BaseStringAggregatorCallback
 import app.aaps.pump.common.hw.medlink.ble.MedLinkRFSpy
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
 import app.aaps.pump.common.hw.medlink.ble.data.RadioPacket
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.data.FrequencyScanResults
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RLMessageType
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.pump.common.hw.connector.ConnectorUtil.Companion.isSame
+import app.aaps.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
+import app.aaps.pump.common.hw.rileylink.ble.data.FrequencyScanResults
+import app.aaps.pump.common.hw.rileylink.ble.defs.RLMessageType
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
+import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
 import javax.inject.Inject
 
 /**
@@ -81,9 +81,9 @@ abstract class MedLinkCommunicationManager(val injector: HasAndroidInjector, rfs
         wakeUp(receiverDeviceAwakeForMinutes, force)
     }
 
-    override fun getNotConnectedCount(): Int {
-        return rfspy?.notConnectedCount ?: 0
-    }
+//    override fun getNotConnectedCount(): Int {
+//        return rfspy?.notConnectedCount ?: 0
+//    }
 
     override fun hasTunning(): Boolean {
         return true
@@ -361,7 +361,7 @@ abstract class MedLinkCommunicationManager(val injector: HasAndroidInjector, rfs
     abstract val isDeviceReachable: Boolean
     abstract fun setDoWakeUpBeforeCommand(doWakeUp: Boolean)
     abstract fun getBGHistory(pumpMessage: MedLinkPumpMessage<Any, Any>): Boolean
-    abstract val bolusHistory: Boolean
+
 
     init {
         injector.androidInjector().inject(this)

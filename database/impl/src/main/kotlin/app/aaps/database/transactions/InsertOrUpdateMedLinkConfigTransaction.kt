@@ -1,6 +1,4 @@
-package app.aaps.database.impl.transactions
-
-import app.aaps.database.entities.MedLinkConfig
+package app.aaps.database.transactions
 
 
 // class InsertOrUpdateMedLinkConfigTransaction(private val medLinkConfig: MedLinkConfig) : Transaction<InsertOrUpdateMedLinkConfigTransaction.TransactionResult>() {

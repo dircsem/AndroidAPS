@@ -15,6 +15,7 @@ import app.aaps.plugins.main.di.PluginsModule
 import app.aaps.plugins.source.di.SourceModule
 import app.aaps.plugins.sync.di.OpenHumansModule
 import app.aaps.plugins.sync.di.SyncModule
+import app.aaps.pump.common.di.MedLinkModule
 import app.aaps.pump.common.di.PumpCommonModule
 import app.aaps.pump.common.di.RileyLinkModule
 import app.aaps.pump.dana.di.DanaHistoryModule
@@ -39,8 +40,6 @@ import dagger.BindsInstance
 import dagger.Component
 import dagger.android.AndroidInjectionModule
 import dagger.android.AndroidInjector
-import info.nightscout.androidaps.plugins.pump.common.di.MedLinkModule
-import info.nightscout.androidaps.plugins.pump.common.di.RileyLinkModule
 
 import info.nightscout.pump.combov2.di.ComboV2Module
 import javax.inject.Singleton
@@ -66,6 +65,7 @@ import javax.inject.Singleton
         OpenHumansModule::class,
         PluginsModule::class,
         SharedImplModule::class,
+        LoggerModule::class,
         UiModule::class,
         ValidatorsModule::class,
         PluginsConstraintsModule::class,

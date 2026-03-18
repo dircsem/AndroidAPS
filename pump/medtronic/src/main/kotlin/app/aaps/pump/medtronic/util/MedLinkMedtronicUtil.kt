@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.util
+package app.aaps.pump.medtronic.util
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -9,18 +9,18 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.utils.pump.ByteUtil
 import app.aaps.core.utils.pump.ByteUtil.shortHexString
 import app.aaps.core.utils.pump.ByteUtil.substring
+import app.aaps.pump.common.events.EventRileyLinkDeviceStatusChange
 import com.google.gson.GsonBuilder
-import info.nightscout.androidaps.plugins.pump.common.events.EventRileyLinkDeviceStatusChange
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.ClockDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.MLHistoryItemMedtronic
-import info.nightscout.androidaps.plugins.pump.medtronic.data.dto.PumpSettingDTO
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicCommandType
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedLinkMedtronicDeviceType
-import info.nightscout.androidaps.plugins.pump.medtronic.defs.MedtronicNotificationType
-import info.nightscout.androidaps.plugins.pump.medtronic.driver.MedLinkMedtronicPumpStatus
+import app.aaps.pump.medtronic.data.dto.ClockDTO
+import app.aaps.pump.medtronic.data.dto.MLHistoryItemMedtronic
+import app.aaps.pump.medtronic.data.dto.PumpSettingDTO
+import app.aaps.pump.medtronic.defs.MedLinkMedtronicCommandType
+import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
+import app.aaps.pump.medtronic.defs.MedtronicNotificationType
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import org.joda.time.LocalTime
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -45,7 +45,11 @@ class MedLinkMedtronicUtil @Inject constructor(
     var currentCommand: MedLinkCommandType? = null
         set(value) {
 
-            if (currentCommand != null) medlinkUtil.rileyLinkHistory.add(MLHistoryItemMedtronic(currentCommand))
+            if (currentCommand != null) medlinkUtil.historyMedLink.add(
+                MLHistoryItemMedtronic(
+                    currentCommand
+                )
+            )
             field = value
         }
     var settings: Map<String, PumpSettingDTO>? = null
@@ -78,7 +82,7 @@ class MedLinkMedtronicUtil @Inject constructor(
     }
 
     fun getBolusStrokes(amount: Double): ByteArray {
-        val strokesPerUnit = medtronicPumpStatus.medtronicDeviceType.bolusStrokes
+        val strokesPerUnit = medtronicPumpStatus.medtronicDeviceType!!.bolusStrokes
         val length: Int
         val scrollRate: Int
         if (strokesPerUnit >= 40) {

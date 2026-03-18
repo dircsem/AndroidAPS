@@ -1,4 +1,4 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data
+package app.aaps.pump.medtronic.data
 
 class EnliteWaitPeriod(var interval: Int, var lastSuccess: Long = 0L){
     override fun toString(): String {

@@ -1,54 +1,53 @@
-package app.aaps.pump.common.hw.medlink.defs;
+package app.aaps.pump.common.hw.medlink.defs
 
+import app.aaps.pump.common.hw.rileylink.R
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.R;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
 
 /**
  * Created by andy on 14/05/2018.
  */
-
-public enum MedLinkError {
-
+enum class MedLinkError {
     // Configuration
-
     // BT
-    NoBluetoothAdapter(R.string.rileylink_error_no_bt_adapter), //
-    BluetoothDisabled(R.string.rileylink_error_bt_disabled), //
+    NoBluetoothAdapter(R.string.rileylink_error_no_bt_adapter),  //
+    BluetoothDisabled(R.string.rileylink_error_bt_disabled),  //
 
     // RileyLink
-    MedLinkUnreachable(R.string.medlink_error_unreachable), //
-    DeviceIsNotMedLink(R.string.medlink_error_not_rl), //
+    MedLinkUnreachable(R.string.medlink_error_unreachable),  //
+    DeviceIsNotMedLink(R.string.medlink_error_not_rl),  //
 
     // Device
-    TuneUpOfDeviceFailed(R.string.rileylink_error_tuneup_failed), //
-    NoContactWithDevice(R.string.rileylink_error_pump_unreachable, R.string.rileylink_error_pod_unreachable), //
-    ;
+    TuneUpOfDeviceFailed(R.string.rileylink_error_tuneup_failed),  //
+    NoContactWithDevice(
+        R.string.rileylink_error_pump_unreachable,
+        R.string.rileylink_error_pod_unreachable
+    ),
+    ; //
 
-    int resourceId;
-    Integer resourceIdPod;
+    var resourceId: Int
+    var resourceIdPod: Int? = null
 
 
-    MedLinkError(int resourceId) {
-        this.resourceId = resourceId;
+    constructor(resourceId: Int) {
+        this.resourceId = resourceId
     }
 
 
-    MedLinkError(int resourceId, int resourceIdPod) {
-        this.resourceId = resourceId;
-        this.resourceIdPod = resourceIdPod;
+    constructor(resourceId: Int, resourceIdPod: Int) {
+        this.resourceId = resourceId
+        this.resourceIdPod = resourceIdPod
     }
 
 
-    public int getResourceId(RileyLinkTargetDevice targetDevice) {
+    fun getResourceId(targetDevice: RileyLinkTargetDevice?): Int {
         if (this.resourceIdPod != null) {
-
-            return targetDevice == RileyLinkTargetDevice.MedtronicPump ? //
-            this.resourceId
-                : this.resourceIdPod;
+            return (if (targetDevice == RileyLinkTargetDevice.MedtronicPump)  //
+                this.resourceId
+            else
+                this.resourceIdPod)!!
         } else {
-            return this.resourceId;
+            return this.resourceId
         }
     }
-
 }

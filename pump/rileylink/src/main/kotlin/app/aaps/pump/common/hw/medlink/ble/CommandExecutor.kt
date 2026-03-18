@@ -20,7 +20,7 @@ abstract class CommandExecutor<B> protected constructor(
 ) : Runnable {
 
     var isConfirmed: Boolean = false
-    private var commandPosition = 0
+    private var commandPosition = Integer.valueOf(0)
     private var functionPosition = 0
     private var currentCommand: MedLinkCommandType? = null
     var nrRetries = 0

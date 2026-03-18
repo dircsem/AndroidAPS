@@ -1,88 +1,71 @@
-package app.aaps.pump.medtronic.comm.ui;
+package app.aaps.pump.medtronic.comm.ui
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
-import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin;
-
-import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus;
-import info.nightscout.androidaps.plugins.pump.medtronic.util.MedLinkMedtronicUtil;
-import app.aaps.core.interfaces.rx.bus.RxBus;
-import app.aaps.core.interfaces.logging.AAPSLogger;
-import app.aaps.core.interfaces.resources.ResourceHelper;
-
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
+import app.aaps.pump.medtronic.util.MedLinkMedtronicUtil
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Created by Dirceu on 25/09/20
- * copied from {@link MedtronicUIPostprocessor}.
+ * copied from [MedtronicUIPostprocessor].
  */
-
 @Singleton
-public class MedLinkMedtronicUIPostprocessor {
-
-    private final AAPSLogger aapsLogger;
-    private final RxBus rxBus;
-    private final ResourceHelper resourceHelper;
-    private final MedLinkMedtronicUtil medtronicUtil;
-    private final MedLinkMedtronicPumpStatus medtronicPumpStatus;
-    private final MedLinkMedtronicPumpPlugin medtronicPumpPlugin;
-
-    @Inject
-    public MedLinkMedtronicUIPostprocessor(
-            AAPSLogger aapsLogger,
-            RxBus rxBus,
-            ResourceHelper resourceHelper,
-            MedLinkMedtronicUtil medtronicUtil,
-            MedLinkMedtronicPumpStatus medtronicPumpStatus,
-            MedLinkMedtronicPumpPlugin medtronicPumpPlugin) {
-        this.aapsLogger = aapsLogger;
-        this.rxBus = rxBus;
-        this.resourceHelper = resourceHelper;
-        this.medtronicUtil = medtronicUtil;
-        this.medtronicPumpStatus = medtronicPumpStatus;
-        this.medtronicPumpPlugin = medtronicPumpPlugin;
-    }
-
-
-    // this is mostly intended for command that return certain statuses (Remaining Insulin, ...), and
+class MedLinkMedtronicUIPostprocessor // this is mostly intended for command that return certain statuses (Remaining Insulin, ...), and
+@Inject constructor(
+    private val aapsLogger: AAPSLogger?,
+    private val rxBus: RxBus?,
+    private val resourceHelper: ResourceHelper?,
+    private val medtronicUtil: MedLinkMedtronicUtil?,
+    private val medtronicPumpStatus: MedLinkMedtronicPumpStatus?,
+    private val medtronicPumpPlugin: MedLinkMedtronicPumpPlugin?
+) {
     // where responses won't be directly used
-//    void postProcessData(MedLinkMedtronicUITask uiTask) {
-//
-//        switch (uiTask.commandType) {
-//
-////            case SetBasalProfileSTD: {
-////                Boolean response = (Boolean) uiTask.returnData;
-////
-////                if (response) {
-////                    BasalProfile basalProfile = (BasalProfile) uiTask.getParameter(0);
-////
-////                    medtronicPumpStatus.basalsByHour = basalProfile.getProfilesByHour(medtronicPumpPlugin.getPumpDescription().pumpType);
-////                }
-////            }
-////            break;
+    //    void postProcessData(MedLinkMedtronicUITask uiTask) {
+    //
+    //        switch (uiTask.commandType) {
+    //
+    /**          case SetBasalProfileSTD:
+    {
+        * /                Boolean response = (Boolean) uiTask.returnData;
+        * /
+        * ////                if (response) {
+        * /                    BasalProfile basalProfile = (BasalProfile) uiTask.getParameter(0);
+        * /
+        * ////                    medtronicPumpStatus.basalsByHour = basalProfile.getProfilesByHour(medtronicPumpPlugin.getPumpDescription().pumpType);
+        * /
+    }
+    * /
+}
+* /            break; */
 //
 //            case GetBasalProfileSTD: {
-////                MedLinkStandardReturn<BasalProfile> returned = (MedLinkStandardReturn<BasalProfile>) uiTask.returnData;
-////                BasalProfile basalProfile = returned.getFunctionResult();
-////
-////                try {
-////                    double[] profilesByHour =
-////                            basalProfile.getProfilesByHour(medtronicPumpPlugin.getPumpDescription().getPumpType());
-////
-////                    if (profilesByHour != null) {
-////                        medtronicPumpStatus.setBasalsByHour(profilesByHour);
-////                        medtronicPumpStatus.basalProfileStatus = BasalProfileStatus.ProfileOK;
-////                        rxBus.send(new EventMedtronicPumpValuesChanged());
-////                    } else {
-////                        uiTask.responseType = MedtronicUIResponseType.Error;
-////                        uiTask.errorDescription = "No profile found.";
-////                        aapsLogger.error("Basal Profile was NOT valid. [{}]", basalProfile.basalProfileToStringError());
-////                    }
-////                } catch (Exception ex) {
-////                    aapsLogger.error("Basal Profile was returned, but was invalid. [{}]", basalProfile.basalProfileToStringError());
-////                    uiTask.responseType = MedtronicUIResponseType.Error;
-////                    uiTask.errorDescription = "No profile found.";
-////               | }
+/*                MedLinkStandardReturn<BasalProfile> returned = (MedLinkStandardReturn<BasalProfile>) uiTask.returnData;
+* /                BasalProfile basalProfile = returned.getFunctionResult();
+* /
+* ////                try {
+* /                    double[] profilesByHour =
+* /                            basalProfile.getProfilesByHour(medtronicPumpPlugin.getPumpDescription().getPumpType());
+* /
+* ////                    if (profilesByHour != null) {
+* /                        medtronicPumpStatus.setBasalsByHour(profilesByHour);
+* /                        medtronicPumpStatus.basalProfileStatus = BasalProfileStatus.ProfileOK;
+* /                        rxBus.send(new EventMedtronicPumpValuesChanged());
+* /                    } else {
+    * /                        uiTask.responseType = MedtronicUIResponseType.Error;
+    * /                        uiTask.errorDescription = "No profile found.";
+    * /                        aapsLogger.error("Basal Profile was NOT valid. [{}]", basalProfile.basalProfileToStringError());
+    * /
+}
+* /                } catch (Exception ex) {
+    * /                    aapsLogger.error("Basal Profile was returned, but was invalid. [{}]", basalProfile.basalProfileToStringError());
+    * /                    uiTask.responseType = MedtronicUIResponseType.Error;
+    * /                    uiTask.errorDescription = "No profile found.";
+    * /               |
+}</BasalProfile></BasalProfile> */
 //            }
 //            break;
 //
@@ -93,48 +76,51 @@ public class MedLinkMedtronicUIPostprocessor {
 //            }
 //            break;
 //
-////            case GetRemainingInsulin: {
-////                medtronicPumpStatus.reservoirRemainingUnits = (Float) uiTask.returnData;
-////            }
-////            break;
-////
-////            case CancelTBR: {
-////                medtronicPumpStatus.tempBasalStart = null;
-////                medtronicPumpStatus.tempBasalAmount = null;
-////                medtronicPumpStatus.tempBasalLength = null;
-////            }
-////            break;
+/*           case GetRemainingInsulin: {
+    * /                medtronicPumpStatus.reservoirRemainingUnits = (Float) uiTask.returnData;
+    * /
+}
+* /            break;
+* /
+* ////            case CancelTBR: {
+* /                medtronicPumpStatus.tempBasalStart = null;
+* /                medtronicPumpStatus.tempBasalAmount = null;
+* /                medtronicPumpStatus.tempBasalLength = null;
+* /            }
+* /            break; */
 //
 //            case GetRealTimeClock: {
 //                processTime(uiTask);
 //            }
 //            break;
 //
-////            case SetRealTimeClock: {
-////                boolean response = (Boolean) uiTask.returnData;
-////
-////                aapsLogger.debug(LTag.PUMP, "New time was {} set.", response ? "" : "NOT");
-////
-////                if (response) {
-////                    medtronicUtil.getPumpTime().timeDifference = 0;
-////                }
-////            }
-////            break;
+/*           case SetRealTimeClock: {
+    * /                boolean response = (Boolean) uiTask.returnData;
+    * /
+    * ////                aapsLogger.debug(LTag.PUMP, "New time was {} set.", response ? "" : "NOT");
+    * /
+    * ////                if (response) {
+    * /                    medtronicUtil.getPumpTime().timeDifference = 0;
+    * /
+}
+* /            }
+* /            break; */
 //
 //
-////            case GetBatteryStatus: {
-////                BatteryStatusDTO batteryStatusDTO = (BatteryStatusDTO) uiTask.returnData;
-////
-////                medtronicPumpStatus.batteryRemaining = batteryStatusDTO.getCalculatedPercent(medtronicPumpStatus.batteryType);
-////
-////                if (batteryStatusDTO.voltage != null) {
-////                    medtronicPumpStatus.batteryVoltage = batteryStatusDTO.voltage;
-////                }
-////
-////                aapsLogger.debug(LTag.PUMP, "BatteryStatus: {}", batteryStatusDTO.toString());
-////
-////            }
-////            break;
+/**           case GetBatteryStatus: {
+    * /                BatteryStatusDTO batteryStatusDTO = (BatteryStatusDTO) uiTask.returnData;
+    * /
+    * ////                medtronicPumpStatus.batteryRemaining = batteryStatusDTO.getCalculatedPercent(medtronicPumpStatus.batteryType);
+    * /
+    * ////                if (batteryStatusDTO.voltage != null) {
+    * /                    medtronicPumpStatus.batteryVoltage = batteryStatusDTO.voltage;
+    * /
+}
+* /
+* ////                aapsLogger.debug(LTag.PUMP, "BatteryStatus: {}", batteryStatusDTO.toString());
+* /
+* ////            }
+* /            break; */
 //
 //            case PumpModel: {
 //                if (medtronicPumpStatus.medtronicDeviceType != medtronicUtil.getMedtronicPumpModel()) {
@@ -162,8 +148,6 @@ public class MedLinkMedtronicUIPostprocessor {
 //        rxBus.send(new EventMedtronicPumpValuesChanged());
 //
 //    }
-
-
 //    private void processTime(MedLinkMedtronicUITaskCp uiTask) {
 //
 //        ClockDTO clockDTO = (ClockDTO) uiTask.returnData;
@@ -179,21 +163,21 @@ public class MedLinkMedtronicUIPostprocessor {
 //                "Pump Time: " + clockDTO.getLocalDeviceTime() + ", DeviceTime=" + clockDTO.getPumpTime() + //
 //                ", diff: " + dur.getStandardSeconds() + " s");
 //
-////        if (dur.getStandardMinutes() >= 10) {
-////            if (isLogEnabled())
-////                LOG.warn("Pump clock needs update, pump time: " + clockDTO.pumpTime.toString("HH:mm:ss") + " (difference: "
-////                        + dur.getStandardSeconds() + " s)");
-////            sendNotification(MedtronicNotificationType.PumpWrongTimeUrgent);
-////        } else if (dur.getStandardMinutes() >= 4) {
-////            if (isLogEnabled())
-////                LOG.warn("Pump clock needs update, pump time: " + clockDTO.pumpTime.toString("HH:mm:ss") + " (difference: "
-////                        + dur.getStandardSeconds() + " s)");
-////            sendNotification(MedtronicNotificationType.PumpWrongTimeNormal);
-////        }
+/*        if (dur.getStandardMinutes() >= 10) {
+    * /            if (isLogEnabled())
+    * /                LOG.warn("Pump clock needs update, pump time: "+clockDTO.pumpTime.toString("HH:mm:ss")+" (difference: "
+    * /+dur.getStandardSeconds()+" s)");
+    * /            sendNotification(MedtronicNotificationType.PumpWrongTimeUrgent);
+    * /
+} else if (dur.getStandardMinutes() >= 4) {
+    * /            if (isLogEnabled())
+    * /                LOG.warn("Pump clock needs update, pump time: "+clockDTO.pumpTime.toString("HH:mm:ss")+" (difference: "
+    * /+dur.getStandardSeconds()+" s)");
+    * /            sendNotification(MedtronicNotificationType.PumpWrongTimeNormal);
+    * /
+} */
 //
 //    }
-
-
 //    private void postProcessSettings(MedLinkMedtronicUITaskCp uiTask) {
 //
 //        Map<String, PumpSettingDTO> settings = (Map<String, PumpSettingDTO>) uiTask.returnData;
@@ -248,4 +232,6 @@ public class MedLinkMedtronicUIPostprocessor {
 //        }
 //
 //    }
+
+
 }

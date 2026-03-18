@@ -1,8 +1,6 @@
-package app.aaps.pump.common.hw.medlink.defs;
+package app.aaps.pump.common.hw.medlink.defs
 
 
-public enum MedLinkEncodingType {
-
-
-     FourByteSixByteLocal
+enum class MedLinkEncodingType {
+    FourByteSixByteLocal
 }

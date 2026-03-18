@@ -1,41 +1,29 @@
-package info.nightscout.androidaps.plugins.pump.medtronic.data.dto;
+package app.aaps.pump.medtronic.data.dto
 
-import org.joda.time.LocalDateTime;
-
-import app.aaps.pump.common.hw.medlink.data.MLHistoryItem;
-import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType;
-import info.nightscout.androidaps.plugins.pump.common.hw.rileylink.defs.RileyLinkTargetDevice;
-import app.aaps.core.interfaces.resources.ResourceHelper;
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.pump.common.hw.medlink.data.MLHistoryItem
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
+import org.joda.time.LocalDateTime
 
 /**
  * Created by Dirceu on 25/09/20
- * copied from {@link RLHistoryItemMedtronic}
+ * copied from [RLHistoryItemMedtronic]
  * used by medlink
  */
-public class MLHistoryItemMedtronic extends MLHistoryItem {
+class MLHistoryItemMedtronic(private val medtronicCommandType: MedLinkCommandType?) : MLHistoryItem(
+    LocalDateTime(), MLHistoryItemSource.MedtronicCommand, RileyLinkTargetDevice.MedtronicPump
+) {
+    public override fun getDescription(resourceHelper: ResourceHelper): String? {
+        when (this.source) {
+            MLHistoryItemSource.MedLink -> return ("State: " + resourceHelper.gs(serviceState!!.resourceId)
+                    + (if (this.errorCode == null) "" else ", Error Code: " + errorCode))
 
-    private final MedLinkCommandType medtronicCommandType;
+            MLHistoryItemSource.MedtronicPump -> return super.getDescription(resourceHelper)
 
-    public MLHistoryItemMedtronic(MedLinkCommandType medtronicCommandType) {
-        super(new LocalDateTime(), MLHistoryItemSource.MedtronicCommand, RileyLinkTargetDevice.MedtronicPump);
-        this.medtronicCommandType = medtronicCommandType;
-    }
+            MLHistoryItemSource.MedtronicCommand -> return medtronicCommandType!!.name
 
-    public String getDescription(ResourceHelper resourceHelper) {
-
-        switch (this.source) {
-            case MedLink:
-                return "State: " + resourceHelper.gs(serviceState.getResourceId())
-                        + (this.errorCode == null ? "" : ", Error Code: " + errorCode);
-
-            case MedtronicPump:
-                return super.getDescription(resourceHelper);
-
-            case MedtronicCommand:
-                return medtronicCommandType.name();
-
-            default:
-                return "Unknown Description";
+            else -> return "Unknown Description"
         }
     }
 }

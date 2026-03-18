@@ -4,14 +4,13 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
-import app.aaps.core.interfaces.pump.PumpRunningState
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 
 /**
  * Created by Dirceu on 24/03/21.
  */
-class BleBolusCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData, val medLinkPumpPluginAbstract: MedLinkPumpPluginBase, val detailedBolusInfo: DetailedBolusInfo) :
+class BleBolusCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData?, val medLinkPumpPluginAbstract: MedLinkPumpPluginBase, val detailedBolusInfo: DetailedBolusInfo) :
     BleActivePumpCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
     override fun characteristicChanged(
@@ -25,7 +24,7 @@ class BleBolusCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkService
         } else
             if (answer.contains("pump suspend state")) {
                 bleComm.removeFirstCommand(true)
-                medLinkPumpPluginAbstract.pumpStatusData.pumpRunningState = PumpRunningState.Suspended
+                medLinkPumpPluginAbstract.setSuspended()
                 medLinkPumpPluginAbstract.reDeliverBolus(detailedBolusInfo)
             } else if (answer.trim { it <= ' ' }.contains("set bolus")) {
                 aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
