@@ -18,7 +18,7 @@ interface MedLinkPumpDevice  {
     fun getPumpInfo(): RileyLinkPumpInfo?
     val medLinkService: MedLinkService?
 
-    fun getBatteryInfoConfig(): String?
+    fun isBatteryAge(): Boolean
     fun setBusy(busy: Boolean)
     fun triggerPumpConfigurationChangedEvent()
 
