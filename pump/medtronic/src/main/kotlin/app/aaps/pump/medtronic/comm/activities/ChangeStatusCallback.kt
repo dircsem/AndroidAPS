@@ -72,7 +72,7 @@ class ChangeStatusCallback(
                         val tempBasalData = medLinkMedtronicPumpPlugin.temporaryBasal
                         if (tempBasalData != null && tempBasalData.plannedRemainingMinutes > 0) {
                             medLinkMedtronicPumpPlugin.createTemporaryBasalData(
-                                medLinkMedtronicPumpPlugin.durationInMinutes,
+                                tempBasalData.durationInMinutes,
                                 0.0
                             )
                         } else {
