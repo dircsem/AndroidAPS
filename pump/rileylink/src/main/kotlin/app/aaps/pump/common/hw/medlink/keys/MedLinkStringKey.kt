@@ -12,4 +12,7 @@ enum class MedLinkStringKey(
     BatteryInfo("key_medlink_battery_info", "Age"),
     CalibrationFirstAlarm("med_link_calibration_first_alarm","120"),
     CalibrationSecondAlarm("med_link_calibration_second_alarm","120"),
+    BatteryInfoShouldBeDisplayed("","Age"),
+
+
 }

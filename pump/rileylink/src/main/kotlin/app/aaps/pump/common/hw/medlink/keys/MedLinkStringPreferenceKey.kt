@@ -24,5 +24,5 @@ enum class MedLinkStringPreferenceKey(
     LastBolusHistory("medlink_init_commands_last_bolus_history", ""),
     PreviousBgHistory("medlink_init_commands_previous_bg_history", ""),
     LastBgHistory("medlink_init_commands_last_bg_history", ""),
-
+    BatteryInfo("pref_medlink_battery_info","")
 }
