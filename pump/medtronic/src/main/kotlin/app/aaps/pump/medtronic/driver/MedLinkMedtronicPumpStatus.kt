@@ -16,6 +16,8 @@ import app.aaps.pump.medtronic.defs.BatteryType
 import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
 import app.aaps.pump.medtronic.keys.MedtronicLongNonKey
 import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
+import java.util.Calendar
+import java.util.GregorianCalendar
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,7 +32,7 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
     private val rxBus: RxBus,
     private val medLinkUtil: MedLinkUtil
 ) : MedLinkPumpStatusImpl(PumpType.MEDLINK_MEDTRONIC_523_723_REVEL) {
-//    override var errorDescription: String? = null
+    //    override var errorDescription: String? = null
     var serialNumber: String = preferences.get(MedtronicStringPreferenceKey.Serial)
     var pumpFrequency: String = preferences.get(MedtronicStringPreferenceKey.PumpFrequency)
     var maxBolus: Double? = null
@@ -38,7 +40,7 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
 
 
     // statuses
-     override var pumpDeviceState: PumpDeviceState = PumpDeviceState.NeverContacted
+    override var pumpDeviceState: PumpDeviceState = PumpDeviceState.NeverContacted
         set(pumpDeviceState) {
             field = pumpDeviceState
 
@@ -102,20 +104,21 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
     }
 
     val basalProfileForHour: Double
-        get() =//        if (getCurrentBasal() != null) {
-//            GregorianCalendar c = new GregorianCalendar();
-//            int hour = c.get(Calendar.HOUR_OF_DAY);
+        get() = if (basalsByHour != null) {
+            val c = GregorianCalendar()
+            val hour = c.get(Calendar.HOUR_OF_DAY)
+            basalsByHour!![hour]
+
+        } else {
             currentBasal
 
-    //        }
+        }
 
 //        return 0;
 
 
     // Battery type
     private var mapByDescription: MutableMap<String?, BatteryType?>? = null
-
-
 
 
     fun getBatteryTypeByDescription(batteryTypeStr: String?): BatteryType {
@@ -133,8 +136,6 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
 
     override val errorInfo: String
         get() = (if (errorDescription == null) "-" else errorDescription)!!
-
-
 
 
 }
