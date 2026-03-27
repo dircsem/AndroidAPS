@@ -17,6 +17,7 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
+import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 /**
@@ -39,7 +40,7 @@ class MedLinkStatusParser {
         private var previousReservoirRemaining: Double = 0.0
         private val dateTimeFullPattern = Pattern.compile("\\d{2}-\\d{2}-\\d{4}\\s\\d{2}:\\d{2}")
         private val dateTimePartialPattern = Pattern.compile("\\d{2}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}")
-        private val timePartialPattern = Pattern.compile("\\d{1,2}:\\d{2}")
+//        private val timePartialPattern = Pattern.compile("\\d{1,2}:\\d{2}")
         private var bgUpdated = false
 
         @JvmStatic
@@ -173,15 +174,14 @@ class MedLinkStatusParser {
                     aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
                     status = parseLastBolus(currentLine, pumpStatus)
                     aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
-                    return status
                 }
                 if (currentLine.contains("square bolus")) {
                     aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
-                    val squareStatus = squareBolus(currentLine, MedLinkPartialBolus())
-                    if(squareStatus.lastBolusAmount > 0)
-                        status = squareStatus
-                    aapsLogger.info(LTag.PUMPBTCOMM, status.toString())
+                    val st = squareBolus(currentLine, status)
+                    aapsLogger.info(LTag.PUMPBTCOMM, st.toString())
+                    return st
                 }
+
             }
             return status
         }
@@ -198,10 +198,9 @@ class MedLinkStatusParser {
                     if (bolusAmount > 0.0 && bolusMatcher.find()) {
                         lastBolusStatus.lastBolusAmount = bolusAmount
                         lastBolusStatus.bolusDeliveredAmount = bolusMatcher.group().toDouble()
+                    } else {
+                        lastBolusStatus.bolusDeliveredAmount = 0.0
                     }
-//                    else {
-//                        lastBolusStatus.bolusDeliveredAmount = 0.0
-//                    }
                 }
             }
             //                "square bolus: 0.0u delivered: 0.000u\n" +
@@ -230,10 +229,9 @@ class MedLinkStatusParser {
                 val currentLine = messageIterator.next()
                 //        18:36:49.681 Next calibration time:  5:00
                 if (currentLine.contains("next calibration time:")) {
-                    val pattern = Pattern.compile("\\d{1,2}\\:\\d{2}")
-                    val matcher = pattern.matcher(currentLine)
+                    val matcher = createTimeMatcher(currentLine)
                     if (matcher.find()) {
-                        pumpStatus.nextCalibration = parseTime(currentLine, timePartialPattern)
+                        pumpStatus.nextCalibration = parseTime(matcher)
                     }
                     //                if (bgUpdated) {
 //                    pumpStatus.sensorDataReading = new SensorDataReading(injector,
@@ -244,6 +242,16 @@ class MedLinkStatusParser {
                 }
             }
             return pumpStatus
+        }
+
+
+        private fun createWatchMatcher(currentLine: String): Matcher {
+            val pattern = Pattern.compile("\\d+h:\\d+m")
+            return pattern.matcher(currentLine)
+        }
+        private fun createTimeMatcher(currentLine: String): Matcher {
+            val pattern = Pattern.compile("\\d{1,2}:\\d{2}")
+            return pattern.matcher(currentLine)
         }
 
         private fun parseCalibrationFactor(
@@ -387,8 +395,7 @@ class MedLinkStatusParser {
                         val tempBasalRatio = matcher.group()
                         pumpStatus.tempBasalAmount =
                             tempBasalRatio.substring(0, tempBasalRatio.length - 1).toDouble()
-                        val remTempTimePattern = Pattern.compile("\\d+h:\\d+m")
-                        val remTempTimeMatcher = remTempTimePattern.matcher(currentLine)
+                        val remTempTimeMatcher = createWatchMatcher(currentLine)
                         if (remTempTimeMatcher.find()) {
                             val remaingTime = remTempTimeMatcher.group()
                             val hourMinute = remaingTime.split(":".toRegex()).toTypedArray()
@@ -594,11 +601,10 @@ class MedLinkStatusParser {
         }
 
         private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-        private fun parseTime(currentLine: String, pattern: Pattern): ZonedDateTime? {
-            val matcher = pattern.matcher(currentLine)
+        private fun parseTime(matcher: Matcher): ZonedDateTime? {
             return if (matcher.find()) {
                 var timeString = matcher.group(0)
-                if (timeString.length < 5) {
+                if (timeString!= null && timeString.length < 5) {
                     timeString = "0$timeString"
                 }
                 val time = LocalTime.parse(timeString, timeFormatter)
