@@ -137,7 +137,7 @@ class MedLinkBLE //extends RileyLinkBLE
                     currentCommand?.let {
                         aapsLogger.info(
                             LTag.PUMPBTCOMM,
-                            "hash " + bolusExecutionHash.remove(it!!.firstCommand())
+                            "hash " + bolusExecutionHash.remove(it.firstCommand())
                         )
                     }
                     currentCommand?.let {
@@ -531,10 +531,12 @@ class MedLinkBLE //extends RileyLinkBLE
             object : ContinuousCommandExecutor<B>(commands, aapsLogger) {
                 override fun run() {
                     if (this.nextCommand() == MedLinkCommandType.NoCommand) {
+                        if(currentCommand != null) {
+                            currentCommand!!.clearExecutedCommand()
+                        }
                         return
                     }
                     isCommandConfirmed = false
-                    val lastReceived = lastReceivedCharacteristic
                     lastExecutedCommand = System.currentTimeMillis()
                     if (bluetoothConnectionGatt != null) {
                         val chara = bluetoothConnectionGatt!!.getService(serviceUUID)
@@ -565,15 +567,16 @@ class MedLinkBLE //extends RileyLinkBLE
                             if (isConnected && commands[0].command == MedLinkCommandType.Connect) {
                                 removeFirstCommand(true)
                             }
-                            needRetry = false
-                            aapsLogger.info(
-                                LTag.PUMPBTCOMM,
-                                String.format(
-                                    "writing <%s> to characteristic <%s>",
-                                    commands[0].command.code,
-                                    chara.uuid
+                                needRetry = false
+                                aapsLogger.info(
+                                    LTag.PUMPBTCOMM,
+                                    String.format(
+                                        "writing <%s> to characteristic <%s>",
+                                        commands[0].command.code,
+                                        chara.uuid
+                                    )
                                 )
-                            )
+
                         }
                         //                            count++;
 //                            SystemClock.sleep(4000);
@@ -633,15 +636,22 @@ class MedLinkBLE //extends RileyLinkBLE
                             if (isConnected && commands[0].command == MedLinkCommandType.Connect) {
                                 removeFirstCommand(true)
                             }
-                            needRetry = false
-                            aapsLogger.info(
-                                LTag.PUMPBTCOMM,
-                                String.format(
-                                    "writing <%s> to characteristic <%s>",
-                                    String(nextCommandData(), StandardCharsets.UTF_8),
-                                    chara.uuid
-                                )
-                            )
+                                val nextCommand = nextCommandData()
+                                if (nextCommand.isEmpty()) {
+                                    needRetry = true
+                                    clearExecutedCommand()
+                                } else {
+                                    needRetry = false
+                                    aapsLogger.info(
+                                        LTag.PUMPBTCOMM,
+                                        String.format(
+                                            "writing <%s> to characteristic <%s>",
+                                            String(nextCommand, StandardCharsets.UTF_8),
+                                            chara.uuid
+                                        )
+                                    )
+
+                            }
                         }
                         //                            count++;
 //                            SystemClock.sleep(4000);
@@ -1476,10 +1486,11 @@ class MedLinkBLE //extends RileyLinkBLE
             // If there is still a command being executed then bail out
             aapsLogger.info(LTag.PUMPBTCOMM, "CommandQueueBusy $commandQueueBusy")
             aapsLogger.info(LTag.PUMPBTCOMM, "bluetoothConnectionGatt $bluetoothConnectionGatt")
+            if (currentCommand != null && currentCommand!!.hasFinished()) {
+                removeFirstCommand(false)
+            }
             if (commandQueueBusy != null && commandQueueBusy!!.busy) {
                 return
-            } else if (currentCommand != null && currentCommand!!.hasFinished()) {
-                removeFirstCommand(false)
             }
             // Check if we still have a valid gatt object
             try {
@@ -2074,6 +2085,16 @@ class MedLinkBLE //extends RileyLinkBLE
         synchronized(currentCommand!!.getCurrentCommand()) {
             clearExecutedCommand()
             currentCommand = null
+        }
+    }
+
+    fun removeBolusAndSuppCommand() {
+        if(currentCommand !=null) {
+            synchronized(currentCommand!!) {
+                removeFirstCommand(true)
+                nextCommand()
+                removeFirstCommand(true)
+            }
         }
     }
 }
