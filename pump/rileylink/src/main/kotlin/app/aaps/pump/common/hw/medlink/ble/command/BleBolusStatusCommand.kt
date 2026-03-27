@@ -21,8 +21,8 @@ class BleBolusStatusCommand(
 
 private var status: MedLinkPartialBolus = MedLinkPartialBolus()
 
+    var executedTimes = 0
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
-        aapsLogger.info(LTag.PUMPBTCOMM, answer)
         var pumpStatus = medLinkPumpPluginAbstract.medLinkPumpStatus
         if(bleComm.currentCommand!!.hasFinished() || answer.contains("time to powerdown 5")) {
             bleComm.nextCommand()
@@ -45,12 +45,13 @@ private var status: MedLinkPartialBolus = MedLinkPartialBolus()
                     ) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "bolusOnHold")
                         val callback: BolusProgressCallback = firstCommand.parseFunction.get() as BolusProgressCallback
-                        if (callback.detailedBolusInfo.insulin == status.lastBolusAmount) {
+                        if (callback.detailedBolusInfo.insulin == status.lastBolusAmount || (executedTimes >0 && status.bolusDeliveredAmount == 0.0)) {
                             aapsLogger.info(LTag.PUMPBTCOMM, "remove old bolus")
                             bleComm.onHoldCommandQueue.removeFirst()
                             bleComm.needToCheckOnHold = bleComm.onHoldCommandQueue.isNotEmpty()
                         } else {
                             aapsLogger.info(LTag.PUMPBTCOMM, "reprocess command")
+                            executedTimes++
                             bleComm.reprocessOnHold()
                         }
                     }
