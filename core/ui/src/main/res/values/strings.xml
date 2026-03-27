@@ -720,4 +720,8 @@
     <string name="medtronic_pump_state">Pump State</string>
     <string name="medtronic_pump_state_SUSPENDED">Suspended</string>
     <string name="medtronic_pump_state_RUNNING">Active</string>
+
+    <string name="medtronic_pump_battery_age">Age</string>
+    <string name="medtronic_pump_battery_volts">Voltage</string>
+
 </resources>

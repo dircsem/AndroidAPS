@@ -134,6 +134,8 @@
     <string name="rileylink_configuration">RileyLink Configuration</string>
     <string name="medlink_configuration">MedLink Configuration</string>
 
+    <string name="medlink_battery_info">Which battery info should be displayed at the main AAPS page</string>
+
     <string name="medlink_change_cannula_action">Do you change the cannula together with reservoir?</string>
     <string name="medlink_change_cannula_summary">When you enable this option, whenever there is a reservoir change, a change cannula event will be created.</string>
     <string name="medlink_init_commands">Commands to be executed on first connect</string>
@@ -154,6 +156,7 @@
     <string name="medlink_handle_cannula_change_event">Automatically handle cannula and reservoir change event</string>
     <string name="medlink_handle_sensor_change_event">Automatically handle sensor change event</string>
     <string name="medlink_key_force_bolus_history_read">Force bolus history read after each bolus event</string>
+    <string name="pref_medlink_battery_info">Which battery info should be displayed at the main AAPS page</string>
 
 
 </resources>
