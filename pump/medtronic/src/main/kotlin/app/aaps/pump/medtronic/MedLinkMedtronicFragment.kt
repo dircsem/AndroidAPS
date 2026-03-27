@@ -441,24 +441,15 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 //                append("} ")
 //            }
 //        } else
-        if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0) {
-            binding.medtronicPumpstateBattery.text = buildString {
-                append("{fa-battery-")
-                append(medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining!! / 25)
-                append("} ")
-            }
-            // } else if (medtronicPumpStatus.batteryType == BatteryType.LiPo) {
-            //     medtronic_pumpstate_battery.text = "{fa-battery-" + medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining / 25 + "}  " + String.format(" %.2f V", medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage)
+        if(medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining==0 || medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0){
+            binding.medtronicPumpstateBattery.text = "{fa-battery-0}"
         } else {
             (buildString {
-                append("{fa-battery-")
-                append(medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining!! / 25)
-                append("} ")
-                append(
+
                     String.format(
                         $$"%.2f V", medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage
                     )
-                )
+
             }).also { binding.medtronicPumpstateBattery.text = it }
         }
         warnColors.setColorInverse(
