@@ -106,4 +106,11 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
             }
         }
     }
+
+    fun isManualBolus(command: MedLinkCommandType) : Boolean  {
+        return when(command) {
+            Bolus -> true
+            else ->  false
+        }
+    }
 }
