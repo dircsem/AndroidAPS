@@ -200,6 +200,7 @@ class MedLinkBLE //extends RileyLinkBLE
                             "" + priorityExecutionCommandQueue.remove(it)
                         )
                     }
+                    currentCommand?.let { onBolusExecutorDropped(it, if (force) "removed (forced)" else "removed") }
                     currentCommand = null
                 }
             }
@@ -593,6 +594,7 @@ class MedLinkBLE //extends RileyLinkBLE
         unsent.forEach {
             aapsLogger.info(LTag.PUMPBTCOMM, "user stop: dropping queued bolus ${bolusAmount(it)}U")
             it.commandFailed()
+            onBolusExecutorDropped(it, "user stop")
             failMergedParts(it, "user stop")
             manualBolusQueuedAt.remove(it)
         }
@@ -1670,6 +1672,21 @@ class MedLinkBLE //extends RileyLinkBLE
 
     private fun isBolusExecutor(executor: CommandExecutor<*>) = isBolus(executor.firstCommand())
 
+    private fun keepOnConnectionLoss(executor: CommandExecutor<*>) =
+        isBolusExecutor(executor) || executor.firstCommand() == MedLinkCommandType.BolusStatus
+
+    /**
+     * The tracked bolus left the queues before its dose was written: fail the tracker request, otherwise it
+     * stays QUEUED forever and every later SMB/TBR bolus is refused ("previous bolus unresolved").
+     */
+    private fun onBolusExecutorDropped(executor: CommandExecutor<*>, reason: String) {
+        if (executor !== trackedBolusExecutor) return
+        if (bolusTracker.onDropped(reason)) {
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${bolusAmount(executor)}U dropped before the dose was written ($reason): tracker released")
+            failMergedParts(executor, reason)
+        }
+    }
+
     /**
      * T1 / T7 / T13: may this executor be sent now? Returns false when it must wait.
      * Side effects are idempotent: an `M` is queued at most once and delayed re-checks are coalesced.
@@ -1772,6 +1789,7 @@ class MedLinkBLE //extends RileyLinkBLE
                 CommandExecutor.PostDecision.DROP_COMPLETED  -> {
                     aapsLogger.info(LTag.PUMPBTCOMM, "nothing left to write for ${nextComm.firstCommand()}, removing it: $nextComm")
                     orderedQueues.forEach { it.remove(nextComm) }
+                    onBolusExecutorDropped(nextComm, "nothing left to write")
                     if (isBolusExecutor(nextComm) && bolusExecutionQueue.none { it.firstCommand() == nextComm.firstCommand() })
                         bolusExecutionHash.remove(nextComm.firstCommand())
                     // a written bolus stays under the tracker's control (M decides, never a blind re-send)
@@ -1906,8 +1924,9 @@ class MedLinkBLE //extends RileyLinkBLE
                             "Medlink"
                         )
                     )
-                    priorityExecutionCommandQueue.clear()
-                    executionCommandQueue.clear()
+                    // bolus commands and the M that verifies them survive a lost connection
+                    priorityExecutionCommandQueue.removeIf { !keepOnConnectionLoss(it) }
+                    executionCommandQueue.removeIf { !keepOnConnectionLoss(it) }
 //                    bolusExecutionQueue.clear()
 //                commandQueueBusy = false;
                     return

@@ -217,6 +217,19 @@ class BolusTracker(
         return false
     }
 
+    /**
+     * The tracked executor left the queues (user stop, max tries, error): a request still QUEUED was never
+     * written, so it fails and new boluses are allowed again. A written one is left to `M`.
+     * @return true when the request was failed here.
+     */
+    @Synchronized
+    fun onDropped(reason: String): Boolean {
+        val r = current ?: return false
+        if (r.state != BolusState.QUEUED) return false
+        fail(r, "dropped before the dose was written: $reason")
+        return true
+    }
+
     @Synchronized
     fun onConfirmed(): BolusAction {
         val r = current ?: return BolusAction.None

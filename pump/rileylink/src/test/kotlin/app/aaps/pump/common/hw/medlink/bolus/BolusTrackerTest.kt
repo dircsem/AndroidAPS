@@ -342,6 +342,35 @@ class BolusTrackerTest {
         assertEquals(BolusState.UNRESOLVED, tracker.current!!.state)
     }
 
+    // ---- dropped executor (TBR bolus stuck QUEUED blocked every SMB) --------------------------
+
+    @Test
+    fun `queued bolus dropped from the queue fails and releases the tracker`() {
+        val r = tracker.onQueued("TBRBolus-1", BolusOrigin.LOOP, 0.1)!!
+        tracker.onBaseline(baseline)
+        assertFalse(tracker.canSendNewBolus())
+        assertTrue(tracker.onDropped("max tries"))
+        assertEquals(BolusState.FAILED, r.state)
+        assertTrue(tracker.canSendNewBolus())
+        assertTrue(tracker.onQueued("SMBBolus-2", BolusOrigin.LOOP, 0.4) != null)
+    }
+
+    @Test
+    fun `written bolus dropped from the queue stays under M`() {
+        val r = sendLoopBolus()
+        assertFalse(tracker.onDropped("removed"))
+        assertEquals(BolusState.SENT, r.state)
+        assertFalse(tracker.canSendNewBolus())
+    }
+
+    @Test
+    fun `dropping twice or with nothing tracked is a no-op`() {
+        assertFalse(tracker.onDropped("removed"))
+        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        assertTrue(tracker.onDropped("user stop"))
+        assertFalse(tracker.onDropped("removed"))
+    }
+
     @Test
     fun `M without a bolus in flight is only observed`() {
         assertEquals(None, tracker.onStatus(applied(0.5)))

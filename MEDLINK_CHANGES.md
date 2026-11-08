@@ -206,6 +206,20 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 
 **Testes**: `LoopBolusMergeTest` e `ManualBolusRuleTest` atualizados (rileylink 465/465). `:app:assembleFullDebug` OK. A activity e o fluxo do diálogo não têm teste automático.
 
+## 4h. Bolus descartado da fila libera o tracker (2026-11-08)
+
+**Sintoma** (log real, build anterior ao T15): `deliverBolus refused: previous bolus BolusRequest(id=TBRBolus-…, state=QUEUED, attempts=0) unresolved` por mais de 10 min; todo SMB era recusado.
+
+**Causa**: o tracker põe o pedido em `QUEUED` quando o primeiro comando do executor é escrito. Ele só saía de `QUEUED` por `onWritten` (dose escrita) ou `onRejectedBeforeWrite`. Se o executor saía da fila antes de a dose ser escrita (máximo de tentativas, erro com `removeFirstCommand(true)`, "nothing left to write", stop do usuário), ninguém avisava o tracker e o pedido ficava `QUEUED` para sempre.
+
+**Agora**:
+- `BolusTracker.onDropped(reason)`: um pedido `QUEUED` (dose nunca escrita) vira `FAILED` e novos bolus são liberados. Um pedido já escrito não muda: o `M` decide.
+- `MedLinkBLE.onBolusExecutorDropped` é chamado em `removeFirstCommand`, no `DROP_COMPLETED` do seletor de comandos e no `addUserStop`. As partes juntadas (T14) recebem falha.
+- Stop do usuário: os bolus na fila são removidos e o tracker é avisado; um bolus em andamento continua sendo interrompido pelo STOP (`StopOrigin.USER`).
+- Conexão perdida: nenhum bolus é descartado. O caminho "GATT is null" limpava a fila de prioridade inteira, inclusive o `M` que verifica um bolus escrito; agora ele mantém os executores de bolus e de `BolusStatus` (`keepOnConnectionLoss`). Um bolus não escrito continua na fila (`holdCurrentBolus`), um escrito vai para o hold e é verificado pelo `M`.
+
+**Testes**: `BolusTrackerTest` (+3). rileylink 468/468.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -222,7 +236,7 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 |---|---|
 | `bolus/MedLinkStatusParserSnapshotTest` | parse do `M` em pedaços BLE |
 | `bolus/BolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
-| `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro |
+| `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h) |
 | `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
 | `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14) |
 | `bolus/ManualBolusRuleTest` | manual não bloqueado por TBR (T15), SMB com consentimento (T16) |
@@ -232,7 +246,7 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-08, T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-08, 4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---
