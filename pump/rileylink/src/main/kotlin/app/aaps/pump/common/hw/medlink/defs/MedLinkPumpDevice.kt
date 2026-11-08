@@ -23,8 +23,6 @@ interface MedLinkPumpDevice  {
     fun triggerPumpConfigurationChangedEvent()
 
     // var medLinkService: MedLinkService?
-    val lastConnectionTimeMillis: Long
-    fun setLastCommunicationToNow()
     fun extendBasalTreatment(duration: Int, callback: Function1<PumpEnactResult, *>): PumpEnactResult
     fun nextScheduledCommand(): String? //    void deliverTreatment(DetailedBolusInfo detailedBolusInfo,
     //                          @NotNull Function<PumpEnactResult, Unit> func);

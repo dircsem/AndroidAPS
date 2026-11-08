@@ -1,0 +1,5 @@
+m command confirmed
+last bolus: 1.6u 10-06-21 17:39
+square bolus: 0.0u delivered: 0.000u
+square bolus time: 0h:00m / 0h:00m
+ready

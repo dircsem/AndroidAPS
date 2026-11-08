@@ -47,18 +47,22 @@ class MedLinkCommandSMBBolus(
             aapsLogger.debug(LTag.PUMPQUEUE, "SMB requested but still in 3 min interval")
             r = pumpEnactResultProvider.get().enacted(false).success(false).comment("SMB requested but still in ${preferences.get(IntKey.ApsMaxSmbFrequency)} min interval")
             aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
-        } else if (detailedBolusInfo.deliverAtTheLatest != 0L && detailedBolusInfo.deliverAtTheLatest + T.mins(1).msecs() > System.currentTimeMillis()) {
+        } else if (detailedBolusInfo.deliverAtTheLatest != 0L && detailedBolusInfo.deliverAtTheLatest + T.mins(3).msecs() < dateUtil.now()) {
             val func = { it: PumpEnactResult ->
                 callback?.result(it)?.run()
                 aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${it.success} enacted: ${it.enacted}")
+                aapsLogger.debug(LTag.PUMPQUEUE,detailedBolusInfo.toString())
             }
             val pump = activePlugin.activePump
             if (pump is MedLinkPumpPluginBase) {
+                aapsLogger.info(LTag.PUMP, detailedBolusInfo.toString())
                 pump.deliverTreatment(detailedBolusInfo, func)
             }
         } else {
             r = pumpEnactResultProvider.get().enacted(false).success(false).comment("SMB request too old")
-            aapsLogger.debug(LTag.PUMPQUEUE, "SMB bolus canceled. deliverAt: " + dateUtil.dateAndTimeString(detailedBolusInfo.deliverAtTheLatest))
+            aapsLogger.debug(LTag.PUMPQUEUE, "SMB bolus canceled. deliverAt: " + dateUtil.dateAndTimeAndSecondsString(detailedBolusInfo.deliverAtTheLatest))
+            aapsLogger.debug(LTag.PUMPQUEUE, "SMB bolus canceled. deliverAt: " + dateUtil.dateAndTimeAndSecondsString(detailedBolusInfo.deliverAtTheLatest + T.mins(3).msecs()))
+
             callback?.result(r)?.run()
             aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
         }

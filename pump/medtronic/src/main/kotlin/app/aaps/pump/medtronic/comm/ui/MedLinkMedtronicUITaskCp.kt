@@ -61,7 +61,7 @@ class MedLinkMedtronicUITaskCp @Inject constructor(val aapsLogger: AAPSLogger) {
             }
         }
         when (pumpMessage.firstCommand()) {
-            MedLinkCommandType.BolusStatus                                                     -> {
+            MedLinkCommandType.WakeUp, MedLinkCommandType.BolusStatus  -> {
                 run { communicationManager.setCommand(pumpMessage) }
 
             }

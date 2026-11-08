@@ -1,6 +1,8 @@
 package app.aaps.pump.medtronic.data.dto
 
 import com.google.gson.annotations.Expose
+import org.joda.time.Instant
+import org.joda.time.LocalDateTime
 import java.util.concurrent.LinkedBlockingDeque
 
 
@@ -62,8 +64,26 @@ class TempBasalMicrobolusOperations {
         this.operations = operations
     }
 
+    /**
+     * Bug 4: an op finished. Removes exactly [op] (by identity), never "whatever is at the head":
+     * the refresh may already have removed it, or a new plan may have replaced the queue.
+     * @return true when [op] was still queued.
+     */
+    @Synchronized
+    fun complete(op: TempBasalMicroBolusPair): Boolean {
+        val it = operations.iterator()
+        while (it.hasNext()) {
+            if (it.next() === op) {
+                it.remove()
+                return true
+            }
+        }
+        return false
+    }
+
     @Synchronized
     fun clearOperations() {
+
         operations.clear()
     }
 
@@ -80,5 +100,14 @@ class TempBasalMicrobolusOperations {
                 false
             }
         }
+    }
+    fun reactivateTime(): LocalDateTime {
+        val operation = operations.first
+        return if (operation.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE) {
+            operation.releaseTime
+        } else
+            Instant
+                .ofEpochMilli( 0L ).toDateTime()
+                .toLocalDateTime()
     }
 }

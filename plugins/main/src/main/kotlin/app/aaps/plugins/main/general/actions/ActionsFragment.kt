@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.protection.ProtectionCheck
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -293,7 +294,8 @@ class ActionsFragment : DaggerFragment() {
                     reservoirLevel, sensorAge, sensorLevel,
                     pbAge, pbLevel
                 )
-                sensorLevelLabel.text = if (activeBgSource.sensorBatteryLevel == -1) "" else rh.gs(R.string.level_label)
+                sensorLevelLabel.text = if (activeBgSource.sensorBatteryLevel == -1) "" else if(pump is MedLinkPumpPluginBase) pump.medLinkPumpStatus.medLinkBatteryRemaining.toString() else
+                    rh.gs(R.string.level_label)
             } else {
                 statusLightHandler.updateStatusLights(cannulaAge, cannulaUsage, insulinAge, null, sensorAge, null, pbAge, null)
                 sensorLevelLabel.text = ""

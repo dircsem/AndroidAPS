@@ -55,6 +55,7 @@ class MedtronicPumpStatus @Inject constructor(
         activeProfileName = "STD"
         reservoirRemainingUnits = 75.0
         batteryRemaining = 75
+
         if (medtronicPumpMap.isEmpty()) createMedtronicPumpMap()
         if (medtronicDeviceTypeMap.isEmpty()) createMedtronicDeviceTypeMap()
         lastConnection = preferences.get(MedtronicLongNonKey.LastGoodPumpCommunicationTime)

@@ -129,10 +129,17 @@ class BolusCallback(private val aapsLogger: AAPSLogger, private val bolusInfo: D
                         ZoneId.systemDefault()
                     )
                     bolusInfo.timestamp = bolusDeliveredAt.toInstant().toEpochMilli()
+                    if(System.currentTimeMillis() - bolusInfo.timestamp> 610000){
+                        aapsLogger.info(LTag.PUMPBTCOMM, "bolus not delivered")
+                    }
                     return BolusAnswer( PumpResponses.BolusDelivered, delivered, bolusInfo)
                 } else if (unitsMatcher.find()) {
                     units = unitsMatcher.group(1)
                     checkNotNull(units)
+                    if(bolusInfo.insulin != units.toDouble()){
+                        aapsLogger.info(LTag.PUMPBTCOMM, "bolus not delivered")
+                    }
+
                     val lastBolusAmount =
                         units.substring(0, units.length - 1).trim { it <= ' ' }.toDouble()
                     if (lastBolusAmount == bolusInfo.insulin) {

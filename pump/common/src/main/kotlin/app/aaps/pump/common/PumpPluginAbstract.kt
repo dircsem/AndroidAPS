@@ -3,6 +3,7 @@ package app.aaps.pump.common
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.hardware.BatteryState
 import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.pump.defs.PumpType

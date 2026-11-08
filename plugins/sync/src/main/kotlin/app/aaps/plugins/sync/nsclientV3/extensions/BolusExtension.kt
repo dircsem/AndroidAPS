@@ -25,7 +25,7 @@ fun NSBolus.BolusType?.toBolusType(): BS.Type =
 
 fun BS.toNSBolus(): NSBolus =
     NSBolus(
-        eventType = if (type == BS.Type.SMB) EventType.CORRECTION_BOLUS else EventType.MEAL_BOLUS,
+        eventType = if (type  == BS.Type.SMB || type == BS.Type.TBR) EventType.CORRECTION_BOLUS else EventType.MEAL_BOLUS,
         isValid = isValid,
         date = timestamp,
         utcOffset = T.msecs(utcOffset).mins(),

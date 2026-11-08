@@ -23,6 +23,10 @@ class BleConnectCommand(
         } else if ("$lastCharacteristic$answer".contains("ready")) {
             bleComm.clearNoResponse()
         }
+        if (answer.trim { it <= ' ' }.contains("20s") || answer.trim { it <= ' ' }.contains("15s") || answer.trim { it <= ' ' }.contains("10s")) {
+            bleComm.completedCommand()
+            return
+        }
         if (answer.trim { it <= ' ' }.contains("ok+conn")) {
             if (answer.trim { it <= ' ' }.contains("ok+conn or command")) {
                 SystemClock.sleep(500)

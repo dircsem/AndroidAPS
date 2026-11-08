@@ -4,6 +4,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.Insight
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
@@ -33,6 +34,8 @@ class CommandStopPump(
         if (pump is Insight) {
             val result = pump.stopPump()
             callback?.result(result)?.run()
+        } else if (pump is MedLinkPumpPluginBase) {
+            pump.userSuspend(callback)
         }
     }
 

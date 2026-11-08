@@ -1,0 +1,3 @@
+a command confirmed
+check pump status
+pump is bolusing state

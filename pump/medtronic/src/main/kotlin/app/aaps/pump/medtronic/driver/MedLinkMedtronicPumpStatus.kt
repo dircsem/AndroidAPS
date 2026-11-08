@@ -1,6 +1,7 @@
 package app.aaps.pump.medtronic.driver
 
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -30,8 +31,10 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
     preferences: Preferences,
     private val resourceHelper: ResourceHelper,
     private val rxBus: RxBus,
-    private val medLinkUtil: MedLinkUtil
-) : MedLinkPumpStatusImpl(PumpType.MEDLINK_MEDTRONIC_523_723_REVEL) {
+    private val medLinkUtil: MedLinkUtil,
+    aapsLogger: AAPSLogger
+
+) : MedLinkPumpStatusImpl(preferences,PumpType.MEDLINK_MEDTRONIC_523_723_REVEL, aapsLogger) {
     //    override var errorDescription: String? = null
     var serialNumber: String = preferences.get(MedtronicStringPreferenceKey.Serial)
     var pumpFrequency: String = preferences.get(MedtronicStringPreferenceKey.PumpFrequency)
@@ -62,6 +65,7 @@ class MedLinkMedtronicPumpStatus @Inject constructor(
     var basalProfileStatus: BasalProfileStatus = BasalProfileStatus.NotInitialized
     var batteryType: BatteryType = BatteryType.None
 
+    var batteryAge = 0L
 
     init {
         this.activeProfileName = "STD"

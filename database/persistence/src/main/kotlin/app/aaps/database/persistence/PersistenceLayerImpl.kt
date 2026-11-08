@@ -33,6 +33,7 @@ import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.database.AppRepository
 import app.aaps.database.ValueWrapper
+import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.TherapyEvent
 import app.aaps.database.persistence.converters.fromDb
 import app.aaps.database.persistence.converters.toDb
@@ -160,7 +161,8 @@ class PersistenceLayerImpl @Inject constructor(
 
     override fun getBolusesFromTime(startTime: Long, ascending: Boolean): Single<List<BS>> =
         repository.getBolusesDataFromTime(startTime, ascending)
-            .map { list -> list.asSequence().map { it.fromDb() }.toList() }
+                .map { list -> list.asSequence().map { it.fromDb() }.toList() }
+
 
     override fun getBolusesFromTimeToTime(startTime: Long, endTime: Long, ascending: Boolean): List<BS> =
         repository.getBolusesDataFromTimeToTime(startTime, endTime, ascending)
@@ -282,7 +284,7 @@ class PersistenceLayerImpl @Inject constructor(
                             values = listOf(ValueWithUnit.Timestamp(it.timestamp), ValueWithUnit.Insulin(it.amount))
                         )
                     )
-                    aapsLogger.debug(LTag.DATABASE, "Inserted bolus $it")
+                    aapsLogger.info(LTag.DATABASE, "Inserted bolus $it")
                     transactionResult.inserted.add(it.fromDb())
                 }
                 result.invalidated.forEach {
@@ -295,15 +297,15 @@ class PersistenceLayerImpl @Inject constructor(
                             values = listOf(ValueWithUnit.Timestamp(it.timestamp), ValueWithUnit.Insulin(it.amount))
                         )
                     )
-                    aapsLogger.debug(LTag.DATABASE, "Invalidated bolus $it")
+                    aapsLogger.info(LTag.DATABASE, "Invalidated bolus $it")
                     transactionResult.invalidated.add(it.fromDb())
                 }
                 result.updatedNsId.forEach {
-                    aapsLogger.debug(LTag.DATABASE, "Updated nsId of bolus $it")
+                    aapsLogger.info(LTag.DATABASE, "Updated nsId of bolus $it")
                     transactionResult.updatedNsId.add(it.fromDb())
                 }
                 result.updated.forEach {
-                    aapsLogger.debug(LTag.DATABASE, "Updated amount of bolus $it")
+                    aapsLogger.info(LTag.DATABASE, "Updated amount of bolus $it")
                     transactionResult.updated.add(it.fromDb())
                 }
                 log(ueValues)

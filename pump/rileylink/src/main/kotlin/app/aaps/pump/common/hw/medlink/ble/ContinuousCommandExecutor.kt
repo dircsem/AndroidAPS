@@ -11,6 +11,7 @@ abstract class ContinuousCommandExecutor<B>(
     commandList = commands,
     aapsLogger = aapsLogger
 ) {
+    var hasStarted = false
 
     var count = 0
     var bolusProgress = 0.0

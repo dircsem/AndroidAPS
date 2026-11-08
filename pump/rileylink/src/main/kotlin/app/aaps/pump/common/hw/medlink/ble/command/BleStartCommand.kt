@@ -8,6 +8,9 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.queue.Callback
+import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
+import app.aaps.pump.common.hw.medlink.bolus.PumpStateAnswer
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpRunningState
 
 class BleStartCommand(
     aapsLogger: AAPSLogger,
@@ -25,12 +28,20 @@ class BleStartCommand(
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
         aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
         when {
-            answer.contains("pump is bolusing st") ||
+            PumpStateAnswer.isBolusing(answer) ||
                 answer.contains("pump normal state") -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "status command")
                 aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
-
                 pumpResponse.append(answer)
+                // T2: a bolusing pump is not suspended, but it is not "Running" either
+                if (PumpStateAnswer.isBolusing(answer)) {
+                    bleComm.setLastPumpStatus(MedLinkPumpRunningState.Bolusing)
+                    bleComm.onPumpAnswerState(PumpAnswerState.BOLUSING)
+                } else {
+                    bleComm.setLastPumpStatus(MedLinkPumpRunningState.Running)
+                    bleComm.onPumpAnswerState(PumpAnswerState.RUNNING)
+                }
+
                 if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.NoCommand || bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
                     applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
                     if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
@@ -47,10 +58,17 @@ class BleStartCommand(
             }
 
             answer.contains("pump suspend state")    -> {
-                bleComm.completedCommand()
-            }
-
-            else                                     -> {
+                bleComm.setLastPumpStatus(MedLinkPumpRunningState.Suspended)
+                bleComm.onPumpAnswerState(PumpAnswerState.SUSPENDED)
+                if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
+                    // answer to A: the pump is suspended as expected, write START now
+                    bleComm.completedCommand()
+                } else {
+                    // T13 / bug 4: START was written and the pump is still suspended - retry and alarm, never drop silently
+                    aapsLogger.warn(LTag.PUMPBTCOMM, "START refused: pump still suspended")
+                    bleComm.onStartFailed("pump still suspended after START")
+                }
+            } else                                     -> {
                 super.characteristicChanged(answer, bleComm, lastCharacteristic)
             }
         }

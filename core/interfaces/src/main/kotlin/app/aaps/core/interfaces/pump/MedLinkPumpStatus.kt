@@ -45,6 +45,10 @@ interface MedLinkPumpStatus {
     fun setPumpRunning()
     fun setPumpSuspended()
     fun setPumpUnknow()
+
+    var medLinkBatteryRemaining: Int?
+
+    fun pumpBatteryRemaining()
 }
 
 //enum class PumpRunningState(val status: String) {

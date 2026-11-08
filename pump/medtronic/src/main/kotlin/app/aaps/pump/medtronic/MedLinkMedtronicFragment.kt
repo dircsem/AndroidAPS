@@ -10,7 +10,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.db.PersistenceLayer
 import dagger.android.support.DaggerFragment
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
@@ -37,16 +39,15 @@ import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
 import app.aaps.core.interfaces.rx.events.EventTempBasalChange
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.pump.common.defs.PumpRunningState
-import app.aaps.pump.common.extensions.stringResource
 import app.aaps.pump.common.hw.medlink.defs.MedLinkError
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.medtronic.databinding.MedlinkMedtronicFragmentBinding
-import app.aaps.pump.medtronic.defs.BatteryType
 import app.aaps.pump.medtronic.dialog.MedLinkMedtronicHistoryActivity
-import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import app.aaps.pump.medtronic.events.EventMedtronicPumpConfigurationChanged
 import app.aaps.pump.medtronic.events.EventMedtronicPumpValuesChanged
 import app.aaps.pump.common.events.EventMedLinkDeviceStatusChange
@@ -55,35 +56,53 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.*
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.DurationUnit
 
 class MedLinkMedtronicFragment : DaggerFragment() {
 
     @Inject
+    lateinit var preferences: Preferences
+
+    @Inject
+    lateinit var persistenceLayer: PersistenceLayer
+    @Inject
     lateinit var aapsLogger: AAPSLogger
+
     @Inject
     lateinit var fabricPrivacy: FabricPrivacy
+
     @Inject
     lateinit var rh: ResourceHelper
+
     @Inject
     lateinit var rxBus: RxBus
+
     @Inject
     lateinit var commandQueue: CommandQueue
+
     @Inject
     lateinit var activePlugin: ActivePlugin
+
     @Inject
     lateinit var medLinkMedtronicPumpPlugin: MedLinkMedtronicPumpPlugin
+
     @Inject
     lateinit var warnColors: WarnColors
+
     @Inject
     lateinit var medLinkUtil: MedLinkUtil
+
     @Inject
     lateinit var dateUtil: DateUtil
+
     @Inject
     lateinit var medLinkMedtronicUtil: MedLinkMedtronicUtil
 
     //    @Inject lateinit var medtronicPumpStatus: MedLinkMedtronicPumpStatus
     @Inject
     lateinit var medLinkServiceData: MedLinkServiceData
+
     @Inject
     lateinit var aapsSchedulers: AapsSchedulers
 
@@ -274,21 +293,20 @@ class MedLinkMedtronicFragment : DaggerFragment() {
                     aapsLogger.debug(LTag.PUMP, "Command: " + cmd)
                     val cmdResourceId = cmd.resourceId
                     if (cmd == MedLinkCommandType.GetState) {
-                        binding.medtronicPumpStatus.text = medLinkMedtronicUtil.frameNumber?.let {
-                            rh.gs(
-                                cmdResourceId,
-                                medLinkMedtronicUtil.pageNumber,
-                                medLinkMedtronicUtil.frameNumber
-                            )
-                        }
-                            ?: rh.gs(R.string.medtronic_cmd_desc_get_settings)
+                        binding.medtronicPumpStatus.text =
+                            rh.gs(R.string.medtronic_cmd_desc_get_settings)
                     } else {
-                        binding.medtronicPumpStatus.text = " " + (cmdResourceId?.let {
-                            if (it > 0) {
-                                rh.gs(it)
-                            }
+                        binding.medtronicPumpStatus.text = buildString {
+                            append(" ")
+                            append(cmdResourceId.let {
+                                if (it > 0) {
+                                    rh.gs(it)
+                                } else {
+                                    cmd.getCommandDescription()
+                                }
+                            })
+
                         }
-                            ?: cmd.getCommandDescription())
                     }
                 }
             }
@@ -335,61 +353,23 @@ class MedLinkMedtronicFragment : DaggerFragment() {
     // GUI functions
     @Synchronized
     fun updateGUI() {
-        if (binding.medtronicPumpstatus == null) return
 
         setDeviceStatus()
 
         // last connection
         if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection != 0L) {
-            val minAgo =
-                dateUtil.minAgo(rh, medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection)
-            val min =
-                (System.currentTimeMillis() - medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection) / 1000 / 60
-            when {
-                medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection + 60 * 1000 > System.currentTimeMillis() -> {
-                    binding.medtronicLastconnection.setText(R.string.medtronic_pump_connected_now)
-                    binding.medtronicLastconnection.setTextColor(Color.WHITE)
-                }
+            val age =
+                System.currentTimeMillis() - medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection
+            binding.medtronicLastconnection.text = dateUtil.age(age, true, rh)
+            val minAgo = age / 60000
+            if (minAgo < 5) {
+                binding.medtronicLastconnection.setTextColor(Color.WHITE)
+                binding.medtronicRlStatus.setTextColor(Color.WHITE)
+            } else if (minAgo < 10) {
+                binding.medtronicLastconnection.setTextColor(Color.YELLOW)
+            } else {
+                binding.medtronicLastconnection.setTextColor(Color.RED)
 
-                medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastConnection + 30 * 60 * 1000 < System.currentTimeMillis() -> {
-
-                    if (min < 60) {
-                        binding.medtronicLastconnection.text =
-                            rh.gs(app.aaps.core.interfaces.R.string.minago, min)
-                    } else if (min < 1440) {
-                        val h = (min / 60).toInt()
-                        ("${
-                            rh.gq(
-                                app.aaps.pump.common.hw.rileylink.R.plurals.duration_hours,
-                                h,
-                                h
-                            )
-                        } ${rh.gs(R.string.ago)}").also {
-                            binding.medtronicLastconnection.text =
-                                it
-                        }
-                    } else {
-                        val h = (min / 60).toInt()
-                        val d = h / 24
-                        // h = h - (d * 24);
-                        ("${
-                            rh.gq(
-                                app.aaps.pump.common.hw.rileylink.R.plurals.duration_days,
-                                d,
-                                d
-                            )
-                        } ${rh.gs(R.string.ago)}").also {
-                            binding.medtronicLastconnection.text =
-                                it
-                        }
-                    }
-                    binding.medtronicLastconnection.setTextColor(Color.RED)
-                }
-
-                else -> {
-                    binding.medtronicLastconnection.text = minAgo
-                    binding.medtronicLastconnection.setTextColor(Color.WHITE)
-                }
             }
         }
 
@@ -397,21 +377,8 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         val bolus = medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastBolusAmount
         val bolusTime = medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastBolusTime
         if (bolus != null && bolusTime != null) {
-            val agoMsc =
-                System.currentTimeMillis() - medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastBolusTime!!.time
-            val bolusMinAgo = agoMsc.toDouble() / 60.0 / 1000.0
             val unit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
-            val ago = if (agoMsc < 60 * 1000) {
-                rh.gs(R.string.medtronic_pump_connected_now)
-            } else if (bolusMinAgo < 60) {
-                dateUtil.minAgo(
-                    rh,
-                    medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastBolusTime!!.time
-                )
-            } else {
-                dateUtil.hourString(medLinkMedtronicPumpPlugin.medLinkPumpStatus.lastBolusTime!!.time)
-//                dateUtil.hourAgo(medtronicPumpStatus.lastBolusTime!!.time, rh)
-            }
+            val ago = deltaTimeAgo(bolusTime.time)
             binding.medtronicLastbolus.text = rh.gs(R.string.mdt_last_bolus, bolus, unit, ago)
         } else {
             binding.medtronicLastbolus.text = ""
@@ -434,35 +401,47 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
 
         // battery
-//        if(medLinkMedtronicPumpPlugin.isBatteryAge()){
-//            binding.medtronicPumpstateBattery.text = buildString {
-//                append("{fa-battery-")
-//                append(medLinkMedtronicPumpPlugin.batteryLevel)
-//                append("} ")
-//            }
-//        } else
-        if(medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining==0 || medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0){
-            binding.medtronicPumpstateBattery.text = "{fa-battery-0}"
-        } else {
-            (buildString {
+        if (medLinkMedtronicPumpPlugin.isBatteryAge()) {
 
+            val batteryLevel = (medLinkMedtronicPumpPlugin.batteryLevel ?: 75) / 25
+            binding.medtronicPumpstateBattery.text = buildString {
+                append("{fa-battery-")
+                append(batteryLevel)
+                append("} ")
+                append(medLinkMedtronicPumpPlugin.getBatteryAge())
+                append(" Wz")
+            }
+            persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE).let {
+                if(it!=null) {
+                    warnColors.setColorByAge(
+                        binding.medtronicPumpstateBattery,
+                        it,
+                        preferences.get(IntKey.OverviewBageWarning),
+                        preferences.get(IntKey.OverviewBageCritical)
+                    )
+                }
+            }
+        } else
+            if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining == 0 || medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0) {
+                binding.medtronicPumpstateBattery.text = "{fa-battery-0}"
+            } else {
+                (buildString {
                     String.format(
                         $$"%.2f V", medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage
                     )
-
-            }).also { binding.medtronicPumpstateBattery.text = it }
-        }
-        warnColors.setColorInverse(
-            binding.medtronicPumpstateBattery,
-            medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining!!.toDouble(),
-            25,
-            10
-        )
+                }).also { binding.medtronicPumpstateBattery.text = it }
+            }
+//        warnColors.setColorInverse(
+//            binding.medtronicPumpstateBattery,
+//            medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining!!.toDouble(),
+//            25,
+//            10
+//        )
 
         // reservoir
         if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.reservoirRemainingUnits < 10.0) {
             binding.medtronicReservoir.text = rh.gs(
-                app.aaps.core.ui.R.string.reservoir_value,
+                app.aaps.core.ui.R.string.reservoir_low_value,
                 medLinkMedtronicPumpPlugin.medLinkPumpStatus.reservoirRemainingUnits,
                 medLinkMedtronicPumpPlugin.medLinkPumpStatus.reservoirFullUnits
             )
@@ -505,13 +484,15 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         if (todayTotalUnits != null && yesterdayTotalUnits != null) {
             binding.medtronicTotalInsulin.text = "$todayTotalUnits/$yesterdayTotalUnits"
         } else {
-            binding.medtronicLastbolus.text = ""
+            binding.medtronicTotalInsulin.text = ""
         }
 
         //DeviceBattery
-        val deviceBatteryRemaining = medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining
+        val deviceBatteryRemaining =
+            medLinkMedtronicPumpPlugin.medLinkPumpStatus.medLinkBatteryRemaining ?: 75
         val deviceBatteryVoltage = medLinkMedtronicPumpPlugin.medLinkPumpStatus.deviceBatteryVoltage
         aapsLogger.info(LTag.EVENTS, "device battery$deviceBatteryRemaining $deviceBatteryVoltage")
+
 
         binding.medtronicDevicestateBattery.text =
             "{fa-battery-${deviceBatteryRemaining!! / 25} }  ${deviceBatteryRemaining}%";
@@ -583,5 +564,11 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             } else {
                 binding.medtronicIsig.text = ""
             }
+    }
+
+    private fun deltaTimeAgo(timeInMilli: Long): String {
+        val agoMsc =
+            System.currentTimeMillis() - timeInMilli
+        return dateUtil.age(agoMsc, true, rh).replace(" ","")
     }
 }

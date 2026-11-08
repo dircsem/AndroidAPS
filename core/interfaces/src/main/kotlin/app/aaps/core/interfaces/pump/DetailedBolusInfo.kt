@@ -7,6 +7,7 @@ import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder
 
 
 class DetailedBolusInfo {
@@ -89,4 +90,7 @@ class DetailedBolusInfo {
     }
 
 
+    override fun toString(): String {
+        return ReflectionToStringBuilder.toString(this)
+    }
 }

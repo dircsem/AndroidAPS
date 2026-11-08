@@ -11,7 +11,7 @@ fun BS.toJson(isAdd: Boolean, dateUtil: DateUtil): JSONObject =
     JSONObject()
         .put(
             "eventType",
-            if (type == BS.Type.SMB) TE.Type.CORRECTION_BOLUS.text else TE.Type.MEAL_BOLUS.text
+            if (type == BS.Type.SMB || type == BS.Type.TBR) TE.Type.CORRECTION_BOLUS.text else TE.Type.MEAL_BOLUS.text
         )
         .put("insulin", amount)
         .put("created_at", dateUtil.toISOString(timestamp))

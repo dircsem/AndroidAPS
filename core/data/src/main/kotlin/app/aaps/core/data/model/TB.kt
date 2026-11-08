@@ -42,7 +42,7 @@ data class TB(
         EMULATED_PUMP_SUSPEND,
         PUMP_SUSPEND,
         SUPERBOLUS,
-        FAKE_EXTENDED // in memory only
+        FAKE_EXTENDED, // in memory only,
         ;
 
         companion object {

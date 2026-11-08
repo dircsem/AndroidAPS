@@ -52,13 +52,13 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     rxBus: RxBus,
     context: Context,
     fabricPrivacy: FabricPrivacy,
-    var dateUtil: DateUtil,
+    val dateUtil: DateUtil,
     aapsSchedulers: AapsSchedulers,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
     val decimalFormatter: DecimalFormatter,
     override var uiInteraction: UiInteraction,
-    pumpEnactResultProvider: Provider<PumpEnactResult>
+    pumpEnactResultProvider: Provider<PumpEnactResult>,
 
 ) : PumpPluginAbstract(
     pluginDescription,
@@ -393,6 +393,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
             if (detailedBolusInfo.insulin == 0.0 && detailedBolusInfo.carbs == 0.0) {
                 // neither carbs nor bolus requested
                 aapsLogger.error("deliverTreatment: Invalid input")
+                aapsLogger.error(detailedBolusInfo.toString())
                 func.invoke(
                     pumpEnactResultProvider.get().success(false).enacted(false).bolusDelivered(0.0)
                         .comment(rh.gs(app.aaps.core.ui.R.string.invalid_input))

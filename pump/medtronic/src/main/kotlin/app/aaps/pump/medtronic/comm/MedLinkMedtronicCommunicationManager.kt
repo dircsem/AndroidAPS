@@ -119,7 +119,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
         if (state !== PumpDeviceState.PumpUnreachable) medLinkPumpPlugin.medLinkPumpStatus.pumpDeviceState = PumpDeviceState.WakingUp
 
 
-        aapsLogger.debug(LTag.PUMPCOMM, "isDeviceReachable. Waking pump... first shot")
+        aapsLogger.info(LTag.PUMPCOMM, "isDeviceReachable. Waking pump... first shot")
 
         return connectToDevice()
 
@@ -336,7 +336,7 @@ class MedLinkMedtronicCommunicationManager @Inject constructor(
         if (System.currentTimeMillis() - lastGoodReceiverCommunicationTime > 400000) {
             rfspy.transmitThenReceive(
                 MedLinkPumpMessage<String, Any>(
-                    MedLinkCommandType.BolusStatus,
+                    MedLinkCommandType.WakeUp,
                     activity,
                     medLinkPumpPlugin!!.btSleepTime,
                     BleCommandReader(aapsLogger, medLinkServiceData, medLinkPumpPlugin),

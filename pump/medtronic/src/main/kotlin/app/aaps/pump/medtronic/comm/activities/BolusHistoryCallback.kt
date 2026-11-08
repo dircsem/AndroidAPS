@@ -9,13 +9,13 @@ import app.aaps.pump.common.hw.medlink.activities.BaseCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.keys.MedLinkBooleanPreferenceKey
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
-import app.aaps.pump.medtronic.R
 import com.google.gson.Gson
 import org.json.JSONException
 import org.json.JSONObject
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.ArrayList
+import java.util.Date
 import java.util.Locale
 import java.util.Optional
 import java.util.function.Supplier
@@ -47,7 +47,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             return try {
                 val commandHistory = processBolusHistory(answers)
                 if (medLinkPumpPlugin.preferences.get(MedLinkBooleanPreferenceKey.HandleCannulaChangeEvent)) {
-                    medLinkPumpPlugin.handleNewCareportalEvent(Supplier {
+                    medLinkPumpPlugin.handleNewCarePortalEvent(Supplier {
                         commandHistory.get().filter { f: JSONObject -> !isBolus(f) }
                     })
                 }
@@ -96,7 +96,7 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
             }
             if (!verifyNext && data.isPresent
                 && data.get().get("eventType") == TE.Type.CANNULA_CHANGE
-                && !medLinkPumpPlugin.preferences.get(MedLinkBooleanPreferenceKey.HandleCannulaChangeEvent)
+                && !medLinkPumpPlugin.preferences.get(MedLinkBooleanPreferenceKey.ChangeCannulaAction)
             ) {
                 cannulaChange = data
                 data = Optional.empty()
@@ -187,6 +187,9 @@ class BolusHistoryCallback(private val aapsLogger: AAPSLogger, private val medLi
                 val bolusInfo = DetailedBolusInfo()
                 bolusInfo.bolusTimestamp = parsetTime(matcher)
                 bolusInfo.bolusTimestamp?.let { bolusInfo.timestamp = it }
+                aapsLogger.info(LTag.PUMPBTCOMM, "delivery at the latest set")
+                aapsLogger.info(LTag.PUMP, Date(bolusInfo.bolusTimestamp!!).toString())
+
                 bolusInfo.deliverAtTheLatest = bolusInfo.bolusTimestamp!!
                 bolusInfo.insulin = processBolusData(answers, "given bl:")
 

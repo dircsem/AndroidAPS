@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.source.BgSync
+import app.aaps.pump.common.hw.medlink.bolus.BolusStatusSnapshot
 import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 import java.lang.Exception
@@ -40,7 +41,8 @@ class MedLinkStatusParser {
         private var previousReservoirRemaining: Double = 0.0
         private val dateTimeFullPattern = Pattern.compile("\\d{2}-\\d{2}-\\d{4}\\s\\d{2}:\\d{2}")
         private val dateTimePartialPattern = Pattern.compile("\\d{2}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}")
-//        private val timePartialPattern = Pattern.compile("\\d{1,2}:\\d{2}")
+
+        //        private val timePartialPattern = Pattern.compile("\\d{1,2}:\\d{2}")
         private var bgUpdated = false
 
         @JvmStatic
@@ -94,7 +96,8 @@ class MedLinkStatusParser {
                 }
                 val timeMedLinkPumpStatus = parsePumpTimeMedLinkBattery(message, pumpStatus)
                 val bgMedLinkPumpStatus = parseBG(messageIterator, timeMedLinkPumpStatus)
-                val lastBolusStatus = parseBolusInfo(messageIterator, bgMedLinkPumpStatus, aapsLogger)
+                val lastBolusStatus =
+                    parseBolusInfo(messageIterator, bgMedLinkPumpStatus, aapsLogger)
                 //                18:36:49.381
 
 //        18:36:49.495 Last bolus: 0.2u 13‑12‑20 18:32
@@ -150,6 +153,40 @@ class MedLinkStatusParser {
                 e.printStackTrace()
                 throw e
             }
+        }
+
+        /**
+         * Strict parse of an `M` answer. Returns null when the "last bolus" line or its time is missing,
+         * so callers treat the answer as unknown instead of using a 0.0 default.
+         */
+        private val lastBolusSnapshotPattern =
+            Pattern.compile("last bolus:\\s*(\\d{1,2}\\.\\d{1,3})u\\s*(\\d{2}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2})")
+        private val squareBolusSnapshotPattern =
+            Pattern.compile("square bolus:\\s*(\\d+\\.\\d+)u\\s*delivered:\\s*(\\d+\\.\\d+)")
+
+        /**
+         * Strict parse of an `M` answer. The answer may come as BLE chunks that split or join lines,
+         * so the fields are matched by their labels over the whole text.
+         * Returns null when the "last bolus" amount or time is missing, so callers treat the answer
+         * as unknown instead of using a 0.0 default.
+         */
+        fun parseBolusSnapshot(lines: List<String>, readAt: Long): BolusStatusSnapshot? {
+            val text = lines.joinToString("")
+            val last = lastBolusSnapshotPattern.matcher(text)
+            if (!last.find()) return null
+            val time = SimpleDateFormat("dd-MM-yy HH:mm", Locale.getDefault()).apply { isLenient = false }
+                .parse(last.group(2), ParsePosition(0)) ?: return null
+            val square = squareBolusSnapshotPattern.matcher(text)
+            val hasSquare = square.find()
+            return BolusStatusSnapshot(
+                lastBolusAmount = last.group(1).toDouble(),
+                lastBolusTime = time.time,
+                squareBolusAmount = if (hasSquare) square.group(1).toDouble() else null,
+                deliveredAmount = if (hasSquare) square.group(2).toDouble() else null,
+                pumpBolusing = text.contains("bolusing"),
+                readAt = readAt,
+                raw = text
+            )
         }
 
         fun parseBolusInfo(
@@ -249,6 +286,7 @@ class MedLinkStatusParser {
             val pattern = Pattern.compile("\\d+h:\\d+m")
             return pattern.matcher(currentLine)
         }
+
         private fun createTimeMatcher(currentLine: String): Matcher {
             val pattern = Pattern.compile("\\d{1,2}:\\d{2}")
             return pattern.matcher(currentLine)
@@ -572,10 +610,11 @@ class MedLinkStatusParser {
                 }
                 val battery = Pattern.compile("\\d+%")
                 val batteryMatcher = battery.matcher(currentLine)
-                //            if (batteryMatcher.find()) {
-//                String percentage = batteryMatcher.group(0);
-//                pumpStatus.deviceBatteryRemaining = Integer.parseInt(percentage.substring(0, percentage.length() - 1));
-//            }
+                if (batteryMatcher.find()) {
+                    val percentage = batteryMatcher.group(0);
+                    pumpStatus.medLinkBatteryRemaining =
+                        Integer.parseInt(percentage!!.substring(0, percentage.length - 1));
+                }
             }
             return pumpStatus
         }
@@ -604,7 +643,7 @@ class MedLinkStatusParser {
         private fun parseTime(matcher: Matcher): ZonedDateTime? {
             return if (matcher.find()) {
                 var timeString = matcher.group(0)
-                if (timeString!= null && timeString.length < 5) {
+                if (timeString != null && timeString.length < 5) {
                     timeString = "0$timeString"
                 }
                 val time = LocalTime.parse(timeString, timeFormatter)

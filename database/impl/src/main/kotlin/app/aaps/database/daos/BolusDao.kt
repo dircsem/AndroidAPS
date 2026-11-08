@@ -42,7 +42,7 @@ internal interface BolusDao : TraceableDao<Bolus> {
     fun getLastBolusRecord(exclude: Bolus.Type = Bolus.Type.PRIMING): Maybe<Bolus>
 
     @Query("SELECT * FROM $TABLE_BOLUSES WHERE isValid = 1 AND type <> :exclude and type <>:tbr AND likely(referenceId IS NULL) ORDER BY timestamp DESC LIMIT 1")
-    fun getLastBolusRecordExcluding(exclude: Bolus.Type = Bolus.Type.PRIMING,tbr: Bolus.Type = Bolus.Type.TBR): Bolus?
+    fun getLastBolusRecordExcluding(exclude: Bolus.Type = Bolus.Type.PRIMING,tbr: Bolus.Type = Bolus.Type.TBR): Maybe<Bolus>
 
     @Query("SELECT * FROM $TABLE_BOLUSES WHERE likely(isValid = 1) AND type == :only AND likely(referenceId IS NULL) ORDER BY timestamp DESC LIMIT 1")
     fun getLastBolusRecordOfType(only: Bolus.Type): Maybe<Bolus>

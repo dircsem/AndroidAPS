@@ -215,6 +215,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
             val batteryEvent = pumpPlugin.pumpSync.lastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)
             batteryEvent.map {
                 if (it > 4 * 24 * 60.0 && pumpPlugin.getBatteryType() == "LiPo") {
+                    aapsLogger?.info(LTag.PUMP,"pump unreachable")
                     pumpPlugin.uiInteraction.addNotificationWithSound(
                         Notification.PUMP_UNREACHABLE,
                         pumpPlugin.rh.gs(app.aaps.core.ui.R.string.pump_unreachable),

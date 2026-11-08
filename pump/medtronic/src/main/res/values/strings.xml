@@ -63,6 +63,8 @@
     <string name="medtronic_pump_encoding_medlink">Hardware MedLink Encoding</string>
     <string name="medtronic_custom_action_wake_and_tune">Wake and Tune Up</string>
     <string name="medtronic_custom_action_clear_bolus_block">Clear Bolus Block</string>
+    <string name="medlink_custom_action_suspend_pump">Suspend pump (stops a running bolus)</string>
+    <string name="medlink_bolus_alarm_title">MedLink bolus check</string>
     <string name="medtronic_custom_action_reset_rileylink">Reset RileyLink Config</string>
     <string name="medtronic_pump_battery_select">Battery Type (Power View)</string>
     <string name="medtronic_pump_battery_no">Not selected (Simple view)</string>

@@ -13,7 +13,8 @@ enum class BatteryType(val key: String, @StringRes val friendlyName: Int, val lo
     Alkaline("medtronic_pump_battery_alkaline", R.string.medtronic_pump_battery_alkaline, 1.20, 1.47),
     Lithium("medtronic_pump_battery_lithium", R.string.medtronic_pump_battery_lithium, 1.22, 1.64),
     NiZn("medtronic_pump_battery_nizn", R.string.medtronic_pump_battery_nizn, 1.40, 1.70),
-    NiMH("medtronic_pump_battery_nimh", R.string.medtronic_pump_battery_nimh, 1.10, 1.40);
+    NiMH("medtronic_pump_battery_nimh", R.string.medtronic_pump_battery_nimh, 1.10, 1.40),
+    LiPo("medtronic_pump_battery_lipo", R.string.medtronic_pump_battery_lipo, 1.36, 1.45);
 
     companion object {
 

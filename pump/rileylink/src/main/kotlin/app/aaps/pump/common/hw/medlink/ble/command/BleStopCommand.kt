@@ -1,48 +1,59 @@
 package app.aaps.pump.common.hw.medlink.ble.command
 
-import android.os.SystemClock
-import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
-import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.StopOrigin
+import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
+import app.aaps.pump.common.hw.medlink.bolus.PumpStateAnswer
+import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpRunningState
+import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 
-class BleStopCommand(aapsLogger: AAPSLogger,
-                     medLinkServiceData: MedLinkServiceData?,
-                     medLinkPumpPluginAbstract: MedLinkPumpPluginBase
-) :
-    BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
-
-    // private var checkingStatus: Boolean = false
+class BleStopCommand(
+    aapsLogger: AAPSLogger,
+    medLinkServiceData: MedLinkServiceData?,
+    medLinkPumpPluginAbstract: MedLinkPumpPluginBase,
+    val origin: StopOrigin = StopOrigin.AUTOMATIC
+) : BleStartStopCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
         aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
-        // val answers = pumpResponse.toString()
-        // if (answers.contains("check pump status")) {
-        //     checkingStatus = true
-        // } else
         when {
-            // checkingStatus && (
             answer.contains("pump suspend state")  -> {
-                aapsLogger.info(LTag.PUMPBTCOMM, "status command")
-                aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
+                aapsLogger.info(LTag.PUMPBTCOMM, "stop[$origin] pump suspended")
                 pumpResponse.append(answer)
-                super.applyResponse(pumpResponse.toString(), bleComm.currentCommand, bleComm)
+                bleComm.currentCommand?.let { super.applyResponse(pumpResponse.toString(), it, bleComm) }
                 pumpResponse = StringBuffer()
                 bleComm.completedCommand(true, waitNextIteration = true)
+                bleComm.setLastPumpStatus(MedLinkPumpRunningState.Suspended)
+                // T3: if a bolus was running the stop aborted it; the tracker reads M to record the partial amount
+                bleComm.onPumpAnswerState(PumpAnswerState.SUSPENDED)
             }
+
             answer.contains("pump normal state")   -> {
+                bleComm.setLastPumpStatus(MedLinkPumpRunningState.Running)
+                bleComm.onPumpAnswerState(PumpAnswerState.RUNNING)
                 bleComm.completedCommand()
             }
-            answer.contains("pump bolusing state") -> {
-                SystemClock.sleep(15000)
-                bleComm.currentCommand?.clearExecutedCommand()
-                bleComm.retryCommand()
+
+            PumpStateAnswer.isBolusing(answer)     -> {
+                // T2: bolusing is not suspended
+                bleComm.setLastPumpStatus(MedLinkPumpRunningState.Bolusing)
+                bleComm.onPumpAnswerState(PumpAnswerState.BOLUSING)
+                if (origin == StopOrigin.USER) {
+                    // user suspend: send STOP now, aborting the bolus on purpose
+                    aapsLogger.info(LTag.PUMPBTCOMM, "stop[USER] pump bolusing, stopping anyway")
+                    bleComm.completedCommand()
+                } else {
+                    // T1: an automatic stop never interrupts a bolus; held without sleeping on the BLE thread (T11)
+                    aapsLogger.info(LTag.PUMPBTCOMM, "stop[AUTOMATIC] pump bolusing, holding stop")
+                    bleComm.holdStop()
+                }
             }
-            else                                   -> {
-                super.characteristicChanged(answer, bleComm, lastCharacteristic)
-            }
+
+            else                                   -> super.characteristicChanged(answer, bleComm, lastCharacteristic)
         }
     }
 }

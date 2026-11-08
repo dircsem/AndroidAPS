@@ -131,7 +131,9 @@ abstract class MedLinkService : DaggerService() {
                     MedLinkServiceState.BluetoothError,
                     MedLinkError.BluetoothDisabled)
             } else {
-                medLinkServiceData.medLinkServiceState = MedLinkServiceState.BluetoothReady
+                medLinkServiceData.setServiceState(
+                    MedLinkServiceState.BluetoothReady,
+                    null)
                 return true
             }
         }
@@ -198,7 +200,9 @@ abstract class MedLinkService : DaggerService() {
                 MedLinkError.TuneUpOfDeviceFailed)
         } else {
             deviceCommunicationManager.clearNotConnectedCount()
-            medLinkServiceData.medLinkServiceState = MedLinkServiceState.PumpConnectorReady
+            medLinkServiceData.setServiceState(
+                MedLinkServiceState.PumpConnectorReady,
+                null)
         }
     }
 

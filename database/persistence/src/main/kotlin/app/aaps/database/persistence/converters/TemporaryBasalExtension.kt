@@ -51,4 +51,5 @@ fun TB.Type.toDb(): TemporaryBasal.Type =
         TB.Type.PUMP_SUSPEND          -> TemporaryBasal.Type.PUMP_SUSPEND
         TB.Type.SUPERBOLUS            -> TemporaryBasal.Type.SUPERBOLUS
         TB.Type.FAKE_EXTENDED         -> TemporaryBasal.Type.FAKE_EXTENDED
+
     }

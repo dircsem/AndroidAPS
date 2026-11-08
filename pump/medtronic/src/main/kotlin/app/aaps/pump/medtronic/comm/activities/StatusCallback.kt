@@ -40,13 +40,16 @@ class StatusCallback(
         parseStatus(messages, medLinkPumpStatus,  aapsLogger)
         aapsLogger.debug("Pumpstatus")
         aapsLogger.debug(pumpStatus.toString())
+        aapsLogger.info(LTag.PUMPBTCOMM, "status " + medLinkPumpPlugin.pumpStatusData.pumpRunningState)
         medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active
         medLinkPumpPlugin.alreadyRun()
         medLinkPumpPlugin.setPumpTime(pumpStatus.lastDataTime)
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.currentBasal)
-        aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.reservoirRemainingUnits)
-        aapsLogger.info(LTag.PUMPBTCOMM, "status " + medLinkPumpStatus.currentBasal)
-        medLinkPumpStatus.setLastCommunicationToNow()
+        aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage basebasalrate " + medLinkPumpPlugin.baseBasalRate)
+
+        aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage pumprunningstate " + medLinkPumpPlugin.medLinkPumpStatus.pumpRunningState)
+        aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage reservoir remaining " + pumpStatus.reservoirRemainingUnits)
+        medLinkPumpPlugin.setLastCommunicationToNow()
         aapsLogger.info(LTag.PUMPBTCOMM, "bgreading " + pumpStatus.bgReading.toString())
         if (pumpStatus.bgReading != null) {
             medLinkPumpPlugin.handleNewSensorData(BgSync.BgHistory(listOf(pumpStatus.sensorDataReading), emptyList(), null))

@@ -578,7 +578,7 @@ interface PumpSync {
      */
     fun syncBolusWithTempIdMedLink(timestamp: Long, amount: Double, temporaryId: Long, type: BS.Type?, pumpId: Long?, pumpType: PumpType, pumpSerial: String): Boolean
 
-    fun lastTherapyEvent(type: TE.Type): Optional<Double>
+    fun lastTherapyEvent(type: TE.Type): Optional<Long>
 
     fun lastGlucoseValue(): Optional<GV>
 }

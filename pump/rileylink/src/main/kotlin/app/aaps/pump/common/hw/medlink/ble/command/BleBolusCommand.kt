@@ -6,32 +6,59 @@ import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 
 /**
  * Created by Dirceu on 24/03/21.
+ *
+ * T7: this command never re-sends a bolus by itself. Any unclear answer is handed to MedLinkBLE,
+ * which verifies the bolus with `M` and lets the BolusTracker decide.
  */
-class BleBolusCommand(aapsLogger: AAPSLogger, medLinkServiceData: MedLinkServiceData?, val medLinkPumpPluginAbstract: MedLinkPumpPluginBase, val detailedBolusInfo: DetailedBolusInfo) :
+class BleBolusCommand(
+    aapsLogger: AAPSLogger,
+    medLinkServiceData: MedLinkServiceData?,
+    val medLinkPumpPluginAbstract: MedLinkPumpPluginBase,
+    val detailedBolusInfo: DetailedBolusInfo,
+    val hasSupplementaryCommands: Boolean
+) :
     BleActivePumpCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
     override fun characteristicChanged(
         answer: String, bleComm: MedLinkBLE,
         lastCharacteristic: String,
     ) {
-        aapsLogger.info(LTag.PUMPBTCOMM, answer)
-        aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
-        if (bleComm.currentCommand != null && bleComm.isBolus(bleComm.currentCommand!!.getCurrentCommand()) && answer.trim { it <= ' ' }.contains("pump is bolusing")) {
-            bleComm.resetBolusCommand()
-        } else
-            if (answer.contains("pump suspend state")) {
-                bleComm.removeFirstCommand(true)
-                medLinkPumpPluginAbstract.setSuspended()
-                medLinkPumpPluginAbstract.reDeliverBolus(detailedBolusInfo)
-            } else if (answer.trim { it <= ' ' }.contains("set bolus")) {
-                aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
-                // bleComm.nextCommand()
-                bleComm.completedCommand()
-            } else {
-                super.characteristicChanged(answer, bleComm, lastCharacteristic)
+        val trimmed = answer.trim { it <= ' ' }
+        when {
+            bleComm.currentCommand != null && bleComm.isBolus(bleComm.currentCommand!!.getCurrentCommand()) && trimmed.contains("pump is bolusing") -> {
+                // a bolus is running: whether ours was taken is decided by M once it ends, never by re-sending
+                aapsLogger.info(LTag.PUMPBTCOMM, "bolus ${detailedBolusInfo.insulin}U: pump is bolusing, verifying with M")
+                bleComm.onBolusUnclear()
             }
+
+            answer.contains("pump suspend state")                                                                                         -> {
+                medLinkPumpPluginAbstract.setSuspended()
+                if (bleComm.onBolusRejectedBeforeWrite()) {
+                    // the dose was never written: safe to deliver again once the pump is started
+                    if (hasSupplementaryCommands) bleComm.removeBolusAndSuppCommand() else bleComm.removeFirstCommand(true)
+                    medLinkPumpPluginAbstract.reDeliverBolus(detailedBolusInfo)
+                } else {
+                    aapsLogger.info(LTag.PUMPBTCOMM, "bolus ${detailedBolusInfo.insulin}U: pump suspended after the dose was written, verifying with M")
+                    bleComm.onBolusUnclear()
+                }
+            }
+
+            trimmed.contains("set bolus")                                                                                                 -> {
+                aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
+                bleComm.completedCommand()
+            }
+
+            trimmed.contains("last bolus")                                                                                                -> {
+                pumpResponse.append(answer)
+                bleComm.onBolusStatus(MedLinkStatusParser.parseBolusSnapshot(answer.split("\n"), System.currentTimeMillis()))
+            }
+
+            else                                                                                                                          ->
+                super.characteristicChanged(answer, bleComm, lastCharacteristic)
+        }
     }
 }

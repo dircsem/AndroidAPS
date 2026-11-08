@@ -494,10 +494,13 @@ class PumpSyncImplementation @Inject constructor(
         return glucoseValue?.let { Optional.of(it) } ?: empty()
     }
 
-    override fun lastTherapyEvent(type: TE.Type): Optional<Double> {
+    override fun lastTherapyEvent(type: TE.Type): Optional<Long> {
         val event = persistenceLayer.getLastTherapyEvent(type)
+        if(event!=null){
+            aapsLogger.info(LTag.DATABASE, event.toString())
+        }
         return event?.let {
-            Optional.of(dateUtil.getTimeZoneOffsetMinutes(it.timestamp) / 60.0)
+            Optional.of(it.timestamp)
         } ?: empty()
     }
 }

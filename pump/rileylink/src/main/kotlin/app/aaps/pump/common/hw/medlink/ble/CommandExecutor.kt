@@ -19,6 +19,8 @@ abstract class CommandExecutor<B> protected constructor(
     val aapsLogger: AAPSLogger,
 ) : Runnable {
 
+    var commandExecution = 0L
+
     var isConfirmed: Boolean = false
     private var commandPosition = Integer.valueOf(0)
     private var functionPosition = 0
@@ -192,6 +194,11 @@ abstract class CommandExecutor<B> protected constructor(
         isConfirmed = false
     }
 
+    /** T13: a re-queued START starts its try count again. */
+    fun resetRetries() {
+        nrRetries = 0
+    }
+
     fun commandFailed() {
 
     }
@@ -200,5 +207,29 @@ abstract class CommandExecutor<B> protected constructor(
     fun hasApplied() = applied
     fun applyCommand() {
         applied = true
+    }
+
+    enum class PostDecision { POST, WAIT_FOR_ANSWER, DROP_COMPLETED }
+
+    /** Bytes of the next step, or null when nothing is left to send (an empty write is answered "invalid command"). */
+    open fun dataToWrite(): ByteArray? =
+        commandList.getOrNull(commandPosition)
+            ?.takeIf { it.command != MedLinkCommandType.NoCommand }
+            ?.commandArgument
+            ?.takeIf { it.isNotEmpty() }
+
+    /** Every step was written and confirmed, the answer was not handled yet. */
+    open fun isAwaitingAnswer(): Boolean = !applied && commandPosition > 0 && dataToWrite() == null
+
+    /**
+     * May this executor be posted (written) now?
+     * - waiting for its own answer -> never write again (the bug: empty write -> "invalid command");
+     * - nothing to write otherwise (completed and no longer current, or a payload-less marker such as
+     *   RemoveStopCommand) -> drop it from the queue.
+     */
+    fun postDecision(current: CommandExecutor<*>?): PostDecision = when {
+        dataToWrite() != null                  -> PostDecision.POST
+        current === this && isAwaitingAnswer() -> PostDecision.WAIT_FOR_ANSWER
+        else                                   -> PostDecision.DROP_COMPLETED
     }
 }

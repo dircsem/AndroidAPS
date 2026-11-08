@@ -3,6 +3,7 @@ package app.aaps.shared.impl.utils
 import android.content.Context
 import androidx.collection.LongSparseArray
 import app.aaps.core.interfaces.R
+import app.aaps.core.interfaces.R.*
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.SafeParse
@@ -114,15 +115,15 @@ class DateUtilImpl @Inject constructor(
         val startOfTodayMillis = beginOfDay(nowMillis)
         return if (mills < nowMillis) { // Past
             when {
-                mills > startOfTodayMillis                                  -> rh.gs(R.string.today)
-                mills > startOfTodayMillis - 1.days.inWholeMilliseconds -> rh.gs(R.string.yesterday)
+                mills > startOfTodayMillis                                  -> rh.gs(string.today)
+                mills > startOfTodayMillis - 1.days.inWholeMilliseconds -> rh.gs(string.yesterday)
                 mills > startOfTodayMillis - 7.days.inWholeMilliseconds -> dayAgo(mills, rh, true)
                 else                                                        -> dateString(mills)
             }
         } else { // Future
             when {
-                mills < startOfTodayMillis + 1.days.inWholeMilliseconds -> rh.gs(R.string.later_today)
-                mills < startOfTodayMillis + 2.days.inWholeMilliseconds -> rh.gs(R.string.tomorrow)
+                mills < startOfTodayMillis + 1.days.inWholeMilliseconds -> rh.gs(string.later_today)
+                mills < startOfTodayMillis + 2.days.inWholeMilliseconds -> rh.gs(string.tomorrow)
                 mills < startOfTodayMillis + 7.days.inWholeMilliseconds -> dayAgo(mills, rh, true)
                 else                                                        -> dateString(mills)
             }
@@ -202,7 +203,7 @@ class DateUtilImpl @Inject constructor(
         if (time == null) return ""
         val duration = (now() - time).milliseconds
         val minutes = duration.inWholeMinutes.toInt()
-        return if (abs(minutes) > 9999) "" else rh.gs(R.string.minago, minutes)
+        return if (abs(minutes) > 9999) "" else rh.gs(string.minago, minutes)
     }
 
     override fun minOrSecAgo(rh: ResourceHelper, time: Long?): String {
@@ -210,10 +211,10 @@ class DateUtilImpl @Inject constructor(
         val duration = (now() - time).milliseconds
         return when {
             duration.inWholeMinutes >= 2 -> { // If the duration is 2 minutes or more, show minutes
-                rh.gs(R.string.minago, duration.inWholeMinutes.toInt())
+                rh.gs(string.minago, duration.inWholeMinutes.toInt())
             }
             else                         -> { // Otherwise, show seconds
-                rh.gs(R.string.secago, duration.inWholeSeconds.toInt())
+                rh.gs(string.secago, duration.inWholeSeconds.toInt())
             }
         }
     }
@@ -230,13 +231,13 @@ class DateUtilImpl @Inject constructor(
         if (time == null) return ""
         val duration = (now() - time).milliseconds
         val minutes = duration.inWholeMinutes.toInt()
-        return if (abs(minutes) > 9999) "" else rh.gs(R.string.minago_long, minutes)
+        return if (abs(minutes) > 9999) "" else rh.gs(string.minago_long, minutes)
     }
 
     override fun hourAgo(time: Long, rh: ResourceHelper): String {
         val duration = (now() - time).milliseconds
         val hours = duration.toDouble(DurationUnit.HOURS)
-        return rh.gs(R.string.hoursago, hours)
+        return rh.gs(string.hoursago, hours)
     }
 
     override fun dayAgo(time: Long, rh: ResourceHelper, round: Boolean): String {
@@ -245,16 +246,16 @@ class DateUtilImpl @Inject constructor(
             val daysAsDouble = duration.toDouble(DurationUnit.DAYS)
             return if (duration.isPositive()) {
                 val roundedDays = ceil(daysAsDouble)
-                rh.gs(R.string.days_ago_round, roundedDays)
+                rh.gs(string.days_ago_round, roundedDays)
             } else {
                 val roundedDays = floor(daysAsDouble)
-                rh.gs(R.string.in_days_round, roundedDays)
+                rh.gs(string.in_days_round, roundedDays)
             }
         }
         return if (duration.isPositive()) {
-            rh.gs(R.string.days_ago, duration.inWholeDays)
+            rh.gs(string.days_ago, duration.inWholeDays)
         } else {
-            rh.gs(R.string.in_days, abs(duration.inWholeDays))
+            rh.gs(string.in_days, abs(duration.inWholeDays))
         }
     }
 
@@ -275,7 +276,7 @@ class DateUtilImpl @Inject constructor(
         val duration = timeInMillis.milliseconds
         val totalHours = duration.inWholeHours
         val remainingMinutes = (duration - totalHours.hours).inWholeMinutes
-        val hoursPart = if (totalHours > 0) "$totalHours${rh.gs(R.string.shorthour)} " else ""
+        val hoursPart = if (totalHours > 0) "$totalHours${rh.gs(string.shorthour)} " else ""
         return "($hoursPart$remainingMinutes')"
     }
 
@@ -355,10 +356,10 @@ class DateUtilImpl @Inject constructor(
                 val minutes = (duration - days.days - hours.hours).inWholeMinutes
 
                 when {
-                    days > 0        -> rh.gq(R.plurals.plurals_day_hour_ago, days.toInt(), days.toString(), hours.toString())
-                    hours > 0       -> rh.gq(R.plurals.plurals_hour_ago, hours.toInt(), hours.toString())
-                    minutes > 0     -> rh.gq(R.plurals.plurals_minute_ago, minutes.toInt(), minutes.toString())
-                    else            -> rh.gs(R.string.seconds_ago)
+                    days > 0        -> rh.gq(plurals.plurals_day_hour_ago, days.toInt(), days.toString(), hours.toString())
+                    hours > 0       -> rh.gq(plurals.plurals_hour_ago, hours.toInt(), hours.toString())
+                    minutes > 0     -> rh.gq(plurals.plurals_minute_ago, minutes.toInt(), minutes.toString())
+                    else            -> rh.gs(string.seconds_ago)
                 }
             }
         }
@@ -366,17 +367,18 @@ class DateUtilImpl @Inject constructor(
 
     override fun age(milliseconds: Long, useShortText: Boolean, rh: ResourceHelper): String {
         val duration = milliseconds.milliseconds
-        if (duration.inWholeDays > 1000) return rh.gs(R.string.forever)
-        val daysUnit = if (useShortText) rh.gs(R.string.shortday) else rh.gs(R.string.days)
-        val hoursUnit = if (useShortText) rh.gs(R.string.shorthour) else rh.gs(R.string.hours)
-        val minutesUnit = if (useShortText) rh.gs(R.string.shortminute) else rh.gs(R.string.unit_minutes)
+        if (duration.inWholeDays > 1000) return rh.gs(string.forever)
+        val daysUnit = if (useShortText) rh.gs(string.shortday) else rh.gs(string.days)
+        val hoursUnit = if (useShortText) rh.gs(string.shorthour) else rh.gs(string.hours)
+        val minutesUnit = if (useShortText) rh.gs(string.shortminute) else rh.gs(string.unit_minutes)
         val days = duration.inWholeDays
         val hours = (duration - days.days).inWholeHours
         val minutes = (duration - days.days - hours.hours).inWholeMinutes
         return when {
             days > 0  -> "$days $daysUnit $hours $hoursUnit "
             hours > 0 -> "$hours $hoursUnit $minutes $minutesUnit "
-            else      -> "${duration.inWholeMinutes} $minutesUnit"
+            minutes > 0 ->  "${duration.inWholeMinutes} $minutesUnit"
+            else      -> "Now"
         }
     }
 
@@ -385,23 +387,23 @@ class DateUtilImpl @Inject constructor(
         val (value, unitId) = when {
             duration.inWholeDays > 6 -> {
                 val weeks = duration.inWholeDays / 7
-                weeks to if (weeks == 1L) R.string.unit_week else R.string.unit_weeks
+                weeks to if (weeks == 1L) string.unit_week else string.unit_weeks
             }
             duration.inWholeHours > 23 -> {
                 val days = duration.inWholeDays
-                days to if (days == 1L) R.string.unit_day else R.string.unit_days
+                days to if (days == 1L) string.unit_day else string.unit_days
             }
             duration.inWholeMinutes > 59 -> {
                 val hours = duration.inWholeHours
-                hours to if (hours == 1L) R.string.unit_hour else R.string.unit_hours
+                hours to if (hours == 1L) string.unit_hour else string.unit_hours
             }
             duration.inWholeSeconds > 59 -> {
                 val minutes = duration.inWholeMinutes
-                minutes to if (minutes == 1L) R.string.unit_minute else R.string.unit_minutes
+                minutes to if (minutes == 1L) string.unit_minute else string.unit_minutes
             }
             else -> {
                 val seconds = duration.inWholeSeconds
-                seconds to if (seconds == 1L) R.string.unit_second else R.string.unit_seconds
+                seconds to if (seconds == 1L) string.unit_second else string.unit_seconds
             }
         }
         return "${qs(value.toDouble(), 0)} ${rh.gs(unitId)}"
@@ -502,11 +504,11 @@ class DateUtilImpl @Inject constructor(
 
     override fun minAfter(resourceHelper: ResourceHelper, time: Long): String? {
         val mins = (time - now()).toInt() / 1000 / 60
-        return resourceHelper.gs(R.string.minafter, mins)
+        return resourceHelper.gs(string.minafter, mins)
     }
 
     override fun hourAfter(time: Long, resourceHelper: ResourceHelper): String? {
         val hours = (time - now()) / 1000.0 / 60 / 60
-        return resourceHelper.gs(R.string.hoursafter, hours)
+        return resourceHelper.gs(string.hoursafter, hours)
     }
 }

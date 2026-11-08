@@ -44,7 +44,7 @@ interface MedLinkPumpPluginBase {
  fun cancelTempBasal(isStartCommand:Boolean, enforceNew: Boolean, callback: Callback?): PumpEnactResult
 
   fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo, func: (PumpEnactResult) -> Unit)
-    fun calibrate(bg: Double)
+    fun calibrate(calibrationInfo: Double)
     abstract fun setBatteryLevel(intExtra: Int)
     abstract fun getBatteryType(): String
     fun setLastCommunicationToNow()
@@ -54,5 +54,8 @@ interface MedLinkPumpPluginBase {
     fun postInit()
     fun reDeliverBolus(detailedBolusInfo: DetailedBolusInfo)
     fun setSuspended()
+
+    /** T0: suspend requested by the user. Sent immediately, aborts a running bolus on purpose. */
+    fun userSuspend(callback: Callback?)
 
 }

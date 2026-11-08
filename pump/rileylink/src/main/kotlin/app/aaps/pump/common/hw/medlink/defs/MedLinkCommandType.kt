@@ -31,6 +31,7 @@ enum class MedLinkCommandType constructor(command: String, val needActivePump: B
     CalibrateFrequencyArgument(""),
     CalibrateValue("CAL", true),
     BolusStatus("M"),
+    WakeUp("M"),
     SMBBolus("X", true),
     TBRBolus("X", true),
     PreviousBolusHistory("G", listCommand = true),

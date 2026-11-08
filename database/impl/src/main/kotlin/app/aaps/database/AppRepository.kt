@@ -491,7 +491,7 @@ class AppRepository @Inject internal constructor(
             }
 
     fun getNewestBolus(): Maybe<Bolus> =
-        database.bolusDao.getLastBolusRecord()
+        database.bolusDao.getLastBolusRecordExcluding()
             .subscribeOn(Schedulers.io())
 
     fun getLastBolusRecordOfType(type: Bolus.Type): Maybe<Bolus> =
@@ -816,7 +816,7 @@ class AppRepository @Inject internal constructor(
     )
 
     fun getLastNonTBRBolusRecord(): Bolus? =
-        database.bolusDao.getLastBolusRecordExcluding(Bolus.Type.TBR)
+        database.bolusDao.getLastBolusRecordExcluding(tbr = Bolus.Type.TBR).blockingGet()
 
 
     fun getApsResultCloseTo(timestamp: Long): Maybe<APSResult> =

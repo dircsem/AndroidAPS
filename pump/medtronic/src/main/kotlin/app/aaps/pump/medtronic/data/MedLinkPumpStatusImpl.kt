@@ -2,21 +2,30 @@ package app.aaps.pump.medtronic.data
 
 import app.aaps.core.data.iob.EnliteInMemoryGlucoseValue
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.BGReadingStatus
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.interfaces.source.BgSync
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.pump.common.data.PumpStatus
 import app.aaps.pump.common.defs.PumpRunningState
 import app.aaps.pump.common.hw.medlink.data.MedLinkPumpStatusCallback
+import app.aaps.pump.common.hw.medlink.keys.MedLinkStringKey
 import app.aaps.pump.common.sync.PumpDbEntryTBR
+import app.aaps.pump.medtronic.R
+import app.aaps.pump.medtronic.data.dto.BatteryStatusDTO
+import app.aaps.pump.medtronic.defs.BatteryType
+import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
 import java.time.ZonedDateTime
 
 /**
  * Created by Dirceu on 21/01/21.
  */
-open class MedLinkPumpStatusImpl(pumpType: PumpType?) : PumpStatus(pumpType!!), MedLinkPumpStatus,
+open class MedLinkPumpStatusImpl(val preferences: Preferences, pumpType: PumpType?, val aapsLogger: AAPSLogger) :
+    PumpStatus(pumpType!!), MedLinkPumpStatus,
     MedLinkPumpStatusCallback {
 
     fun needToGetBGHistory(): Boolean {
@@ -58,18 +67,18 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : PumpStatus(pumpType!!), 
 
     override fun toString(): String {
         return "MedLinkPumpStatus{" +
-                sensorAge?.let{ "sensorAge=" + it } +
-                isig?.let{ ", isig=" + it } +
-                calibrationFactor?.let{ ", calibrationFactor=" + it } +
+                sensorAge?.let { "sensorAge=" + it } +
+                isig?.let { ", isig=" + it } +
+                calibrationFactor?.let { ", calibrationFactor=" + it } +
                 ", deviceBatteryVoltage=" + deviceBatteryVoltage +
-                batteryRemaining?.let{ ", deviceBatteryRemaining=" + it} +
+                batteryRemaining?.let { ", deviceBatteryRemaining=" + it } +
                 nextCalibration?.let { ", nextCalibration=" + it } +
                 ", bgAlarmOn=" + bgAlarmOn +
                 ", lastReadingStatus=" + lastReadingStatus +
                 ", currentReadingStatus=" + currentReadingStatus +
                 ", lastBGTimestamp=" + lastBGTimestamp +
                 ", latestBG=" + latestBG +
-                bolusDeliveredAmount?.let{", bolusDeliveredAmount=" + it} +
+                bolusDeliveredAmount?.let { ", bolusDeliveredAmount=" + it } +
                 ", lastConnection=" + lastConnection +
                 ", lastBolusTime=" + lastBolusTime +
                 ", lastBolusAmount=" + lastBolusAmount +
@@ -83,6 +92,7 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : PumpStatus(pumpType!!), 
         result.insulin = lastBolusAmount ?: 0.0
 
         if (lastBolusTime != null) {
+            aapsLogger.info(LTag.PUMPBTCOMM,"deliver at the latest set")
             result.deliverAtTheLatest = lastBolusTime!!.time
         }
         return result
@@ -108,7 +118,7 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : PumpStatus(pumpType!!), 
     }
 
     override fun setPumpUnknow() {
-        pumpRunningState = PumpRunningState.Unknow
+        this.pumpRunningState = PumpRunningState.Unknow
     }
 
     override var latestBG = 0.0
@@ -116,4 +126,20 @@ open class MedLinkPumpStatusImpl(pumpType: PumpType?) : PumpStatus(pumpType!!), 
         get() = if (errorDescription == null) "-" else errorDescription!!
 
 
+    override var medLinkBatteryRemaining: Int? = null
+
+    override fun pumpBatteryRemaining() {
+
+        batteryVoltage.let {
+
+            val dto = BatteryStatusDTO()
+            dto.batteryStatusType = BatteryStatusDTO.BatteryStatusType.Unknown
+            dto.voltage = it!!
+            val type =
+                BatteryType.getByKey(preferences.get(MedtronicStringPreferenceKey.BatteryType))
+            val remaining = dto.getCalculatedPercent(type)
+            batteryRemaining = remaining
+            remaining
+        }
+    }
 }

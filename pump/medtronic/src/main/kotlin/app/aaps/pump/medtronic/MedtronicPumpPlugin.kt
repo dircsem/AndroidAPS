@@ -1214,6 +1214,7 @@ class MedtronicPumpPlugin @Inject constructor(
                 serviceTaskExecutor.startTask(resetRileyLinkConfigurationTaskProvider.get())
             }
 
+            MedtronicCustomActionType.MedLinkSuspendPump,  // MedLink only
             null                                                  -> { // do nothing
 
             }

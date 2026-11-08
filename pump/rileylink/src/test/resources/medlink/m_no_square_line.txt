@@ -1,0 +1,3 @@
+m command confirmed
+last bolus: 0.3u 10-06-21 17:50
+ready

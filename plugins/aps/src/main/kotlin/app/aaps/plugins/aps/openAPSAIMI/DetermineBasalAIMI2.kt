@@ -4088,14 +4088,15 @@ class DetermineBasalaimiSMB2 @Inject constructor(
         // Previous: ISF * Ratio. 
         // 100 * 1.2 = 120 (Weaker). WRONG for Resistance.
         // 100 * 0.7 = 70 (Stronger). WRONG for Sensitivity.
-        
         val systemTime = currentTime
         val iobArray = iob_data_array
         val iob_data = iobArray[0]
         val mealFlags = MealFlags(mealTime, bfastTime, lunchTime, dinnerTime, highCarbTime)
 
         // Heure du dernier bolus : iob_data est bien disponible ici
-        val lastBolusTimeMs: Long? = iob_data.lastBolusTime.takeIf { it > 0L }
+        val lastBolusTimeMs: Long? = if(bolusesHistory.isNotEmpty() && bolusesHistory.any { it.type != BS.Type.TBR }) bolusesHistory.filter { it.type != BS.Type.TBR }
+            .maxByOrNull { it.timestamp }!!.timestamp   else null
+
 
         val lateFatRiseFlag  = isLateFatProteinRise(
             bg = bg,
@@ -5841,7 +5842,7 @@ class DetermineBasalaimiSMB2 @Inject constructor(
             rT.insulinReq = insulinReq
             //console.error(iob_data.lastBolusTime);
             // minutes since last bolus
-            val lastBolusAge = round((systemTime - iob_data.lastBolusTime) / 60000.0, 1)
+            val lastBolusAge = round((systemTime - (lastBolusTimeMs?:iob_data.lastBolusTime)) / 60000.0, 1)
             //console.error(lastBolusAge);
             //console.error(profile.temptargetSet, target_bg, rT.COB);
             // only allow microboluses with COB or low temp targets, or within DIA hours of a bolus

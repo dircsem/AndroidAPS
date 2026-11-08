@@ -93,6 +93,7 @@ import app.aaps.plugins.aps.loop.extensions.json
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
+import java.util.Date
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
@@ -1166,6 +1167,9 @@ class LoopPlugin @Inject constructor(
         detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
         detailedBolusInfo.insulin = request.smb
         detailedBolusInfo.bolusType = BS.Type.SMB
+
+        aapsLogger.info(LTag.PUMP,"delivery at the latest set")
+        aapsLogger.info(LTag.PUMP, Date(request.deliverAt).toString())
         detailedBolusInfo.deliverAtTheLatest = request.deliverAt
         aapsLogger.debug(LTag.APS, "applyAPSRequest: bolus()")
         if (request.smb > 0.0)

@@ -348,6 +348,7 @@ class CommandQueueImplementation @Inject constructor(
         // add new command to queue
         BolusProgressData.set(detailedBolusInfo.insulin, isSMB = detailedBolusInfo.bolusType === BS.Type.SMB, id = detailedBolusInfo.id)
         val pump = activePlugin.activePump
+        aapsLogger.debug("pump instance $pump")
         if (pump is MedLinkPumpPluginBase) {
             addMedLinkBolus(detailedBolusInfo, callback, type, carbsRunnable)
             carbsRunnable.run()

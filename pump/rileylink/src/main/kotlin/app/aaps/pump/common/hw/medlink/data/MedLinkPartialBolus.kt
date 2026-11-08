@@ -14,6 +14,7 @@ open class MedLinkPartialBolus()  {
             field?.let {  result.insulin = it.insulin}
 
             if (lastBolusTime != null) {
+
                 result.deliverAtTheLatest = lastBolusTime!!.time
             }
             return result

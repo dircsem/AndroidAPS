@@ -26,8 +26,6 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
     private val handler: Handler? = null
     protected var pumpResponse = StringBuffer()
     open fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
-        aapsLogger.info(LTag.PUMPBTCOMM, answer)
-        // aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
         if (answer.trim { it <= ' ' }.isEmpty()) {
             pumpResponse = StringBuffer()
             return
@@ -36,9 +34,9 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
         if (pumpResponse.isEmpty()) {
             pumpResponse.append(System.currentTimeMillis()).append("\n")
         } else if ((lastCharacteristic + answer).contains("command confirmed")) {
-            currentCommand?.isConfirmed = true
             pumpResponse.append("\n")
             bleComm.setConfirmedCommand(true)
+
         } else if (answer.contains("powerdown after")) {
             pumpResponse = StringBuffer()
         }
@@ -47,7 +45,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
 
             bleComm.setConfirmedCommand(false)
             if (currentCommand != null && currentCommand.getCurrentCommand() != MedLinkCommandType.NoCommand) {
-                aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.getCurrentCommand().code!!)
+                aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.getCurrentCommand().code)
                 if (currentCommand.hasFinished() || System.currentTimeMillis() - lastInvalidCommand < 20000) {
                     bleComm.removeFirstCommand(false)
                     lastInvalidCommand = 0L
@@ -63,7 +61,7 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
 //                }
             }
 
-        }
+        } else
         if (answer.trim { it <= ' ' }.contains("%") && lastCharacteristic.trim { it <= ' ' }.contains("med-link battery")) {
             val batteryPattern = Pattern.compile("\\d+")
             val batteryMatcher = batteryPattern.matcher(lastCharacteristic + answer)
@@ -71,14 +69,14 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
                 bleComm.setBatteryLevel(Integer.valueOf(batteryMatcher.group()))
             }
             return
-        }
+        } else
         if (lastCharacteristic.trim { it <= ' ' }.contains("firmware")) {
             val firmware = (lastCharacteristic + answer).split(" ".toRegex()).toTypedArray()
             if (firmware.size == 3) {
                 bleComm.setFirmwareVersion(firmware[2])
             }
             return
-        }
+        } else
         if ((lastCharacteristic + answer).trim { it <= ' ' }.contains("time to powerdown") //                && !answer.trim().contains("c command confirmed")
         ) {
             aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())

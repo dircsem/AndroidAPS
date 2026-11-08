@@ -40,8 +40,7 @@ open class BleCommandReader(
     }
 
     private fun rememberLastGoodDeviceCommunicationTime() {
-        val lastGoodReceiverCommunicationTime = System.currentTimeMillis()
         medLinkPumpPluginAbstract?.preferences?.get(MedLinkLongKey.LastGoodDeviceCommunicationTime)
-        medLinkPumpPluginAbstract?.medLinkPumpStatus?.setLastCommunicationToNow()
+        medLinkPumpPluginAbstract?.setLastCommunicationToNow()
     }
 }
