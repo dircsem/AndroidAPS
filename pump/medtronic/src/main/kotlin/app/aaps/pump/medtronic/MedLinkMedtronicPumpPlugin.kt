@@ -1,5 +1,6 @@
 package app.aaps.pump.medtronic
 
+import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
@@ -3496,9 +3497,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         )
         aapsLogger.info(LTag.PUMP, bolusToJson(detailedBolusInfo).toString())
 
-        // T6: one bolus in flight; a new one is refused until the previous one is resolved by M
-        val tracker = medLinkMedtronicService?.medLinkBLE?.bolusTracker
-        if (tracker != null && !tracker.canSendNewBolus()) {
+        // T6: one bolus in flight; a new one is refused until the previous one is resolved by M.
+        // T15: a manual bolus is not refused because of a TBR bolus: it is queued and sent once the TBR is resolved.
+        val ble = medLinkMedtronicService?.medLinkBLE
+        val tracker = ble?.bolusTracker
+        val manual = bolus.bolusType != BS.Type.TBR && bolus.bolusType != BS.Type.SMB
+        if (tracker != null && !tracker.canSendNewBolus() && !(manual && ManualBolusRule.mayQueueBehind(ble.unresolvedBolusType()))) {
             aapsLogger.info(LTag.PUMP, "deliverBolus refused: previous bolus ${tracker.current} unresolved")
             func.invoke(
                 pumpEnactResultProvider.get().success(false).enacted(false)
@@ -3631,9 +3635,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 this,
                 detailedBolusInfo, bolusStatusMessage != null
             )
-            // T14: when MedLinkBLE merges this TBR/SMB into another queued loop bolus, the result arrives here
-            bleBolusCommand.onMergedResult = { success, delivered ->
-                aapsLogger.info(LTag.PUMP, "merged ${bolus.bolusType} bolus ${bolus.insulin}U result success=$success delivered=$delivered")
+            // T14/T15: result from MedLinkBLE when the bolus was merged into another one or dropped from the queue
+            bleBolusCommand.onQueueResult = { success, delivered ->
+                aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U queue result success=$success delivered=$delivered")
                 if (success) bolusDeliveryType = BolusDeliveryType.Idle
                 func.invoke(
                     pumpEnactResultProvider.get().success(success).enacted(success).bolusDelivered(delivered)

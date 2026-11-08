@@ -156,7 +156,7 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 - `MedLinkBLE.addCommands` → `mergeLoopBolus`: se chega um TBR/SMB e há na `bolusExecutionQueue` um bolus de loop do outro tipo **nunca postado** (não rastreado, não é o `currentCommand`, nada escrito), o argumento `BOLUS` desse executor é reescrito com a soma (0,1 + 0,4 → 0,5) e a mensagem nova não entra na fila (nem o `M` suplementar dela).
 - O momento em que o bolus passa a ser rastreado (`beforePost`) e a junção usam o mesmo lock (`bolusMergeLock`): depois de rastreado, o valor não muda mais. O tracker recebe a soma como `requested`.
 - Registro (`BolusAction.Record` → `recordParts`): cada parte é gravada com a própria `DetailedBolusInfo` (tipo TBR → `isBasalInsulin`, tipo SMB). O id temporário do banco vem do horário; por isso as partes têm horários diferentes. A parte 0 fica no horário da bomba, então o bolus único de 0,5 U lido depois do histórico cai no mesmo id e não é somado de novo. O callback antigo do executor (parte 0) continua igual.
-- A parte juntada recebe o resultado por `BleBolusCommand.onMergedResult` (ligado no `deliverBolus` do plugin): sucesso com o valor gravado para ela, ou falha quando o bolus falha, é descartado por stop do usuário ou é recusado antes da escrita (bomba suspensa). Na falha, o dono (operação de TBR / loop) pede de novo.
+- A parte juntada recebe o resultado por `BleBolusCommand.onQueueResult` (antes `onMergedResult`) (ligado no `deliverBolus` do plugin): sucesso com o valor gravado para ela, ou falha quando o bolus falha, é descartado por stop do usuário ou é recusado antes da escrita (bomba suspensa). Na falha, o dono (operação de TBR / loop) pede de novo.
 
 **Testes**: `bolus/LoopBolusMergeTest` (8). rileylink 458/458, `:pump:medtronic:compileFullDebugKotlin` OK.
 
@@ -173,6 +173,18 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 - Quando o SMB é recusado pelo intervalo, o `callback` agora recebe o resultado (antes não recebia, diferente do `CommandSMBBolus` upstream).
 
 **Teste**: `:implementation:compileFullDebugKotlin` OK. Sem teste unitário.
+
+## 4f. T15: bolus manual não é bloqueado por bolus de TBR (2026-11-08)
+
+**Antes**: o `deliverBolus` do plugin recusava qualquer bolus ("previous bolus unresolved") enquanto o tracker tinha um bolus sem confirmação, inclusive um microbolus de TBR. Além disso, a fila de bolus do `MedLinkBLE` era FIFO: um manual que chegava depois de um TBR ainda não enviado ficava atrás dele.
+
+**Agora** (`bolus/ManualBolusRule`):
+- Plugin: se o bolus pendente é um TBR (`MedLinkBLE.unresolvedBolusType()`), o manual não é recusado; vai para a fila e o `MedLinkBLE` envia quando o TBR for resolvido pelo `M` (continua um bolus por vez). Se o pendente é SMB ou manual, continua recusado.
+- `MedLinkBLE.prioritizeManualBolus`: o manual passa na frente dos bolus de loop ainda não postados (junto com o `M` de progresso de cada um). Comparações por identidade (`CommandExecutor.equals` compara a lista de comandos).
+- Um manual esperando mais de 5 min (`ManualBolusRule.MAX_WAIT_MS`) é descartado com alarme, e o resultado vai como falha via `onQueueResult`. Ele não pode ser entregue muito depois do pedido.
+- Continua valendo a espera de até 1 min depois de um bolus (o `M` tem resolução de minuto) e a espera enquanto a bomba está entregando outro bolus. São esperas, não recusas.
+
+**Testes**: `bolus/ManualBolusRuleTest` (3). rileylink 461/461, `:pump:medtronic:compileFullDebugKotlin` OK.
 
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
@@ -193,13 +205,14 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro |
 | `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
 | `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14) |
+| `bolus/ManualBolusRuleTest` | manual não bloqueado por TBR (T15) |
 | `ble/command/BleStopStartCommandTest`, `ble/command/BleBolusCommandsTest` | tratamento das respostas `A`/`M` e do bolus |
 | `activities/BolusProgressCallbackTest` | root cause 7 |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-08, T14): rileylink 458/458, medtronic compila. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-08, T15): rileylink 461/461, medtronic compila. Antes (T14): rileylink 458/458. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---
@@ -222,6 +235,7 @@ Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `READ
 ## 8. O que conferir no log durante o teste de campo
 
 - `BOLUS merged SMBBolus 0.4U into queued TBRBolus: ... -> 0.5U` e depois `BOLUS part TBR ...` / `BOLUS part SMB ...` — junção T14; deve haver um TBR e um SMB no banco, com 1 s de diferença.
+- `BOLUS manual xU goes before queued TBRBolus ...` / `BOLUS manual xU dropped: waited more than 5 min` — T15.
 - `BOLUS[id] state X->Y` — todo bolus deve terminar em DELIVERED, PARTIAL ou FAILED (com alarme).
 - `automatic stop: reading M first` / `automatic stop deferred until ...` — stop automático esperando o bolus.
 - `waiting for the answer of BolusStatus, not posting again` — o bug do `M` sendo evitado. Não deve mais aparecer "invalid command" logo depois de um `M`.

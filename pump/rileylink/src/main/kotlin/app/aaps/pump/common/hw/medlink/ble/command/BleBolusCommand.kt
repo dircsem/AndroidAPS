@@ -24,10 +24,11 @@ class BleBolusCommand(
     BleActivePumpCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
     /**
-     * T14: result of this bolus when MedLinkBLE folded it into another queued loop bolus.
-     * Called once with the part of the merged dose recorded for it (success=false, 0.0 when not delivered).
+     * Result reported by MedLinkBLE when this command's own answer callback will not run:
+     * T14 folded into another queued loop bolus (the part of the merged dose recorded for it), or
+     * T15 a manual bolus dropped from the queue. Called once; success=false, 0.0 when not delivered.
      */
-    var onMergedResult: ((success: Boolean, delivered: Double) -> Unit)? = null
+    var onQueueResult: ((success: Boolean, delivered: Double) -> Unit)? = null
 
     override fun characteristicChanged(
         answer: String, bleComm: MedLinkBLE,
