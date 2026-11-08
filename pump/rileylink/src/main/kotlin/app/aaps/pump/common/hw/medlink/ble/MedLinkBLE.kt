@@ -29,11 +29,13 @@ import app.aaps.pump.common.hw.medlink.bolus.BolusOrigin
 import app.aaps.pump.common.hw.medlink.bolus.BolusState
 import app.aaps.pump.common.hw.medlink.bolus.BolusStatusSnapshot
 import app.aaps.pump.common.hw.medlink.bolus.BolusTracker
+import app.aaps.pump.common.hw.medlink.bolus.LoopBolusMerge
 import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
 import app.aaps.pump.common.hw.medlink.bolus.StartRetryRule
 import app.aaps.pump.common.hw.medlink.bolus.StartStopSkipRule
 import app.aaps.pump.common.hw.medlink.bolus.StopDecision
 import app.aaps.pump.common.hw.medlink.bolus.StopGate
+import app.aaps.pump.common.hw.medlink.ble.data.BolusMedLinkMessage
 import app.aaps.pump.common.hw.medlink.ble.data.CommandStructure
 import app.aaps.pump.common.hw.medlink.ble.data.GattAttributes
 import app.aaps.pump.common.hw.medlink.ble.data.MedLinkPumpMessage
@@ -102,6 +104,12 @@ class MedLinkBLE //extends RileyLinkBLE
     private var stopGateAlarmed = false
     private var pendingStatusAt = Long.MAX_VALUE
     private var trackedBolusExecutor: CommandExecutor<*>? = null
+
+    /** T14: guards [mergedBolusParts] and the moment a queued bolus becomes tracked (no merge after that). */
+    private val bolusMergeLock = Any()
+
+    /** T14: loop boluses folded into a queued loop bolus, in queue order; the first is the executor's own. */
+    private val mergedBolusParts = HashMap<CommandExecutor<*>, MutableList<BleBolusCommand>>()
     private var baselineRequestedFor: CommandExecutor<*>? = null
     private var baselineRequests = 0
 
@@ -581,6 +589,7 @@ class MedLinkBLE //extends RileyLinkBLE
         unsent.forEach {
             aapsLogger.info(LTag.PUMPBTCOMM, "user stop: dropping queued bolus ${bolusAmount(it)}U")
             it.commandFailed()
+            failMergedParts(it, "user stop")
         }
         bolusExecutionQueue.removeAll(unsent.toSet())
         bolusExecutionHash.clear()
@@ -850,19 +859,21 @@ class MedLinkBLE //extends RileyLinkBLE
             // val command = CommandsToAdd(serviceUUID, charaUUID, msg)
             //            addCommand(command);
             synchronized(bolusExecutionQueue) {
-                addWriteCharacteristic<B, C>(
-                    serviceUUID,
-                    charaUUID,
-                    msg.commands,
-                    msg.supplementaryCommands.isNotEmpty()
-                )
-                if (msg.supplementaryCommands.isNotEmpty()) {
-                    addWriteCharacteristic<C, C>(
+                if (!mergeLoopBolus(msg)) {
+                    addWriteCharacteristic<B, C>(
                         serviceUUID,
                         charaUUID,
-                        msg.supplementaryCommands,
-                        true
+                        msg.commands,
+                        msg.supplementaryCommands.isNotEmpty()
                     )
+                    if (msg.supplementaryCommands.isNotEmpty()) {
+                        addWriteCharacteristic<C, C>(
+                            serviceUUID,
+                            charaUUID,
+                            msg.supplementaryCommands,
+                            true
+                        )
+                    }
                 }
             }
             handleBolusCommand(msg, serviceUUID, charaUUID)
@@ -1488,8 +1499,73 @@ class MedLinkBLE //extends RileyLinkBLE
             executor.commandList.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleStopCommand }?.origin ?: StopOrigin.AUTOMATIC
         else null
 
+    private fun bleBolusCommand(executor: CommandExecutor<*>): BleBolusCommand? =
+        executor.commandList.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleBolusCommand }
+
+    /** T14: the boluses this executor delivers, in queue order (one unless loop boluses were merged into it). */
+    private fun bolusParts(executor: CommandExecutor<*>?): List<BleBolusCommand> {
+        executor ?: return emptyList()
+        synchronized(bolusMergeLock) {
+            return mergedBolusParts[executor]?.toList() ?: listOfNotNull(bleBolusCommand(executor))
+        }
+    }
+
+    /** Amount written to the pump: the sum of the parts when loop boluses were merged. */
     private fun bolusAmount(executor: CommandExecutor<*>): Double? =
-        executor.commandList.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleBolusCommand }?.detailedBolusInfo?.insulin
+        bolusParts(executor).takeIf { it.isNotEmpty() }?.let { parts -> LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin }) }
+
+    /**
+     * T14: fold a TBR / SMB bolus into a queued loop bolus of the other type that was never posted,
+     * so the pump gets one bolus with the sum. Returns true when merged (the message is not queued).
+     */
+    private fun mergeLoopBolus(msg: MedLinkPumpMessage<*, *>): Boolean {
+        val type = msg.firstCommand()
+        if (!LoopBolusMerge.isLoopBolus(type)) return false
+        val newPart = msg.commands.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleBolusCommand } ?: return false
+        synchronized(bolusMergeLock) {
+            val target = bolusExecutionQueue.firstOrNull { e ->
+                e !== trackedBolusExecutor && e !== currentCommand && !e.isInitialized &&
+                    LoopBolusMerge.canMerge(mergedBolusParts[e]?.map { it.detailedBolusInfo.bolusType.toCommandType() } ?: listOf(e.firstCommand()), type)
+            } ?: return false
+            val own = bleBolusCommand(target) ?: return false
+            val amountIndex = target.commandList.indexOfFirst { it.command == MedLinkCommandType.BolusAmount }
+            if (amountIndex < 0) return false
+            val parts = mergedBolusParts[target] ?: mutableListOf(own)
+            val total = LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin } + newPart.detailedBolusInfo.insulin)
+            @Suppress("UNCHECKED_CAST")
+            val list = target.commandList as MutableList<CommandStructure<Any?, BleCommand>>
+            val old = list[amountIndex]
+            list[amountIndex] = CommandStructure(
+                old.command, old.parseFunction, old.commandHandler,
+                MedLinkCommandType.BolusAmount.getRaw(BolusMedLinkMessage.amountArgument(total)),
+                old.commandPriority, old.errorFunction
+            )
+            parts.add(newPart)
+            mergedBolusParts[target] = parts
+            aapsLogger.info(
+                LTag.PUMPBTCOMM,
+                "BOLUS merged ${type} ${newPart.detailedBolusInfo.insulin}U into queued ${target.firstCommand()}: " +
+                    "${parts.joinToString { "${it.detailedBolusInfo.bolusType} ${it.detailedBolusInfo.insulin}U" }} -> ${total}U"
+            )
+            return true
+        }
+    }
+
+    private fun app.aaps.core.data.model.BS.Type.toCommandType(): MedLinkCommandType = when (this) {
+        app.aaps.core.data.model.BS.Type.TBR -> MedLinkCommandType.TBRBolus
+        app.aaps.core.data.model.BS.Type.SMB -> MedLinkCommandType.SMBBolus
+        else                                 -> MedLinkCommandType.Bolus
+    }
+
+    /** T14: tell the merged-in boluses (not the executor's own) that nothing was delivered for them. */
+    private fun failMergedParts(executor: CommandExecutor<*>?, reason: String) {
+        executor ?: return
+        val parts = synchronized(bolusMergeLock) { mergedBolusParts.remove(executor) } ?: return
+        parts.drop(1).forEach { part ->
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS merged ${part.detailedBolusInfo.bolusType} ${part.detailedBolusInfo.insulin}U not delivered: $reason")
+            part.onMergedResult?.let { cb -> handler.post { cb(false, 0.0) } }
+        }
+    }
 
     private fun isBolusExecutor(executor: CommandExecutor<*>) = isBolus(executor.firstCommand())
 
@@ -2338,7 +2414,9 @@ class MedLinkBLE //extends RileyLinkBLE
     /** @return true when the dose was never written, so the plugin may deliver it again. */
     fun onBolusRejectedBeforeWrite(): Boolean {
         val tracked = currentCommand != null && currentCommand === trackedBolusExecutor
-        return if (tracked) bolusTracker.onRejectedBeforeWrite() else true
+        val notWritten = if (tracked) bolusTracker.onRejectedBeforeWrite() else true
+        if (notWritten) failMergedParts(currentCommand, "rejected before write")
+        return notWritten
     }
 
     /** Every `M` answer (null when it cannot be parsed). */
@@ -2373,22 +2451,23 @@ class MedLinkBLE //extends RileyLinkBLE
             is BolusAction.ReadStatusAt -> requestBolusStatus(action.time)
             BolusAction.Resend        -> resendHeldBolus()
             is BolusAction.Record     -> {
-                val info = (trackedBolusExecutor?.let { e -> e.commandList.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleBolusCommand } })?.detailedBolusInfo
                 aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS record ${action.amount}U at pump time ${action.pumpTime}")
-                val recorder = bolusRecorder
-                if (recorder == null) aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS no recorder installed, record lost")
-                else handler.post { recorder(action.amount, action.pumpTime, info) }
+                recordParts(trackedBolusExecutor, action.amount, action.pumpTime)
                 dropHeldBolus()
             }
 
             is BolusAction.Fail       -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS failed: ${action.reason}")
+                failMergedParts(trackedBolusExecutor, action.reason)
                 dropHeldBolus()
             }
 
             is BolusAction.Alarm      -> {
                 raiseBolusAlarm(action.reason)
-                if (bolusTracker.current?.state?.isFinal == true) dropHeldBolus()
+                if (bolusTracker.current?.state?.isFinal == true) {
+                    failMergedParts(trackedBolusExecutor, action.reason)
+                    dropHeldBolus()
+                }
             }
 
             is BolusAction.AskUser    -> {
@@ -2400,6 +2479,33 @@ class MedLinkBLE //extends RileyLinkBLE
                 )
                 executeBolusAction(bolusTracker.onUserResendAnswer(false))
             }
+        }
+    }
+
+    /**
+     * T14: record the delivered amount; a merged bolus is split into its parts (one TBR, one SMB),
+     * each recorded with its own bolus info at its own time (see [LoopBolusMerge]).
+     */
+    private fun recordParts(executor: CommandExecutor<*>?, amount: Double, pumpTime: Long) {
+        val parts = bolusParts(executor)
+        synchronized(bolusMergeLock) { executor?.let { mergedBolusParts.remove(it) } }
+        val recorder = bolusRecorder
+        if (parts.isEmpty()) {
+            if (recorder == null) aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS no recorder installed, record lost")
+            else handler.post { recorder(amount, pumpTime, null) }
+            return
+        }
+        val amounts = LoopBolusMerge.split(parts.map { it.detailedBolusInfo.insulin }, amount)
+        parts.forEachIndexed { i, part ->
+            val partAmount = amounts[i]
+            val partTime = LoopBolusMerge.partTime(pumpTime, i)
+            if (parts.size > 1) aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS part ${part.detailedBolusInfo.bolusType} ${partAmount}U of ${part.detailedBolusInfo.insulin}U at $partTime")
+            if (partAmount > 0.0) {
+                if (recorder == null) aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS no recorder installed, record lost")
+                else handler.post { recorder(partAmount, partTime, part.detailedBolusInfo) }
+            }
+            // the executor's own bolus reports through its command callback, the merged-in ones here
+            if (i > 0) part.onMergedResult?.let { cb -> handler.post { cb(partAmount > 0.0, partAmount) } }
         }
     }
 
@@ -2472,13 +2578,16 @@ class MedLinkBLE //extends RileyLinkBLE
         if (executor.firstCommand() == MedLinkCommandType.StopStartPump) lastStartStopSent = now
         if (!isBolusExecutor(executor)) return
         if (executor !== trackedBolusExecutor) {
-            val origin = if (executor.firstCommand() == MedLinkCommandType.Bolus) BolusOrigin.MANUAL else BolusOrigin.LOOP
-            val amount = bolusAmount(executor) ?: 0.0
-            if (bolusTracker.onQueued("${executor.firstCommand()}-${System.identityHashCode(executor)}", origin, amount) == null) {
-                aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS posted while another bolus is unresolved")
-                return
+            // T14: once tracked the amount is final, mergeLoopBolus() leaves it alone
+            synchronized(bolusMergeLock) {
+                val origin = if (executor.firstCommand() == MedLinkCommandType.Bolus) BolusOrigin.MANUAL else BolusOrigin.LOOP
+                val amount = bolusAmount(executor) ?: 0.0
+                if (bolusTracker.onQueued("${executor.firstCommand()}-${System.identityHashCode(executor)}", origin, amount) == null) {
+                    aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS posted while another bolus is unresolved")
+                    return
+                }
+                trackedBolusExecutor = executor
             }
-            trackedBolusExecutor = executor
             bolusTracker.onBaseline(bolusTracker.latestSnapshot?.takeIf { now - it.readAt <= BASELINE_MAX_AGE_MS })
         }
         // the dose is committed when the amount is written

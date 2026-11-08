@@ -3625,16 +3625,26 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 bolusStatusMessage = buildBolusStatusMessage(bolus)
             }
 
+            val bleBolusCommand = BleBolusCommand(
+                aapsLogger,
+                medLinkMedtronicService?.medLinkServiceData,
+                this,
+                detailedBolusInfo, bolusStatusMessage != null
+            )
+            // T14: when MedLinkBLE merges this TBR/SMB into another queued loop bolus, the result arrives here
+            bleBolusCommand.onMergedResult = { success, delivered ->
+                aapsLogger.info(LTag.PUMP, "merged ${bolus.bolusType} bolus ${bolus.insulin}U result success=$success delivered=$delivered")
+                if (success) bolusDeliveryType = BolusDeliveryType.Idle
+                func.invoke(
+                    pumpEnactResultProvider.get().success(success).enacted(success).bolusDelivered(delivered)
+                        .also { if (!success) it.comment(rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered)) }
+                )
+            }
             val msg = BolusMedLinkMessage(
                 bolusCommand, bolus,
                 andThen, bolusStatusMessage,
                 btSleepTime,
-                BleBolusCommand(
-                    aapsLogger,
-                    medLinkMedtronicService?.medLinkServiceData,
-                    this,
-                    detailedBolusInfo, bolusStatusMessage != null
-                ),
+                bleBolusCommand,
                 tempBasalMicrobolusOperations.shouldBeSuspended()
             )
             val startStopMsg = buildStartStopCommands(detailedBolusInfo.bolusType == BS.Type.SMB)
