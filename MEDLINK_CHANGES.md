@@ -238,6 +238,20 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 
 **Testes**: `ManualBolusRuleTest` (refuses, editedAmount), `LoopBolusMergeTest` (canJoinTracked), `BolusTrackerTest` (onMerged). rileylink 475/475, `:app:assembleFullDebug` OK. O fluxo no `MedLinkBLE` e o diálogo não têm teste automático (T10).
 
+## 4j. Bomba bloqueada, bolus de fora e tempo de vida da fila (2026-11-08)
+
+**Bug do 4i**: o tempo de vida (5 min) começava na primeira vez que o seletor de comandos olhava o bolus, e o seletor só roda conectado. Um bolus pedido durante 30 min sem conexão era enviado na hora ao reconectar. Agora o tempo conta de quando o bolus entra na fila, e um watchdog (`MedLinkBLE.runBolusWatchdog`, a cada 30 s, conectado ou não) expira os que passaram do tempo.
+
+**Bloqueio da bomba** (`bolus/PumpBlockRule`, `MedLinkBLE.pumpBlock`):
+- `UNREACHABLE`: um bolus enviado continua `UNRESOLVED`/`UNKNOWN` por mais de 5 min, ou o tracker já alarmou (M ilegível). O driver continua lendo o `M` (a cada 60 s, reconectando se preciso) e o bloqueio sai quando o bolus é resolvido. Alarme + notificação urgente "Bomba inacessível".
+- `NOT_ACCEPTING_COMMANDS`: o START falhou e a nova tentativa alarmou (2ª falha) ou desistiu (T13). Notificação urgente pedindo para ver a tela da bomba. Os bolus na fila ficam guardados: não são enviados e não expiram. Quando a bomba responde Running (um START funcionou, ex.: o usuário limpou a mensagem), o bloqueio sai e o tempo de vida de todos os bolus na fila recomeça.
+- `NOT_ACCEPTING_COMMANDS` tem prioridade sobre `UNREACHABLE`.
+- Com a bomba bloqueada o plugin recusa novos bolus, TBR (exceto 100 %) e perfil. Leitura de status, cancelar TBR e o `M`/START do próprio driver continuam.
+
+**Bolus que o driver não enviou** (`BolusTracker.isOtherBolusInProgress`): o `M` mostra um bolus em andamento que não é o rastreado (dado nos botões da bomba, onda quadrada/dupla, ou começado antes do nosso). Se há bolus esperando, o usuário recebe um alarme com o valor programado e o já entregue, uma vez por bolus da bomba.
+
+**Testes**: `PumpBlockRuleTest` (4), `BolusTrackerTest` (+3). rileylink 482/482, `:app:assembleFullDebug` OK. Watchdog, notificação e recusas no plugin sem teste automático (T10).
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -254,7 +268,8 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 |---|---|
 | `bolus/MedLinkStatusParserSnapshotTest` | parse do `M` em pedaços BLE |
 | `bolus/BolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
-| `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h) |
+| `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h), junção (4i), bolus de fora (4j) |
+| `bolus/PumpBlockRuleTest` | bomba bloqueada: inacessível, não aceita comandos (4j) |
 | `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
 | `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14), junção ao bolus rastreado (4i) |
 | `bolus/ManualBolusRuleTest` | recusa só do mesmo tipo (4i), expiração, valor editado no diálogo (T16) |
@@ -264,7 +279,7 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-08, 4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-08, 4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---

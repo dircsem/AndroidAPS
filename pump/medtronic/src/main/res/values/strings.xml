@@ -159,4 +159,6 @@
     <string name="medlink_smb_pending_cancelled">Manual bolus cancelled: SMB in progress</string>
     <string name="medlink_smb_pending_amount_hint">Manual bolus (U)</string>
     <string name="medlink_smb_pending_amount_invalid">Enter an amount between %1$.2f and %2$.2f U</string>
+    <string name="medlink_pump_block_unreachable">Pump unreachable: the last bolus could not be confirmed. AAPS keeps reading the pump; new boluses, temp basals and profile changes are refused until it is confirmed.</string>
+    <string name="medlink_pump_block_not_accepting">The pump is not accepting state change commands (START failed). Check the pump screen for a message and clear it. Queued boluses are delivered when the pump runs again.</string>
 </resources>

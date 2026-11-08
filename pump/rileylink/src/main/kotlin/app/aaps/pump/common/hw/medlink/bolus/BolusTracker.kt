@@ -260,6 +260,20 @@ class BolusTracker(
         return true
     }
 
+    /**
+     * 4j: [snapshot] shows a bolus in progress that is not the tracked one (given on the pump, a square
+     * bolus, or a bolus that started before ours was sent): the user is told what the pump delivers.
+     */
+    @Synchronized
+    fun isOtherBolusInProgress(snapshot: BolusStatusSnapshot): Boolean {
+        if (!snapshot.inProgress) return false
+        val r = current ?: return true
+        if (r.state.isFinal || r.state == BolusState.QUEUED) return true
+        val baseline = r.baseline
+        return if (baseline != null) snapshot.lastBolusTime <= baseline.lastBolusTime
+        else snapshot.lastBolusTime < r.sentAt - 2 * MINUTE
+    }
+
     @Synchronized
     fun onConfirmed(): BolusAction {
         val r = current ?: return BolusAction.None

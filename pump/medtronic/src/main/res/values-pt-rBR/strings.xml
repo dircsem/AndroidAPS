@@ -93,4 +93,6 @@
     <string name="medlink_smb_pending_cancelled">Bolus manual cancelado: SMB em andamento</string>
     <string name="medlink_smb_pending_amount_hint">Bolus manual (U)</string>
     <string name="medlink_smb_pending_amount_invalid">Informe um valor entre %1$.2f e %2$.2f U</string>
+    <string name="medlink_pump_block_unreachable">Bomba inacessível: o último bolus não foi confirmado. O AAPS continua lendo a bomba; novos bolus, basais temporárias e mudanças de perfil são recusados até a confirmação.</string>
+    <string name="medlink_pump_block_not_accepting">A bomba não está aceitando comandos de mudança de estado (o START falhou). Veja se há uma mensagem na tela da bomba e limpe-a. Os bolus na fila são entregues quando a bomba voltar a funcionar.</string>
 </resources>

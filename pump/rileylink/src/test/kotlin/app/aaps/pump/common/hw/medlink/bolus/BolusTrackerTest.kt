@@ -414,6 +414,30 @@ class BolusTrackerTest {
         assertTrue(tracker.canSendNewBolus(), "the waiting bolus runs on its own after M")
     }
 
+    // ---- 4j: a bolus the driver did not send ---------------------------------------------------
+
+    @Test
+    fun `a bolus in progress with nothing tracked is another bolus`() {
+        val pumpBolus = Fixtures.snapshot(amount = 3.0, time = t0, delivered = 1.0, bolusing = true, readAt = t0 + 5_000)
+        assertTrue(tracker.isOtherBolusInProgress(pumpBolus))
+        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        assertTrue(tracker.isOtherBolusInProgress(pumpBolus), "ours is not written yet")
+    }
+
+    @Test
+    fun `a bolus in progress older than the baseline is another bolus, a newer one is ours`() {
+        sendLoopBolus(0.5)
+        val older = Fixtures.snapshot(amount = 2.0, time = baseline.lastBolusTime, delivered = 0.5, bolusing = true, readAt = clock.now())
+        val ours = Fixtures.snapshot(amount = 0.5, time = Fixtures.pumpTime("10-06-21 17:45"), delivered = 0.2, bolusing = true, readAt = clock.now())
+        assertTrue(tracker.isOtherBolusInProgress(older))
+        assertFalse(tracker.isOtherBolusInProgress(ours))
+    }
+
+    @Test
+    fun `nothing in progress is never another bolus`() {
+        assertFalse(tracker.isOtherBolusInProgress(applied(0.5)))
+    }
+
     @Test
     fun `M without a bolus in flight is only observed`() {
         assertEquals(None, tracker.onStatus(applied(0.5)))

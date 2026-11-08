@@ -30,6 +30,8 @@ import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.rx.events.EventDismissNotification
+import app.aaps.pump.common.hw.medlink.bolus.PumpBlock
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.plugin.PluginBase
@@ -1822,6 +1824,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         absoluteRate: Double, durationInMinutes: Int, profile: Profile,
         enforceNew: Boolean, callback: Function1<PumpEnactResult, *>,
     ) {
+        pumpBlockedResult()?.let {
+            callback.invoke(it)
+            return
+        }
         val result: PumpEnactResult
         medLinkPumpStatus.tempBasalAmount = absoluteRate
         val forceStop = System.currentTimeMillis() - lastSMBBolus < 80000
@@ -2782,6 +2788,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         percent: Int, durationInMinutes: Int,
         profile: Profile, enforceNew: Boolean, func: Function1<PumpEnactResult, *>,
     ): PumpEnactResult {
+        // 4j: only 100 % (back to the normal basal / resume) while blocked
+        if (percent != 100) pumpBlockedResult()?.let {
+            func.invoke(it)
+            return it
+        }
 
         if (temporaryBasal != null) {
 
@@ -3120,6 +3131,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
         aapsLogger.info(LTag.PUMP, logPrefix + "setNewBasalProfile")
+        pumpBlockedResult()?.let { return it }
 
         // this shouldn't be needed, but let's do check if profile setting we are setting is same as current one
         if (isThisProfileSet(profile)) {
@@ -3555,6 +3567,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             BS.Type.SMB -> MedLinkCommandType.SMBBolus
             else        -> MedLinkCommandType.Bolus
         }
+        pumpBlockedResult()?.let {
+            func.invoke(it)
+            return
+        }
         val pendingTypes = ble?.pendingBolusTypes().orEmpty()
         if (ManualBolusRule.refuses(pendingTypes, newType)) {
             aapsLogger.info(LTag.PUMP, "deliverBolus refused: a $newType is pending (pending $pendingTypes, tracker ${ble?.bolusTracker?.current})")
@@ -3777,9 +3793,36 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         )
     }
 
+    private fun pumpBlockText(block: PumpBlock): String = rh.gs(
+        when (block) {
+            PumpBlock.UNREACHABLE            -> R.string.medlink_pump_block_unreachable
+            PumpBlock.NOT_ACCEPTING_COMMANDS -> R.string.medlink_pump_block_not_accepting
+        }
+    )
+
+    /**
+     * 4j: result for a command refused while MedLinkBLE reports the pump as blocked, null when it is usable.
+     * New boluses, TBRs and profiles are refused; status reads, cancel TBR and the driver's own M / START go on.
+     */
+    private fun pumpBlockedResult(): PumpEnactResult? {
+        val block = medLinkMedtronicService?.medLinkBLE?.pumpBlock ?: return null
+        aapsLogger.info(LTag.PUMP, "command refused: pump blocked ($block)")
+        return pumpEnactResultProvider.get().success(false).enacted(false).comment(pumpBlockText(block))
+    }
+
     /** BUGs_TASKS T1/T4/T7/T8: lets MedLinkBLE read M, record resolved boluses and alert the user. */
     private fun installBolusSafetyHooks() {
         val ble = medLinkMedtronicService?.medLinkBLE ?: return
+        ble.pumpBlockHandler = { block ->
+            aapsLogger.warn(LTag.PUMP, "MedLink pump block: ${block ?: "cleared"}")
+            if (block == null) rxBus.send(EventDismissNotification(Notification.PUMP_UNREACHABLE))
+            else {
+                uiInteraction.addNotification(Notification.PUMP_UNREACHABLE, pumpBlockText(block), Notification.URGENT)
+                // NOT_ACCEPTING_COMMANDS: the START retry already sounded its alarm
+                if (block == PumpBlock.UNREACHABLE)
+                    uiInteraction.runAlarm(pumpBlockText(block), rh.gs(R.string.medtronic_pump_status_pump_unreachable), app.aaps.core.ui.R.raw.boluserror)
+            }
+        }
         ble.bolusStatusMessageProvider = {
             BolusStatusMedLinkMessage(
                 // plain read: the answer only feeds the BolusTracker via BleBolusStatusCommand, no side effects

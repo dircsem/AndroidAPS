@@ -32,6 +32,8 @@ import app.aaps.pump.common.hw.medlink.bolus.BolusTracker
 import app.aaps.pump.common.hw.medlink.bolus.LoopBolusMerge
 import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
 import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
+import app.aaps.pump.common.hw.medlink.bolus.PumpBlock
+import app.aaps.pump.common.hw.medlink.bolus.PumpBlockRule
 import app.aaps.pump.common.hw.medlink.bolus.StartRetryRule
 import app.aaps.pump.common.hw.medlink.bolus.StartStopSkipRule
 import app.aaps.pump.common.hw.medlink.bolus.StopDecision
@@ -93,6 +95,21 @@ class MedLinkBLE //extends RileyLinkBLE
 
     /** T8: shows an alarm to the user; set by the pump plugin. */
     var bolusAlarmHandler: ((String) -> Unit)? = null
+
+    /** 4j: the pump became blocked (null = not blocked any more). Called on the BLE handler thread. */
+    var pumpBlockHandler: ((PumpBlock?) -> Unit)? = null
+
+    /** 4j: why new commands are refused, null when the pump is usable. */
+    @Volatile
+    var pumpBlock: PumpBlock? = null
+        private set
+
+    /** 4j: START failed and the retry alarmed or gave up; cleared when the pump answers Running. */
+    @Volatile
+    private var startRefused = false
+    private var lastBlockStatusRequest = 0L
+    private var lastExternalBolusAlarm: Long? = null
+    private val bolusWatchdog = Runnable { runBolusWatchdog() }
 
     /**
      * Records a bolus the tracker resolved with `M` (amount, pump time, bolus info of the request).
@@ -292,6 +309,8 @@ class MedLinkBLE //extends RileyLinkBLE
     private var commandQueueBusy: CommandQueueBusy? = null
     private val MAX_TRIES = 5
     private val BASELINE_MAX_AGE_MS = 30_000L
+    private val WATCHDOG_MS = 30_000L
+    private val BLOCK_STATUS_RETRY_MS = 60_000L
     private val MAX_BASELINE_REQUESTS = 2
     private var isRetrying = false
     private val commandsToAdd = ConcurrentLinkedDeque<CommandsToAdd>()
@@ -882,6 +901,12 @@ class MedLinkBLE //extends RileyLinkBLE
                         )
                     }
                     if (msg.firstCommand() == MedLinkCommandType.Bolus) absorbIntoManual()
+                    // 4j: the time to live starts when the bolus is queued, connected or not
+                    if (isBolus(msg.firstCommand())) {
+                        bolusExecutionQueue.lastOrNull { isBolusExecutor(it) && it !== trackedBolusExecutor }
+                            ?.let { bolusQueuedAt.putIfAbsent(it, System.currentTimeMillis()) }
+                        scheduleBolusWatchdog()
+                    }
                     // 4i: a bolus waits behind one whose outcome is unclear: read M now, it decides join or run after
                     if (isBolus(msg.firstCommand()) && bolusTracker.current?.state.let { it == BolusState.UNRESOLVED || it == BolusState.UNKNOWN }) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${msg.firstCommand()} waits for ${bolusTracker.current}: reading M")
@@ -1797,6 +1822,11 @@ class MedLinkBLE //extends RileyLinkBLE
             }
         }
         if (isBolusExecutor(executor) && executor !== trackedBolusExecutor) {
+            // 4j: the pump refuses state changes (START failing): keep the bolus, neither sent nor expired
+            if (PumpBlockRule.holdsQueuedBoluses(pumpBlock)) {
+                aapsLogger.info(LTag.PUMPBTCOMM, "bolus waits: pump not accepting state changes")
+                return false
+            }
             // 4i: boluses now wait behind an unresolved one instead of being refused: none is delivered long after it was asked
             val queuedAt = bolusQueuedAt.getOrPut(executor) { now }
             if (ManualBolusRule.expired(queuedAt, now)) {
@@ -2622,6 +2652,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
     /** Every `M` answer (null when it cannot be parsed). */
     fun onBolusStatus(snapshot: BolusStatusSnapshot?) {
+        if (snapshot != null) alarmOtherBolusInProgress(snapshot)
         executeBolusAction(bolusTracker.onStatus(snapshot))
     }
 
@@ -2647,6 +2678,73 @@ class MedLinkBLE //extends RileyLinkBLE
     }
 
     private fun executeBolusAction(action: BolusAction) {
+        try {
+            executeBolusActionNow(action)
+        } finally {
+            updatePumpBlock()
+            scheduleBolusWatchdog()
+        }
+    }
+
+    /**
+     * 4j case 2: the pump delivers a bolus the driver did not send (pump buttons, square bolus) while a bolus
+     * waits: tell the user how much insulin the pump is delivering. Once per pump bolus.
+     */
+    private fun alarmOtherBolusInProgress(snapshot: BolusStatusSnapshot) {
+        val waiting = bolusExecutionQueue.any { isBolusExecutor(it) } || !bolusTracker.canSendNewBolus()
+        if (!waiting || !bolusTracker.isOtherBolusInProgress(snapshot) || lastExternalBolusAlarm == snapshot.lastBolusTime) return
+        lastExternalBolusAlarm = snapshot.lastBolusTime
+        val programmed = snapshot.squareBolusAmount?.takeIf { it > 0.0 } ?: snapshot.lastBolusAmount
+        raiseBolusAlarm(
+            String.format(
+                java.util.Locale.US,
+                "The pump is delivering a bolus of %.2f U (%.2f U delivered so far)%s that was not sent by AAPS. The queued bolus waits until it ends.",
+                programmed, snapshot.deliveredAmount ?: 0.0, if ((snapshot.squareBolusAmount ?: 0.0) > 0.0) ", square/dual wave" else ""
+            )
+        )
+    }
+
+    /** 4j: recompute the block from the tracker and the START state; tell the plugin when it changes. */
+    private fun updatePumpBlock() {
+        val r = bolusTracker.current
+        val now = System.currentTimeMillis()
+        val block = PumpBlockRule.decide(PumpBlockRule.bolusUnresolved(r?.state, r?.sentAt ?: 0L, r?.alarmed ?: false, now), startRefused)
+        if (block == pumpBlock) return
+        aapsLogger.warn(LTag.PUMPBTCOMM, "pump block ${pumpBlock ?: "none"} -> ${block ?: "none"} (bolus ${r}, startRefused=$startRefused)")
+        pumpBlock = block
+        pumpBlockHandler?.let { h -> handler.post { h(block) } }
+        if (block != null) scheduleBolusWatchdog()
+    }
+
+    private fun scheduleBolusWatchdog() {
+        handler.removeCallbacks(bolusWatchdog)
+        handler.postDelayed(bolusWatchdog, WATCHDOG_MS)
+    }
+
+    /**
+     * 4j: runs whether or not the MedLink is connected: expires waiting boluses (the time to live counts from
+     * the moment they were queued), keeps the block up to date and keeps reading M while a bolus is unresolved.
+     */
+    private fun runBolusWatchdog() {
+        val now = System.currentTimeMillis()
+        synchronized(this) {
+            if (!PumpBlockRule.holdsQueuedBoluses(pumpBlock)) {
+                bolusExecutionQueue.filter { isBolusExecutor(it) && it !== trackedBolusExecutor && it !== currentCommand }.forEach { e ->
+                    val queuedAt = bolusQueuedAt[e]
+                    if (queuedAt != null && ManualBolusRule.expired(queuedAt, now)) dropExpiredBolus(e)
+                }
+            }
+        }
+        updatePumpBlock()
+        if (pumpBlock == PumpBlock.UNREACHABLE && now - lastBlockStatusRequest >= BLOCK_STATUS_RETRY_MS) {
+            lastBlockStatusRequest = now
+            aapsLogger.info(LTag.PUMPBTCOMM, "pump unreachable: reading M again for ${bolusTracker.current}")
+            requestBolusStatus(now)
+        }
+        if (pumpBlock != null || !bolusTracker.canSendNewBolus() || bolusExecutionQueue.any { isBolusExecutor(it) }) scheduleBolusWatchdog()
+    }
+
+    private fun executeBolusActionNow(action: BolusAction) {
         when (action) {
             BolusAction.None          -> Unit
             is BolusAction.ReadStatusAt -> requestBolusStatus(action.time)
@@ -2814,7 +2912,18 @@ class MedLinkBLE //extends RileyLinkBLE
     fun setLastPumpStatus(status: MedLinkPumpRunningState) {
         this.lastStatus = status
         this.lastStatusSet = System.currentTimeMillis()
-        if (status == MedLinkPumpRunningState.Running) startFailures = 0
+        if (status == MedLinkPumpRunningState.Running) {
+            startFailures = 0
+            if (startRefused) {
+                // 4j: START works again (the user cleared the pump screen): waiting boluses get a fresh time to live
+                startRefused = false
+                val now = System.currentTimeMillis()
+                bolusQueuedAt.replaceAll { _, _ -> now }
+                aapsLogger.info(LTag.PUMPBTCOMM, "pump running again: ${bolusQueuedAt.size} queued bolus(es) get a new time to live")
+                updatePumpBlock()
+                handler.post { nextCommand() }
+            }
+        }
     }
 
     /** T13: failed START attempts in a row; reset when the pump answers Running. */
@@ -2841,6 +2950,10 @@ class MedLinkBLE //extends RileyLinkBLE
         aapsLogger.warn(LTag.PUMPBTCOMM, "START failed ($reason), failure $startFailures: $decision")
         when (decision) {
             is StartRetryRule.Decision.Retry -> {
+                if (decision.alarm) {
+                    startRefused = true
+                    updatePumpBlock()
+                }
                 if (decision.alarm) raiseBolusAlarm(
                     "Pump did not resume after START ($reason). Check the pump screen for a message. Retrying in ${decision.delayMs / 1000} s."
                 )
@@ -2849,6 +2962,8 @@ class MedLinkBLE //extends RileyLinkBLE
 
             StartRetryRule.Decision.GiveUp   -> {
                 startFailures = 0
+                startRefused = true
+                updatePumpBlock()
                 raiseBolusAlarm("Pump is still SUSPENDED after ${StartRetryRule.MAX_FAILURES} START attempts ($reason). Resume the pump manually.")
             }
         }
