@@ -50,7 +50,7 @@ class MedLinkCommandSMBBolus(
             r = pumpEnactResultProvider.get().enacted(false).success(false).comment("SMB requested but still in $smbInterval min interval")
             callback?.result(r)?.run()
             aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
-        } else if (detailedBolusInfo.deliverAtTheLatest != 0L && detailedBolusInfo.deliverAtTheLatest + T.mins(3).msecs() < dateUtil.now()) {
+        } else if (detailedBolusInfo.deliverAtTheLatest != 0L && detailedBolusInfo.deliverAtTheLatest + T.mins(smbInterval.toLong()).msecs() < dateUtil.now()) {
             val func = { it: PumpEnactResult ->
                 callback?.result(it)?.run()
                 aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${it.success} enacted: ${it.enacted}")
