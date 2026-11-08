@@ -186,6 +186,26 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 
 **Testes**: `bolus/ManualBolusRuleTest` (3). rileylink 461/461, `:pump:medtronic:compileFullDebugKotlin` OK.
 
+## 4g. T16: bolus manual junta o TBR; SMB pendente pede confirmação ao usuário (2026-11-08)
+
+**Manual + TBR**
+- Quando um manual entra na fila, `MedLinkBLE.absorbIntoManual` traz para dentro dele os bolus de loop ainda não postados (substitui o `prioritizeManualBolus` do T15). O executor do manual recebe a soma no `BOLUS` e os executores absorvidos saem da fila, junto com o `M` de progresso de cada um.
+- Um TBR que chega com um manual na fila (não postado) também se junta ao manual (`LoopBolusMerge.canMerge`).
+- O manual é sempre a parte 0: é preenchido primeiro numa entrega parcial e fica com o horário da bomba. A origem no tracker continua MANUAL, então ele nunca é reenviado sem o usuário.
+
+**SMB antes do manual**
+- No `deliverBolus` do plugin, se há SMB pendente (`MedLinkBLE.pendingSmbAmount()`: na fila ou enviado e não resolvido), abre `dialog/MedLinkBolusConfirmActivity` ("Há um SMB de X U em andamento...").
+  - **OK**: o manual segue com `smbConsent`. O SMB na fila é juntado (manual + SMB + TBR). Se o SMB já foi enviado, o manual espera por ele (`ManualBolusRule.mayQueueBehind(SMB, consent)`).
+  - **Cancelar**, botão voltar ou 2 min sem resposta: o manual é cancelado e o callback recebe falha ("Bolus manual cancelado: SMB em andamento").
+- A activity é translúcida e iniciada com `FLAG_ACTIVITY_NEW_TASK`, igual ao `ErrorHelperActivity`.
+
+**Proteções**
+- Um SMB que chega com um manual pendente (na fila, em andamento ou com a confirmação aberta) é recusado ("manual bolus pending"). O loop recalcula já com o manual no IOB.
+- Um SMB na fila sem consentimento, ou um segundo TBR, não é juntado ao manual: ele falha via `onQueueResult` e o dono pede de novo.
+- Se o manual expira (5 min, T15), as partes juntadas também recebem falha.
+
+**Testes**: `LoopBolusMergeTest` e `ManualBolusRuleTest` atualizados (rileylink 465/465). `:app:assembleFullDebug` OK. A activity e o fluxo do diálogo não têm teste automático.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -205,14 +225,14 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro |
 | `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
 | `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14) |
-| `bolus/ManualBolusRuleTest` | manual não bloqueado por TBR (T15) |
+| `bolus/ManualBolusRuleTest` | manual não bloqueado por TBR (T15), SMB com consentimento (T16) |
 | `ble/command/BleStopStartCommandTest`, `ble/command/BleBolusCommandsTest` | tratamento das respostas `A`/`M` e do bolus |
 | `activities/BolusProgressCallbackTest` | root cause 7 |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-08, T15): rileylink 461/461, medtronic compila. Antes (T14): rileylink 458/458. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-08, T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---
@@ -229,13 +249,15 @@ Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `READ
 - ~~`BleStopCommand` procurava `pump bolusing state`~~ corrigido em 2026-11-08: novo `bolus/PumpStateAnswer.isBolusing()` (texto real `pump is bolusing st`, cobre o pedaço BLE `pump is bolusing sta`), usado por `BleStopCommand` e `BleStartCommand`. Antes, a resposta "bolusing" do `A` não era reconhecida (caía no tratamento genérico) e a proteção do stop automático dependia só da leitura do `M` feita antes (StopGate). Agora o `A` também retém o stop (T1). Testes e fixture `a_bolusing.txt` usam o texto real.
 - Um BOLUS de microbolus que falha volta a `isCommandIssued = false`, mas o refresh pode já tê-lo removido (microbolus perdido: entrega a menos, não a mais).
 - `MedLinkCommandSMBBolus`: a condição do `deliverAtTheLatest` está invertida (`+ 3 min < now` entrega só pedidos vencidos; upstream é `+ 1 min > now`). Não corrigido ainda.
+- T16: teste de campo do diálogo com o app em segundo plano (bolus pelo relógio/NS). A abertura da activity depende da mesma permissão usada pelos alarmes.
 - T14: teste de campo da junção TBR + SMB (conferir no log `BOLUS merged` e as duas entradas no banco/NS).
 - Teste de campo com a bomba antes de usar.
 
 ## 8. O que conferir no log durante o teste de campo
 
 - `BOLUS merged SMBBolus 0.4U into queued TBRBolus: ... -> 0.5U` e depois `BOLUS part TBR ...` / `BOLUS part SMB ...` — junção T14; deve haver um TBR e um SMB no banco, com 1 s de diferença.
-- `BOLUS manual xU goes before queued TBRBolus ...` / `BOLUS manual xU dropped: waited more than 5 min` — T15.
+- `BOLUS manual merged: NORMAL xU, TBR yU, SMB zU -> tU (smbConsent=...)` — T16. `BOLUS manual xU dropped: waited more than 5 min` — T15.
+- `manual bolus xU: SMB yU pending, asking the user` / `user answered ok=...` / `deliverBolus refused: SMB ... while a manual bolus is pending` — T16.
 - `BOLUS[id] state X->Y` — todo bolus deve terminar em DELIVERED, PARTIAL ou FAILED (com alarme).
 - `automatic stop: reading M first` / `automatic stop deferred until ...` — stop automático esperando o bolus.
 - `waiting for the answer of BolusStatus, not posting again` — o bug do `M` sendo evitado. Não deve mais aparecer "invalid command" logo depois de um `M`.

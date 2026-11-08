@@ -879,7 +879,7 @@ class MedLinkBLE //extends RileyLinkBLE
                             true
                         )
                     }
-                    if (msg.firstCommand() == MedLinkCommandType.Bolus) prioritizeManualBolus()
+                    if (msg.firstCommand() == MedLinkCommandType.Bolus) absorbIntoManual()
                 }
             }
             handleBolusCommand(msg, serviceUUID, charaUUID)
@@ -1570,28 +1570,74 @@ class MedLinkBLE //extends RileyLinkBLE
     }
 
     /**
-     * T15: a manual bolus goes before loop boluses that were not posted yet (with their `M` progress
-     * executors). Called with the bolus queue locked, right after the manual bolus was queued.
+     * T16: a manual bolus takes the loop boluses that were not posted yet into itself: the TBR always,
+     * the SMB only with the user's consent. Anything that cannot be taken (an SMB without consent, a
+     * second TBR) is failed: the loop asks again with the manual bolus in IOB. Called with the bolus
+     * queue locked, right after the manual bolus was queued.
      */
-    private fun prioritizeManualBolus() {
+    private fun absorbIntoManual() {
         synchronized(bolusMergeLock) {
             val queue = bolusExecutionQueue.toList()
             val manual = queue.lastOrNull { it.firstCommand() == MedLinkCommandType.Bolus && it !== trackedBolusExecutor } ?: return
             manualBolusQueuedAt.putIfAbsent(manual, System.currentTimeMillis())
-            val manualIndex = queue.indexOfFirst { it === manual }
-            val moved = queue.subList(0, manualIndex)
-                .filter { LoopBolusMerge.isLoopBolus(it.firstCommand()) && it !== trackedBolusExecutor && it !== currentCommand && !it.isInitialized }
-                .flatMap { withSupplementary(it, queue) }
-            if (moved.isEmpty()) return
-            val manualGroup = withSupplementary(manual, queue)
-            val firstMoved = queue.indexOfFirst { it === moved.first() }
-            // everything before the first moved loop bolus, then the manual bolus, then the rest in the same order
-            val reordered = queue.subList(0, firstMoved) + manualGroup + queue.subList(firstMoved, queue.size).filter { e -> manualGroup.none { it === e } }
-            bolusExecutionQueue.clear()
-            bolusExecutionQueue.addAll(reordered)
-            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS manual ${bolusAmount(manual)}U goes before queued ${moved.filter { isBolusExecutor(it) }.joinToString { "${it.firstCommand()} ${bolusAmount(it)}U" }}")
+            val own = bleBolusCommand(manual) ?: return
+            val candidates = queue.filter {
+                it !== manual && LoopBolusMerge.isLoopBolus(it.firstCommand()) && it !== trackedBolusExecutor && it !== currentCommand && !it.isInitialized
+            }
+            if (candidates.isEmpty()) return
+            val amountIndex = manual.commandList.indexOfFirst { it.command == MedLinkCommandType.BolusAmount }
+            if (amountIndex < 0) return
+            val parts = mergedBolusParts[manual] ?: mutableListOf(own)
+            val failed = mutableListOf<BleBolusCommand>()
+            val removed = mutableListOf<CommandExecutor<*>>()
+            candidates.forEach { e ->
+                val eParts = mergedBolusParts.remove(e) ?: listOfNotNull(bleBolusCommand(e))
+                eParts.forEach { p ->
+                    if (LoopBolusMerge.canAbsorbIntoManual(parts.map { it.detailedBolusInfo.bolusType.toCommandType() }, p.detailedBolusInfo.bolusType.toCommandType(), own.smbConsent))
+                        parts.add(p)
+                    else failed.add(p)
+                }
+                removed += withSupplementary(e, queue)
+            }
+            val total = LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin })
+            @Suppress("UNCHECKED_CAST")
+            val list = manual.commandList as MutableList<CommandStructure<Any?, BleCommand>>
+            val old = list[amountIndex]
+            list[amountIndex] = CommandStructure(
+                old.command, old.parseFunction, old.commandHandler,
+                MedLinkCommandType.BolusAmount.getRaw(BolusMedLinkMessage.amountArgument(total)),
+                old.commandPriority, old.errorFunction
+            )
+            mergedBolusParts[manual] = parts
+            bolusExecutionQueue.removeIf { e -> removed.any { it === e } }
+            removed.filter { isBolusExecutor(it) }.map { it.firstCommand() }.distinct().forEach { type ->
+                if (bolusExecutionQueue.none { it.firstCommand() == type }) bolusExecutionHash.remove(type)
+            }
+            aapsLogger.info(
+                LTag.PUMPBTCOMM,
+                "BOLUS manual merged: ${parts.joinToString { "${it.detailedBolusInfo.bolusType} ${it.detailedBolusInfo.insulin}U" }} -> ${total}U (smbConsent=${own.smbConsent})"
+            )
+            failed.forEach { part ->
+                aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${part.detailedBolusInfo.bolusType} ${part.detailedBolusInfo.insulin}U not delivered: manual bolus queued")
+                part.onQueueResult?.let { cb -> handler.post { cb(false, 0.0) } }
+            }
         }
     }
+
+    /** T16: SMB insulin queued (not posted) or in flight and unresolved, null when there is none. */
+    fun pendingSmbAmount(): Double? {
+        synchronized(bolusMergeLock) {
+            val executors = bolusExecutionQueue.filter { isBolusExecutor(it) && it !== trackedBolusExecutor } +
+                listOfNotNull(trackedBolusExecutor?.takeIf { !bolusTracker.canSendNewBolus() })
+            val smb = executors.flatMap { bolusParts(it) }.filter { it.detailedBolusInfo.bolusType == app.aaps.core.data.model.BS.Type.SMB }
+            return if (smb.isEmpty()) null else LoopBolusMerge.total(smb.map { it.detailedBolusInfo.insulin })
+        }
+    }
+
+    /** T16: a manual bolus is queued or in flight and unresolved (a new SMB must wait for it in IOB). */
+    fun hasPendingManualBolus(): Boolean =
+        bolusExecutionQueue.any { it.firstCommand() == MedLinkCommandType.Bolus && it !== trackedBolusExecutor } ||
+            trackedBolusExecutor?.firstCommand() == MedLinkCommandType.Bolus && !bolusTracker.canSendNewBolus()
 
     /** T15: a manual bolus waited too long behind an unresolved bolus: drop it and tell the user. */
     private fun dropExpiredManualBolus(executor: CommandExecutor<*>) {
@@ -1600,6 +1646,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (bolusExecutionQueue.none { it.firstCommand() == MedLinkCommandType.Bolus }) bolusExecutionHash.remove(MedLinkCommandType.Bolus)
         manualBolusQueuedAt.remove(executor)
         val amount = bolusAmount(executor)
+        failMergedParts(executor, "manual bolus expired")
         aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS manual ${amount}U dropped: waited more than ${ManualBolusRule.MAX_WAIT_MS / 60_000} min, previous bolus ${bolusTracker.current}")
         bleBolusCommand(executor)?.onQueueResult?.let { cb -> handler.post { cb(false, 0.0) } }
         raiseBolusAlarm("Manual bolus $amount U not delivered: the previous bolus was not confirmed within ${ManualBolusRule.MAX_WAIT_MS / 60_000} min. Check the pump and bolus again if needed.")

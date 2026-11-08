@@ -30,6 +30,9 @@ class BleBolusCommand(
      */
     var onQueueResult: ((success: Boolean, delivered: Double) -> Unit)? = null
 
+    /** T16: manual bolus only: the user confirmed it while an SMB was pending, so the SMB may be merged into it. */
+    var smbConsent: Boolean = false
+
     override fun characteristicChanged(
         answer: String, bleComm: MedLinkBLE,
         lastCharacteristic: String,

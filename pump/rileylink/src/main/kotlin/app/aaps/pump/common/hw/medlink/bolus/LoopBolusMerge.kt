@@ -9,9 +9,14 @@ import kotlin.math.roundToLong
  * T14: a TBR microbolus and an SMB queued close to each other are sent to the pump as one bolus
  * (0.1 U + 0.4 U -> one 0.5 U), but recorded as one TBR and one SMB.
  *
+ * T16: a manual bolus takes the queued TBR (and the SMB, when the user confirmed) into itself, so
+ * the pump gets one bolus with manual + TBR (+ SMB). The manual bolus stays part 0 (filled first,
+ * MANUAL origin in the tracker).
+ *
  * Rules:
- *  - only loop boluses merge (TBRBolus, SMBBolus), never a manual bolus;
- *  - at most one part of each type: one TBR and one SMB;
+ *  - a TBR / SMB merges into a queued loop bolus, and a TBR into a queued manual bolus;
+ *  - an SMB never merges into a manual bolus by itself: only [canAbsorbIntoManual] with the user's consent;
+ *  - at most one part of each type: one TBR, one SMB, one manual;
  *  - only into a bolus that was never posted (not tracked, nothing written), see MedLinkBLE;
  *  - the delivered amount is split over the parts in queue order, the last part takes the rest;
  *  - part i is recorded at pump time + i * [PART_OFFSET_MS]: the DB temporary id comes from the
@@ -23,12 +28,18 @@ object LoopBolusMerge {
     const val PART_OFFSET_MS = 1_000L
 
     private val loopTypes = setOf(MedLinkCommandType.TBRBolus, MedLinkCommandType.SMBBolus)
+    private val mergeableTypes = loopTypes + MedLinkCommandType.Bolus
 
     fun isLoopBolus(type: MedLinkCommandType?): Boolean = type in loopTypes
 
     /** May a bolus of [newType] be folded into a queued bolus made of [partTypes]? */
     fun canMerge(partTypes: List<MedLinkCommandType>, newType: MedLinkCommandType): Boolean =
-        isLoopBolus(newType) && partTypes.isNotEmpty() && partTypes.all { isLoopBolus(it) } && newType !in partTypes
+        isLoopBolus(newType) && partTypes.isNotEmpty() && partTypes.all { it in mergeableTypes } && newType !in partTypes &&
+            !(newType == MedLinkCommandType.SMBBolus && MedLinkCommandType.Bolus in partTypes)
+
+    /** T16: may a queued loop bolus part of [type] be taken into a manual bolus made of [partTypes]? */
+    fun canAbsorbIntoManual(partTypes: List<MedLinkCommandType>, type: MedLinkCommandType, smbConsent: Boolean): Boolean =
+        isLoopBolus(type) && type !in partTypes && (type != MedLinkCommandType.SMBBolus || smbConsent)
 
     /** Amount sent to the pump for the parts (rounded to 0.01 U, as written in the BOLUS command). */
     fun total(requested: List<Double>): Double = round(requested.sum(), 100.0)

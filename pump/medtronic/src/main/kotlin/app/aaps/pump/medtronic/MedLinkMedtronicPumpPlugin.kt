@@ -1,6 +1,7 @@
 package app.aaps.pump.medtronic
 
 import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
+import app.aaps.pump.medtronic.dialog.MedLinkBolusConfirmActivity
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
@@ -3486,9 +3487,52 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     // //        bolusEventThread.start();
     //     }
 
+    /** T16: manual boluses waiting for the user's answer about a pending SMB (new SMBs are refused meanwhile). */
+    private val manualAwaitingConfirmation = java.util.concurrent.atomic.AtomicInteger(0)
+
     override fun deliverBolus(
         detailedBolusInfo: DetailedBolusInfo,
         func: (PumpEnactResult) -> Unit,
+    ) {
+        val ble = medLinkMedtronicService?.medLinkBLE
+        val manual = detailedBolusInfo.bolusType != BS.Type.TBR && detailedBolusInfo.bolusType != BS.Type.SMB
+        // T16: an SMB computed without a pending manual bolus in IOB is not delivered; the loop asks again
+        if (detailedBolusInfo.bolusType == BS.Type.SMB && (ble?.hasPendingManualBolus() == true || manualAwaitingConfirmation.get() > 0)) {
+            aapsLogger.info(LTag.PUMP, "deliverBolus refused: SMB ${detailedBolusInfo.insulin}U while a manual bolus is pending")
+            func.invoke(pumpEnactResultProvider.get().success(false).enacted(false).comment("manual bolus pending"))
+            return
+        }
+        // T16: an SMB is pending: the user decides; OK merges it into the manual bolus (or waits for it), cancel cancels the manual bolus
+        val pendingSmb = if (manual) ble?.pendingSmbAmount() else null
+        if (pendingSmb != null) {
+            aapsLogger.info(LTag.PUMP, "manual bolus ${detailedBolusInfo.insulin}U: SMB ${pendingSmb}U pending, asking the user")
+            manualAwaitingConfirmation.incrementAndGet()
+            MedLinkBolusConfirmActivity.ask(
+                context,
+                rh.gs(R.string.medlink_smb_pending_title),
+                rh.gs(R.string.medlink_smb_pending_message, pendingSmb, detailedBolusInfo.insulin)
+            ) { ok ->
+                aapsLogger.info(LTag.PUMP, "manual bolus ${detailedBolusInfo.insulin}U with pending SMB: user answered ok=$ok")
+                try {
+                    if (ok) deliverBolus(detailedBolusInfo, func, smbConsent = true)
+                    else func.invoke(
+                        pumpEnactResultProvider.get().success(false).enacted(false).bolusDelivered(0.0)
+                            .comment(rh.gs(R.string.medlink_smb_pending_cancelled))
+                    )
+                } finally {
+                    // after deliverBolus: the manual bolus is queued now, hasPendingManualBolus() takes over
+                    manualAwaitingConfirmation.decrementAndGet()
+                }
+            }
+            return
+        }
+        deliverBolus(detailedBolusInfo, func, smbConsent = false)
+    }
+
+    private fun deliverBolus(
+        detailedBolusInfo: DetailedBolusInfo,
+        func: (PumpEnactResult) -> Unit,
+        smbConsent: Boolean,
     ) {
         val bolus = detailedBolusInfo.copy()
         aapsLogger.info(
@@ -3502,7 +3546,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         val ble = medLinkMedtronicService?.medLinkBLE
         val tracker = ble?.bolusTracker
         val manual = bolus.bolusType != BS.Type.TBR && bolus.bolusType != BS.Type.SMB
-        if (tracker != null && !tracker.canSendNewBolus() && !(manual && ManualBolusRule.mayQueueBehind(ble.unresolvedBolusType()))) {
+        if (tracker != null && !tracker.canSendNewBolus() && !(manual && ManualBolusRule.mayQueueBehind(ble.unresolvedBolusType(), smbConsent))) {
             aapsLogger.info(LTag.PUMP, "deliverBolus refused: previous bolus ${tracker.current} unresolved")
             func.invoke(
                 pumpEnactResultProvider.get().success(false).enacted(false)
@@ -3635,6 +3679,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 this,
                 detailedBolusInfo, bolusStatusMessage != null
             )
+            bleBolusCommand.smbConsent = smbConsent
             // T14/T15: result from MedLinkBLE when the bolus was merged into another one or dropped from the queue
             bleBolusCommand.onQueueResult = { success, delivered ->
                 aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U queue result success=$success delivered=$delivered")

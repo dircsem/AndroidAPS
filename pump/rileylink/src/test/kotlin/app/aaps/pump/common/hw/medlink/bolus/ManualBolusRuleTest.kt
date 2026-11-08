@@ -20,6 +20,13 @@ class ManualBolusRuleTest {
     }
 
     @Test
+    fun `manual bolus is queued behind an unresolved smb only with consent (T16)`() {
+        assertTrue(ManualBolusRule.mayQueueBehind(MedLinkCommandType.SMBBolus, smbConsent = true))
+        assertFalse(ManualBolusRule.mayQueueBehind(MedLinkCommandType.SMBBolus, smbConsent = false))
+        assertFalse(ManualBolusRule.mayQueueBehind(MedLinkCommandType.Bolus, smbConsent = true))
+    }
+
+    @Test
     fun `manual bolus expires after the max wait`() {
         val since = 1_000_000L
         assertFalse(ManualBolusRule.expired(since, since + ManualBolusRule.MAX_WAIT_MS))

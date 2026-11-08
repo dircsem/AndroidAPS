@@ -19,6 +19,12 @@
             android:exported="false"
             android:theme="@style/AppTheme" />
 
+        <activity
+            android:name=".dialog.MedLinkBolusConfirmActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialComponents.Translucent" />
+
         <uses-library
             android:name="org.apache.http.legacy"
             android:required="false" />

@@ -154,4 +154,7 @@
     <string name="scheduled_status_refresh" comment="26 characters max for translation">Scheduled Status Refresh</string>
     <string name="need_manual_profile_set">The pump profile and aaps profile differ, you need to update your configs or your pump basal</string>
 
+    <string name="medlink_smb_pending_title">SMB in progress</string>
+    <string name="medlink_smb_pending_message">An SMB of %1$.2f U is in progress. Continue with the manual bolus of %2$.2f U? OK delivers it together with the SMB (or right after it), Cancel cancels the manual bolus.</string>
+    <string name="medlink_smb_pending_cancelled">Manual bolus cancelled: SMB in progress</string>
 </resources>

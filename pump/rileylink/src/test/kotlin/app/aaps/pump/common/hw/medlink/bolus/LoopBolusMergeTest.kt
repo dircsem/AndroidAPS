@@ -25,10 +25,32 @@ class LoopBolusMergeTest {
     }
 
     @Test
-    fun `a manual bolus never merges`() {
+    fun `a tbr merges into a queued manual bolus (T16)`() {
+        assertTrue(LoopBolusMerge.canMerge(listOf(Bolus), TBRBolus))
+        assertTrue(LoopBolusMerge.canMerge(listOf(Bolus, SMBBolus), TBRBolus))
+        assertFalse(LoopBolusMerge.canMerge(listOf(Bolus, TBRBolus), TBRBolus))
+    }
+
+    @Test
+    fun `an smb never merges into a manual bolus by itself`() {
         assertFalse(LoopBolusMerge.canMerge(listOf(Bolus), SMBBolus))
+        assertFalse(LoopBolusMerge.canMerge(listOf(Bolus, TBRBolus), SMBBolus))
+    }
+
+    @Test
+    fun `a manual bolus is never merged into another bolus`() {
         assertFalse(LoopBolusMerge.canMerge(listOf(TBRBolus), Bolus))
         assertFalse(LoopBolusMerge.canMerge(emptyList(), SMBBolus))
+    }
+
+    @Test
+    fun `manual bolus absorbs tbr always and smb only with consent (T16)`() {
+        assertTrue(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus), TBRBolus, smbConsent = false))
+        assertFalse(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus), SMBBolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus), SMBBolus, smbConsent = true))
+        assertTrue(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus, TBRBolus), SMBBolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus, TBRBolus), TBRBolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canAbsorbIntoManual(listOf(Bolus), Bolus, smbConsent = true))
     }
 
     @Test
