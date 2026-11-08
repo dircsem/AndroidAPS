@@ -42,10 +42,13 @@ class MedLinkCommandSMBBolus(
 
     override fun execute() {
         val r: PumpEnactResult
-        val lastBolusTime = persistenceLayer.getNewestBolus()?.timestamp ?: 0L
-        if (lastBolusTime != 0L && lastBolusTime + T.mins(3).msecs() > dateUtil.now()) {
-            aapsLogger.debug(LTag.PUMPQUEUE, "SMB requested but still in 3 min interval")
-            r = pumpEnactResultProvider.get().enacted(false).success(false).comment("SMB requested but still in ${preferences.get(IntKey.ApsMaxSmbFrequency)} min interval")
+        // SMB interval (loop "smbinterval") since the last SMB or manual bolus; TBR microboluses do not count
+        val smbInterval = preferences.get(IntKey.ApsMaxSmbFrequency)
+        val lastBolusTime = persistenceLayer.getLastNonTBRBolusTime()?.timestamp ?: 0L
+        if (lastBolusTime != 0L && lastBolusTime + T.mins(smbInterval.toLong()).msecs() > dateUtil.now()) {
+            aapsLogger.debug(LTag.PUMPQUEUE, "SMB requested but still in $smbInterval min interval (last non-TBR bolus ${dateUtil.dateAndTimeAndSecondsString(lastBolusTime)})")
+            r = pumpEnactResultProvider.get().enacted(false).success(false).comment("SMB requested but still in $smbInterval min interval")
+            callback?.result(r)?.run()
             aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
         } else if (detailedBolusInfo.deliverAtTheLatest != 0L && detailedBolusInfo.deliverAtTheLatest + T.mins(3).msecs() < dateUtil.now()) {
             val func = { it: PumpEnactResult ->

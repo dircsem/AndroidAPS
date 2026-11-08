@@ -165,6 +165,15 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 - Um terceiro bolus do mesmo tipo (ex.: outro SMB) não entra na junção e segue pela fila normal (com o intervalo de 1 min).
 - Entrega parcial: o TBR (primeiro da fila) é preenchido antes do SMB.
 
+## 4e. Intervalo do SMB usa a configuração do loop e ignora bolus de TBR (2026-11-08)
+
+`MedLinkCommandSMBBolus.execute()`:
+- O intervalo era fixo em 3 min e contado a partir de `getNewestBolus()`, que inclui os microbolus de TBR. Qualquer bolus de TBR bloqueava o SMB, inclusive o SMB juntado com ele (T14).
+- Agora usa `IntKey.ApsMaxSmbFrequency` (configuração "smbinterval" do loop) e `getLastNonTBRBolusTime()` (último SMB ou bolus manual, sem TBR e sem priming). A restrição vale entre SMB e SMB e entre bolus manual e SMB.
+- Quando o SMB é recusado pelo intervalo, o `callback` agora recebe o resultado (antes não recebia, diferente do `CommandSMBBolus` upstream).
+
+**Teste**: `:implementation:compileFullDebugKotlin` OK. Sem teste unitário.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -206,6 +215,7 @@ Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `READ
 - ~~Confirmar a resposta de um START recusado~~: os logs não têm nenhum caso (seção 4c); a causa real era outra.
 - ~~`BleStopCommand` procurava `pump bolusing state`~~ corrigido em 2026-11-08: novo `bolus/PumpStateAnswer.isBolusing()` (texto real `pump is bolusing st`, cobre o pedaço BLE `pump is bolusing sta`), usado por `BleStopCommand` e `BleStartCommand`. Antes, a resposta "bolusing" do `A` não era reconhecida (caía no tratamento genérico) e a proteção do stop automático dependia só da leitura do `M` feita antes (StopGate). Agora o `A` também retém o stop (T1). Testes e fixture `a_bolusing.txt` usam o texto real.
 - Um BOLUS de microbolus que falha volta a `isCommandIssued = false`, mas o refresh pode já tê-lo removido (microbolus perdido: entrega a menos, não a mais).
+- `MedLinkCommandSMBBolus`: a condição do `deliverAtTheLatest` está invertida (`+ 3 min < now` entrega só pedidos vencidos; upstream é `+ 1 min > now`). Não corrigido ainda.
 - T14: teste de campo da junção TBR + SMB (conferir no log `BOLUS merged` e as duas entradas no banco/NS).
 - Teste de campo com a bomba antes de usar.
 
