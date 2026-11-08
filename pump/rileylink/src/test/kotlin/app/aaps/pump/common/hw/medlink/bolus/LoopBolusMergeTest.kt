@@ -54,6 +54,30 @@ class LoopBolusMergeTest {
     }
 
     @Test
+    fun `any other type joins the tracked bolus not received by the pump (4i)`() {
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(TBRBolus), SMBBolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(SMBBolus), TBRBolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(TBRBolus), Bolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(Bolus), TBRBolus, smbConsent = false))
+    }
+
+    @Test
+    fun `same type never joins the tracked bolus (4i)`() {
+        assertFalse(LoopBolusMerge.canJoinTracked(listOf(TBRBolus), TBRBolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canJoinTracked(listOf(TBRBolus, SMBBolus), SMBBolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canJoinTracked(listOf(Bolus), Bolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canJoinTracked(emptyList(), SMBBolus, smbConsent = true))
+    }
+
+    @Test
+    fun `smb and manual join only with the user's consent (4i, T16)`() {
+        assertFalse(LoopBolusMerge.canJoinTracked(listOf(SMBBolus), Bolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(SMBBolus), Bolus, smbConsent = true))
+        assertFalse(LoopBolusMerge.canJoinTracked(listOf(TBRBolus, Bolus), SMBBolus, smbConsent = false))
+        assertTrue(LoopBolusMerge.canJoinTracked(listOf(TBRBolus, Bolus), SMBBolus, smbConsent = true))
+    }
+
+    @Test
     fun `total is the sum sent to the pump`() {
         assertEquals(0.5, LoopBolusMerge.total(listOf(0.1, 0.4)))
         assertEquals(0.3, LoopBolusMerge.total(listOf(0.1, 0.2)))

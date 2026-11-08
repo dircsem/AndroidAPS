@@ -51,10 +51,18 @@ sealed class BolusAction {
 
 class BolusRequest(
     val id: String,
-    val origin: BolusOrigin,
-    val requested: Double,
+    origin: BolusOrigin,
+    requested: Double,
     val createdAt: Long
 ) {
+
+    /** 4i: becomes MANUAL when a manual bolus joins it (never re-sent without the user). */
+    var origin: BolusOrigin = origin
+        internal set
+
+    /** 4i: grows when another bolus joins it before the pump received it. */
+    var requested: Double = requested
+        internal set
 
     var state: BolusState = BolusState.QUEUED
         internal set
@@ -78,6 +86,9 @@ class BolusRequest(
     /** First "not started" answer seen, waiting for a fresh `M` to confirm it. */
     internal var notStartedSeenAt: Long? = null
     internal var awaitingUser: Boolean = false
+
+    /** `M` proved the bolus was not started and a re-send was decided: other boluses may join it (4i). */
+    internal var resendAllowed: Boolean = false
 
     val expectedEndAt: Long
         get() = sentAt + (requested * BolusTracker.MS_PER_UNIT).roundToLong() + BolusTracker.DELIVERY_MARGIN_MS
@@ -195,6 +206,7 @@ class BolusTracker(
             r.attempts++
             r.notStartedSeenAt = null
             r.awaitingUser = false
+            r.resendAllowed = false
             log("BOLUS[${r.id}] written attempt=${r.attempts}")
             return BolusAction.ReadStatusAt(r.expectedEndAt)
         }
@@ -227,6 +239,24 @@ class BolusTracker(
         val r = current ?: return false
         if (r.state != BolusState.QUEUED) return false
         fail(r, "dropped before the dose was written: $reason")
+        return true
+    }
+
+    /**
+     * 4i: another bolus joined the tracked one, which the pump has not received: QUEUED (dose not written)
+     * or UNRESOLVED right before a re-send that `M` allowed. [total] is the new amount written to the pump.
+     * @return false when the request may not change (written and not proved undelivered, or final).
+     */
+    @Synchronized
+    fun onMerged(total: Double, manual: Boolean): Boolean {
+        val r = current ?: return false
+        if (r.state != BolusState.QUEUED && !(r.state == BolusState.UNRESOLVED && r.resendAllowed)) {
+            log("BOLUS[${r.id}] merge refused in state ${r.state}")
+            return false
+        }
+        log("BOLUS[${r.id}] merged: requested ${r.requested} -> $total${if (manual) " (manual joined)" else ""}")
+        r.requested = total
+        if (manual) r.origin = BolusOrigin.MANUAL
         return true
     }
 
@@ -302,6 +332,7 @@ class BolusTracker(
         if (!r.awaitingUser) return BolusAction.None
         r.awaitingUser = false
         log("BOLUS[${r.id}] user answered resend=$resend")
+        if (resend) r.resendAllowed = true
         return if (resend) BolusAction.Resend else fail(r, "user declined resend")
     }
 
@@ -371,6 +402,7 @@ class BolusTracker(
 
             else                                                               -> {
                 log("BOLUS[${r.id}] resend (attempt ${r.attempts + 1})")
+                r.resendAllowed = true
                 BolusAction.Resend
             }
         }
@@ -402,6 +434,7 @@ class BolusTracker(
         if (allowed[r.state]?.contains(to) != true) return illegal(r, to)
         log("BOLUS[${r.id}] state ${r.state}->$to requested=${r.requested} delivered=${r.appliedTotal} attempt=${r.attempts}")
         r.state = to
+        if (to != BolusState.UNRESOLVED) r.resendAllowed = false
         return null
     }
 

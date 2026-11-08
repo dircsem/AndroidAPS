@@ -3507,15 +3507,20 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (pendingSmb != null) {
             aapsLogger.info(LTag.PUMP, "manual bolus ${detailedBolusInfo.insulin}U: SMB ${pendingSmb}U pending, asking the user")
             manualAwaitingConfirmation.incrementAndGet()
-            MedLinkBolusConfirmActivity.ask(
+            MedLinkBolusConfirmActivity.askAmount(
                 context,
                 rh.gs(R.string.medlink_smb_pending_title),
-                rh.gs(R.string.medlink_smb_pending_message, pendingSmb, detailedBolusInfo.insulin)
-            ) { ok ->
-                aapsLogger.info(LTag.PUMP, "manual bolus ${detailedBolusInfo.insulin}U with pending SMB: user answered ok=$ok")
+                rh.gs(R.string.medlink_smb_pending_message, pendingSmb, detailedBolusInfo.insulin),
+                detailedBolusInfo.insulin,
+                pumpDescription.bolusStep
+            ) { amount ->
+                aapsLogger.info(LTag.PUMP, "manual bolus ${detailedBolusInfo.insulin}U with pending SMB: user answered amount=$amount")
                 try {
-                    if (ok) deliverBolus(detailedBolusInfo, func, smbConsent = true)
-                    else func.invoke(
+                    if (amount != null) {
+                        // the user may lower the manual bolus (e.g. by the SMB amount); never above the requested one
+                        val info = if (amount < detailedBolusInfo.insulin) detailedBolusInfo.copy().also { it.insulin = amount } else detailedBolusInfo
+                        deliverBolus(info, func, smbConsent = true)
+                    } else func.invoke(
                         pumpEnactResultProvider.get().success(false).enacted(false).bolusDelivered(0.0)
                             .comment(rh.gs(R.string.medlink_smb_pending_cancelled))
                     )
@@ -3541,16 +3546,21 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         )
         aapsLogger.info(LTag.PUMP, bolusToJson(detailedBolusInfo).toString())
 
-        // T6: one bolus in flight; a new one is refused until the previous one is resolved by M.
-        // T15: a manual bolus is not refused because of a TBR bolus: it is queued and sent once the TBR is resolved.
+        // T6: one bolus in flight on the pump, M resolves it.
+        // 4i: a new bolus is refused only when a bolus of the same type is pending; any other type is merged
+        // into the pending one (the pump has not received it) or waits for M and runs right after it.
         val ble = medLinkMedtronicService?.medLinkBLE
-        val tracker = ble?.bolusTracker
-        val manual = bolus.bolusType != BS.Type.TBR && bolus.bolusType != BS.Type.SMB
-        if (tracker != null && !tracker.canSendNewBolus() && !(manual && ManualBolusRule.mayQueueBehind(ble.unresolvedBolusType(), smbConsent))) {
-            aapsLogger.info(LTag.PUMP, "deliverBolus refused: previous bolus ${tracker.current} unresolved")
+        val newType = when (bolus.bolusType) {
+            BS.Type.TBR -> MedLinkCommandType.TBRBolus
+            BS.Type.SMB -> MedLinkCommandType.SMBBolus
+            else        -> MedLinkCommandType.Bolus
+        }
+        val pendingTypes = ble?.pendingBolusTypes().orEmpty()
+        if (ManualBolusRule.refuses(pendingTypes, newType)) {
+            aapsLogger.info(LTag.PUMP, "deliverBolus refused: a $newType is pending (pending $pendingTypes, tracker ${ble?.bolusTracker?.current})")
             func.invoke(
                 pumpEnactResultProvider.get().success(false).enacted(false)
-                    .comment("previous bolus unresolved")
+                    .comment("a bolus of the same type is pending")
             )
             return
         }

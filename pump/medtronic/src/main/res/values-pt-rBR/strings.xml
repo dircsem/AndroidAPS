@@ -89,6 +89,8 @@
     <string name="clicked_refresh" comment="26 characters max for translation">Atualização em andamento</string>
     <string name="scheduled_status_refresh" comment="26 characters max for translation">Att. de status programada</string>
     <string name="medlink_smb_pending_title">SMB em andamento</string>
-    <string name="medlink_smb_pending_message">Há um SMB de %1$.2f U em andamento. Continuar com o bolus manual de %2$.2f U? OK entrega junto com o SMB (ou logo depois dele), Cancelar cancela o bolus manual.</string>
+    <string name="medlink_smb_pending_message">Há um SMB de %1$.2f U em andamento. Continuar com o bolus manual de %2$.2f U? Você pode diminuir o valor abaixo. OK entrega junto com o SMB (ou logo depois dele), Cancelar cancela o bolus manual.</string>
     <string name="medlink_smb_pending_cancelled">Bolus manual cancelado: SMB em andamento</string>
+    <string name="medlink_smb_pending_amount_hint">Bolus manual (U)</string>
+    <string name="medlink_smb_pending_amount_invalid">Informe um valor entre %1$.2f e %2$.2f U</string>
 </resources>

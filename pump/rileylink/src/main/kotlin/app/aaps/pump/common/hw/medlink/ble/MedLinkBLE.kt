@@ -112,8 +112,8 @@ class MedLinkBLE //extends RileyLinkBLE
     /** T14: loop boluses folded into a queued loop bolus, in queue order; the first is the executor's own. */
     private val mergedBolusParts = HashMap<CommandExecutor<*>, MutableList<BleBolusCommand>>()
 
-    /** T15: when each queued manual bolus was queued (it expires after [ManualBolusRule.MAX_WAIT_MS]). */
-    private val manualBolusQueuedAt = java.util.concurrent.ConcurrentHashMap<CommandExecutor<*>, Long>()
+    /** T15 / 4i: when each queued bolus (manual or loop) was queued: it expires after [ManualBolusRule.MAX_WAIT_MS]. */
+    private val bolusQueuedAt = java.util.concurrent.ConcurrentHashMap<CommandExecutor<*>, Long>()
     private var baselineRequestedFor: CommandExecutor<*>? = null
     private var baselineRequests = 0
 
@@ -596,7 +596,7 @@ class MedLinkBLE //extends RileyLinkBLE
             it.commandFailed()
             onBolusExecutorDropped(it, "user stop")
             failMergedParts(it, "user stop")
-            manualBolusQueuedAt.remove(it)
+            bolusQueuedAt.remove(it)
         }
         bolusExecutionQueue.removeAll(unsent.toSet())
         bolusExecutionHash.clear()
@@ -866,7 +866,7 @@ class MedLinkBLE //extends RileyLinkBLE
             // val command = CommandsToAdd(serviceUUID, charaUUID, msg)
             //            addCommand(command);
             synchronized(bolusExecutionQueue) {
-                if (!mergeLoopBolus(msg)) {
+                if (!mergeBolus(msg)) {
                     addWriteCharacteristic<B, C>(
                         serviceUUID,
                         charaUUID,
@@ -882,6 +882,11 @@ class MedLinkBLE //extends RileyLinkBLE
                         )
                     }
                     if (msg.firstCommand() == MedLinkCommandType.Bolus) absorbIntoManual()
+                    // 4i: a bolus waits behind one whose outcome is unclear: read M now, it decides join or run after
+                    if (isBolus(msg.firstCommand()) && bolusTracker.current?.state.let { it == BolusState.UNRESOLVED || it == BolusState.UNKNOWN }) {
+                        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${msg.firstCommand()} waits for ${bolusTracker.current}: reading M")
+                        requestBolusStatus(System.currentTimeMillis())
+                    }
                 }
             }
             handleBolusCommand(msg, serviceUUID, charaUUID)
@@ -1524,13 +1529,18 @@ class MedLinkBLE //extends RileyLinkBLE
 
     /**
      * T14: fold a TBR / SMB bolus into a queued loop bolus of the other type that was never posted,
-     * so the pump gets one bolus with the sum. Returns true when merged (the message is not queued).
+     * so the pump gets one bolus with the sum.
+     * 4i: any bolus type joins the tracked bolus while its dose is not written yet (QUEUED).
+     * Returns true when merged (the message is not queued).
      */
-    private fun mergeLoopBolus(msg: MedLinkPumpMessage<*, *>): Boolean {
+    private fun mergeBolus(msg: MedLinkPumpMessage<*, *>): Boolean {
         val type = msg.firstCommand()
-        if (!LoopBolusMerge.isLoopBolus(type)) return false
+        if (!isBolus(type)) return false
         val newPart = msg.commands.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleBolusCommand } ?: return false
         synchronized(bolusMergeLock) {
+            val tracked = trackedBolusExecutor
+            if (tracked != null && bolusTracker.current?.state == BolusState.QUEUED && joinTracked(tracked, listOf(newPart), "dose not written yet")) return true
+            if (!LoopBolusMerge.isLoopBolus(type)) return false
             val target = bolusExecutionQueue.firstOrNull { e ->
                 e !== trackedBolusExecutor && e !== currentCommand && !e.isInitialized &&
                     LoopBolusMerge.canMerge(mergedBolusParts[e]?.map { it.detailedBolusInfo.bolusType.toCommandType() } ?: listOf(e.firstCommand()), type)
@@ -1542,12 +1552,7 @@ class MedLinkBLE //extends RileyLinkBLE
             val total = LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin } + newPart.detailedBolusInfo.insulin)
             @Suppress("UNCHECKED_CAST")
             val list = target.commandList as MutableList<CommandStructure<Any?, BleCommand>>
-            val old = list[amountIndex]
-            list[amountIndex] = CommandStructure(
-                old.command, old.parseFunction, old.commandHandler,
-                MedLinkCommandType.BolusAmount.getRaw(BolusMedLinkMessage.amountArgument(total)),
-                old.commandPriority, old.errorFunction
-            )
+            setBolusAmount(target, amountIndex, total)
             parts.add(newPart)
             mergedBolusParts[target] = parts
             aapsLogger.info(
@@ -1559,9 +1564,84 @@ class MedLinkBLE //extends RileyLinkBLE
         }
     }
 
-    /** Type of the bolus in flight that is not resolved yet, null when a new bolus may be sent. */
-    fun unresolvedBolusType(): MedLinkCommandType? =
-        if (bolusTracker.canSendNewBolus()) null else trackedBolusExecutor?.firstCommand()
+    /** Rewrite the BOLUS amount of [target] (not written to the pump yet). */
+    private fun setBolusAmount(target: CommandExecutor<*>, amountIndex: Int, total: Double) {
+        @Suppress("UNCHECKED_CAST")
+        val list = target.commandList as MutableList<CommandStructure<Any?, BleCommand>>
+        val old = list[amountIndex]
+        list[amountIndex] = CommandStructure(
+            old.command, old.parseFunction, old.commandHandler,
+            MedLinkCommandType.BolusAmount.getRaw(BolusMedLinkMessage.amountArgument(total)),
+            old.commandPriority, old.errorFunction
+        )
+    }
+
+    private fun BleBolusCommand.type(): MedLinkCommandType = detailedBolusInfo.bolusType.toCommandType()
+
+    /** Bolus types an executor delivers (its own and the merged-in ones). */
+    private fun partTypes(executor: CommandExecutor<*>): List<MedLinkCommandType> =
+        bolusParts(executor).map { it.type() }.ifEmpty { listOf(executor.firstCommand()) }
+
+    /**
+     * 4i: [newParts] join the tracked bolus [target], which the pump has not received (not written yet,
+     * or `M` proved it was not delivered and it is about to be re-sent). All or nothing.
+     * Called with [bolusMergeLock] held.
+     */
+    private fun joinTracked(target: CommandExecutor<*>, newParts: List<BleBolusCommand>, reason: String): Boolean {
+        if (newParts.isEmpty()) return false
+        val own = bleBolusCommand(target) ?: return false
+        val amountIndex = target.commandList.indexOfFirst { it.command == MedLinkCommandType.BolusAmount }
+        if (amountIndex < 0) return false
+        val parts = (mergedBolusParts[target] ?: mutableListOf(own)).toMutableList()
+        for (p in newParts) {
+            val consent = (parts + p).any { it.type() == MedLinkCommandType.Bolus && it.smbConsent }
+            if (!LoopBolusMerge.canJoinTracked(parts.map { it.type() }, p.type(), consent)) return false
+            parts.add(p)
+        }
+        val total = LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin })
+        if (!bolusTracker.onMerged(total, manual = newParts.any { it.type() == MedLinkCommandType.Bolus })) return false
+        setBolusAmount(target, amountIndex, total)
+        mergedBolusParts[target] = parts
+        aapsLogger.info(
+            LTag.PUMPBTCOMM,
+            "BOLUS joined tracked ${target.firstCommand()} ($reason): ${parts.joinToString { "${it.detailedBolusInfo.bolusType} ${it.detailedBolusInfo.insulin}U" }} -> ${total}U"
+        )
+        return true
+    }
+
+    /**
+     * 4i: `M` proved the tracked bolus was not delivered and it is re-sent: the boluses waiting behind it
+     * (never posted) join it, so the pump gets one bolus. The ones that cannot join run after it.
+     */
+    private fun joinWaitingInto(target: CommandExecutor<*>) {
+        synchronized(bolusMergeLock) {
+            val queue = bolusExecutionQueue.toList()
+            val removed = mutableListOf<CommandExecutor<*>>()
+            queue.filter { isBolusExecutor(it) && it !== target && it !== currentCommand && !it.isInitialized }.forEach { e ->
+                if (joinTracked(target, bolusParts(e), "M: not delivered")) {
+                    mergedBolusParts.remove(e)
+                    bolusQueuedAt.remove(e)
+                    removed += withSupplementary(e, queue)
+                }
+            }
+            if (removed.isEmpty()) return
+            bolusExecutionQueue.removeIf { e -> removed.any { it === e } }
+            removed.filter { isBolusExecutor(it) }.map { it.firstCommand() }.distinct().forEach { type ->
+                if (bolusExecutionQueue.none { it.firstCommand() == type }) bolusExecutionHash.remove(type)
+            }
+        }
+    }
+
+    /**
+     * 4i: bolus types pending: queued (with the merged-in parts) or sent and not resolved.
+     * A new bolus of one of these types is refused; any other type is merged or waits for `M`.
+     */
+    fun pendingBolusTypes(): Set<MedLinkCommandType> =
+        synchronized(bolusMergeLock) {
+            val executors = bolusExecutionQueue.filter { isBolusExecutor(it) && it !== trackedBolusExecutor } +
+                listOfNotNull(trackedBolusExecutor?.takeIf { !bolusTracker.canSendNewBolus() })
+            executors.flatMap { partTypes(it) }.toSet()
+        }
 
     /** A bolus executor and its supplementary `M` progress executor, which is queued right after it. */
     private fun withSupplementary(executor: CommandExecutor<*>, queue: List<CommandExecutor<*>>): List<CommandExecutor<*>> {
@@ -1581,7 +1661,7 @@ class MedLinkBLE //extends RileyLinkBLE
         synchronized(bolusMergeLock) {
             val queue = bolusExecutionQueue.toList()
             val manual = queue.lastOrNull { it.firstCommand() == MedLinkCommandType.Bolus && it !== trackedBolusExecutor } ?: return
-            manualBolusQueuedAt.putIfAbsent(manual, System.currentTimeMillis())
+            bolusQueuedAt.putIfAbsent(manual, System.currentTimeMillis())
             val own = bleBolusCommand(manual) ?: return
             val candidates = queue.filter {
                 it !== manual && LoopBolusMerge.isLoopBolus(it.firstCommand()) && it !== trackedBolusExecutor && it !== currentCommand && !it.isInitialized
@@ -1602,14 +1682,7 @@ class MedLinkBLE //extends RileyLinkBLE
                 removed += withSupplementary(e, queue)
             }
             val total = LoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin })
-            @Suppress("UNCHECKED_CAST")
-            val list = manual.commandList as MutableList<CommandStructure<Any?, BleCommand>>
-            val old = list[amountIndex]
-            list[amountIndex] = CommandStructure(
-                old.command, old.parseFunction, old.commandHandler,
-                MedLinkCommandType.BolusAmount.getRaw(BolusMedLinkMessage.amountArgument(total)),
-                old.commandPriority, old.errorFunction
-            )
+            setBolusAmount(manual, amountIndex, total)
             mergedBolusParts[manual] = parts
             bolusExecutionQueue.removeIf { e -> removed.any { it === e } }
             removed.filter { isBolusExecutor(it) }.map { it.firstCommand() }.distinct().forEach { type ->
@@ -1637,21 +1710,23 @@ class MedLinkBLE //extends RileyLinkBLE
     }
 
     /** T16: a manual bolus is queued or in flight and unresolved (a new SMB must wait for it in IOB). */
-    fun hasPendingManualBolus(): Boolean =
-        bolusExecutionQueue.any { it.firstCommand() == MedLinkCommandType.Bolus && it !== trackedBolusExecutor } ||
-            trackedBolusExecutor?.firstCommand() == MedLinkCommandType.Bolus && !bolusTracker.canSendNewBolus()
+    fun hasPendingManualBolus(): Boolean = MedLinkCommandType.Bolus in pendingBolusTypes()
 
-    /** T15: a manual bolus waited too long behind an unresolved bolus: drop it and tell the user. */
-    private fun dropExpiredManualBolus(executor: CommandExecutor<*>) {
+    /**
+     * T15: a bolus waited too long behind an unresolved bolus: drop it. A manual one (or one with a manual
+     * part) alarms the user; a loop one just fails, the loop asks again with fresh data (4i).
+     */
+    private fun dropExpiredBolus(executor: CommandExecutor<*>) {
+        val manual = MedLinkCommandType.Bolus in partTypes(executor)
         val group = withSupplementary(executor, bolusExecutionQueue.toList())
         bolusExecutionQueue.removeIf { e -> group.any { it === e } }
-        if (bolusExecutionQueue.none { it.firstCommand() == MedLinkCommandType.Bolus }) bolusExecutionHash.remove(MedLinkCommandType.Bolus)
-        manualBolusQueuedAt.remove(executor)
+        if (bolusExecutionQueue.none { it.firstCommand() == executor.firstCommand() }) bolusExecutionHash.remove(executor.firstCommand())
+        bolusQueuedAt.remove(executor)
         val amount = bolusAmount(executor)
-        failMergedParts(executor, "manual bolus expired")
-        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS manual ${amount}U dropped: waited more than ${ManualBolusRule.MAX_WAIT_MS / 60_000} min, previous bolus ${bolusTracker.current}")
+        failMergedParts(executor, "bolus expired")
+        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${executor.firstCommand()} ${amount}U dropped: waited more than ${ManualBolusRule.MAX_WAIT_MS / 60_000} min, previous bolus ${bolusTracker.current}")
         bleBolusCommand(executor)?.onQueueResult?.let { cb -> handler.post { cb(false, 0.0) } }
-        raiseBolusAlarm("Manual bolus $amount U not delivered: the previous bolus was not confirmed within ${ManualBolusRule.MAX_WAIT_MS / 60_000} min. Check the pump and bolus again if needed.")
+        if (manual) raiseBolusAlarm("Manual bolus $amount U not delivered: the previous bolus was not confirmed within ${ManualBolusRule.MAX_WAIT_MS / 60_000} min. Check the pump and bolus again if needed.")
     }
 
     private fun app.aaps.core.data.model.BS.Type.toCommandType(): MedLinkCommandType = when (this) {
@@ -1722,12 +1797,11 @@ class MedLinkBLE //extends RileyLinkBLE
             }
         }
         if (isBolusExecutor(executor) && executor !== trackedBolusExecutor) {
-            if (executor.firstCommand() == MedLinkCommandType.Bolus) {
-                val queuedAt = manualBolusQueuedAt.getOrPut(executor) { now }
-                if (ManualBolusRule.expired(queuedAt, now)) {
-                    dropExpiredManualBolus(executor)
-                    return false
-                }
+            // 4i: boluses now wait behind an unresolved one instead of being refused: none is delivered long after it was asked
+            val queuedAt = bolusQueuedAt.getOrPut(executor) { now }
+            if (ManualBolusRule.expired(queuedAt, now)) {
+                dropExpiredBolus(executor)
+                return false
             }
             if (!bolusTracker.canSendNewBolus()) {
                 aapsLogger.info(LTag.PUMPBTCOMM, "bolus waits: previous bolus ${bolusTracker.current} unresolved")
@@ -2657,6 +2731,7 @@ class MedLinkBLE //extends RileyLinkBLE
         }
         aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend after M proved it was not started")
         needToCheckOnHold = onHoldCommandQueue.isNotEmpty()
+        joinWaitingInto(executor)
         executor.clearExecutedCommand()
         bolusExecutionQueue.addFirst(executor)
         nextCommand()
@@ -2705,7 +2780,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (executor.firstCommand() == MedLinkCommandType.StopStartPump) lastStartStopSent = now
         if (!isBolusExecutor(executor)) return
         if (executor !== trackedBolusExecutor) {
-            // T14: once tracked the amount is final, mergeLoopBolus() leaves it alone
+            // T14: untracked boluses may be merged by mergeBolus(); once tracked, only joinTracked() (4i)
             synchronized(bolusMergeLock) {
                 val origin = if (executor.firstCommand() == MedLinkCommandType.Bolus) BolusOrigin.MANUAL else BolusOrigin.LOOP
                 val amount = bolusAmount(executor) ?: 0.0
@@ -2714,16 +2789,21 @@ class MedLinkBLE //extends RileyLinkBLE
                     return
                 }
                 trackedBolusExecutor = executor
-                manualBolusQueuedAt.remove(executor)
+                bolusQueuedAt.remove(executor)
             }
             bolusTracker.onBaseline(bolusTracker.latestSnapshot?.takeIf { now - it.readAt <= BASELINE_MAX_AGE_MS })
         }
         // the dose is committed when the amount is written
         if (executor.getCurrentCommand() == MedLinkCommandType.BolusAmount) {
-            when (val state = bolusTracker.current?.state) {
-                BolusState.QUEUED, BolusState.UNRESOLVED -> executeBolusAction(bolusTracker.onWritten())
-                else                                     -> aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS amount re-posted in state $state, not a new attempt")
+            // 4i: under the merge lock, so nothing joins the bolus once its amount is committed
+            val action = synchronized(bolusMergeLock) {
+                when (bolusTracker.current?.state) {
+                    BolusState.QUEUED, BolusState.UNRESOLVED -> bolusTracker.onWritten()
+                    else                                     -> null
+                }
             }
+            if (action != null) executeBolusAction(action)
+            else aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS amount re-posted in state ${bolusTracker.current?.state}, not a new attempt")
         }
     }
 

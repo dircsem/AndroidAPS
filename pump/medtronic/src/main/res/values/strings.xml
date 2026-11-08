@@ -155,6 +155,8 @@
     <string name="need_manual_profile_set">The pump profile and aaps profile differ, you need to update your configs or your pump basal</string>
 
     <string name="medlink_smb_pending_title">SMB in progress</string>
-    <string name="medlink_smb_pending_message">An SMB of %1$.2f U is in progress. Continue with the manual bolus of %2$.2f U? OK delivers it together with the SMB (or right after it), Cancel cancels the manual bolus.</string>
+    <string name="medlink_smb_pending_message">An SMB of %1$.2f U is in progress. Continue with the manual bolus of %2$.2f U? You may lower the amount below. OK delivers it together with the SMB (or right after it), Cancel cancels the manual bolus.</string>
     <string name="medlink_smb_pending_cancelled">Manual bolus cancelled: SMB in progress</string>
+    <string name="medlink_smb_pending_amount_hint">Manual bolus (U)</string>
+    <string name="medlink_smb_pending_amount_invalid">Enter an amount between %1$.2f and %2$.2f U</string>
 </resources>

@@ -371,6 +371,49 @@ class BolusTrackerTest {
         assertFalse(tracker.onDropped("removed"))
     }
 
+    // ---- 4i: another bolus joins one the pump has not received --------------------------------
+
+    @Test
+    fun `a bolus joins a queued request before the dose is written`() {
+        val r = tracker.onQueued("TBRBolus-1", BolusOrigin.LOOP, 0.1)!!
+        assertTrue(tracker.onMerged(0.5, manual = false))
+        assertEquals(0.5, r.requested, 1e-9)
+        assertEquals(BolusOrigin.LOOP, r.origin)
+        assertTrue(tracker.onMerged(2.5, manual = true))
+        assertEquals(BolusOrigin.MANUAL, r.origin, "a joined manual bolus is never re-sent without the user")
+    }
+
+    @Test
+    fun `nothing joins a written bolus until M proves it was not delivered`() {
+        val r = sendLoopBolus(0.1)
+        assertFalse(tracker.onMerged(0.5, manual = false))
+        tracker.onConfirmed()
+        clock.advance(min)
+        tracker.onStatus(notStarted())
+        assertEquals(BolusState.UNRESOLVED, r.state)
+        assertFalse(tracker.onMerged(0.5, manual = false), "one not-started M is not proof")
+        clock.advance(5_000)
+        assertEquals(Resend, tracker.onStatus(notStarted()))
+        assertTrue(tracker.onMerged(0.5, manual = false))
+        assertEquals(0.5, r.requested, 1e-9)
+
+        tracker.onWritten()
+        assertFalse(tracker.onMerged(0.9, manual = false), "the re-sent amount is final once written")
+        clock.advance(min)
+        assertEquals(Record(0.5, applied(0.5, minuteOffset = 2).lastBolusTime), tracker.onStatus(applied(0.5, minuteOffset = 2)))
+    }
+
+    @Test
+    fun `nothing joins a bolus M shows as delivered or delivering`() {
+        val r = sendLoopBolus(0.5)
+        tracker.onConfirmed()
+        clock.advance(2 * min)
+        tracker.onStatus(applied(0.5))
+        assertEquals(BolusState.DELIVERED, r.state)
+        assertFalse(tracker.onMerged(0.9, manual = false))
+        assertTrue(tracker.canSendNewBolus(), "the waiting bolus runs on its own after M")
+    }
+
     @Test
     fun `M without a bolus in flight is only observed`() {
         assertEquals(None, tracker.onStatus(applied(0.5)))

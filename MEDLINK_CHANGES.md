@@ -220,6 +220,24 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 
 **Testes**: `BolusTrackerTest` (+3). rileylink 468/468.
 
+## 4i. Só bolus do mesmo tipo é recusado; os outros juntam ou esperam o M (2026-11-08)
+
+**Antes**: com um bolus sem resolução no tracker, o plugin recusava qualquer SMB/TBR ("previous bolus unresolved"); só o manual entrava na fila (T15/T16). Nada se juntava a um bolus já rastreado.
+
+**Agora** (`ManualBolusRule.refuses`, `LoopBolusMerge.canJoinTracked`, `MedLinkBLE.pendingBolusTypes/joinTracked/joinWaitingInto`):
+- **Recusa**: só quando um bolus do mesmo tipo está pendente (na fila, juntado em outro, ou enviado sem resolução). Continua valendo do T16: SMB recusado com manual pendente (foi calculado sem o manual no IOB).
+- **Dose ainda não escrita** (rastreado em `QUEUED`): um bolus de outro tipo se junta a ele (o valor do `BOLUS` é reescrito e `BolusTracker.onMerged` atualiza o pedido). O `onWritten` do `beforePost` roda sob o `bolusMergeLock`: depois do valor gravado nada mais entra.
+- **Escrito e sem resolução** (`UNRESOLVED`/`UNKNOWN`, ex.: conexão perdida): o novo bolus entra na fila e um `M` é lido na hora.
+  - `M` prova que não foi entregue (dois `M`, regra do T7) e o tracker decide reenviar: os bolus que esperam se juntam ao reenvio (`joinWaitingInto`), a bomba recebe um bolus com a soma.
+  - `M` mostra entregue/parcial/em andamento: o bolus que espera roda logo depois, sozinho.
+  - Manual não entregue continua sem reenvio automático (T7): alarme, e o que espera roda sozinho.
+- Um manual juntado a um bolus de loop muda a origem do pedido para `MANUAL` (nunca reenviado sem o usuário). SMB e manual juntos só com o consentimento do diálogo (T16).
+- Como agora os bolus esperam em vez de serem recusados, todo bolus na fila (não só o manual) expira após 5 min (`ManualBolusRule.MAX_WAIT_MS`). Loop: falha sem alarme, o loop pede de novo; manual: falha com alarme.
+
+**Diálogo do T16**: continua avisando o valor do SMB pendente; agora tem um campo com o valor do bolus manual, que o usuário pode **diminuir** (`ManualBolusRule.editedAmount`: arredonda para baixo no passo da bomba, maior que zero e no máximo o pedido, que já passou pelos limites do AAPS). Valor inválido mantém o diálogo aberto com erro.
+
+**Testes**: `ManualBolusRuleTest` (refuses, editedAmount), `LoopBolusMergeTest` (canJoinTracked), `BolusTrackerTest` (onMerged). rileylink 475/475, `:app:assembleFullDebug` OK. O fluxo no `MedLinkBLE` e o diálogo não têm teste automático (T10).
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -238,15 +256,15 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `bolus/BolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
 | `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h) |
 | `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
-| `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14) |
-| `bolus/ManualBolusRuleTest` | manual não bloqueado por TBR (T15), SMB com consentimento (T16) |
+| `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14), junção ao bolus rastreado (4i) |
+| `bolus/ManualBolusRuleTest` | recusa só do mesmo tipo (4i), expiração, valor editado no diálogo (T16) |
 | `ble/command/BleStopStartCommandTest`, `ble/command/BleBolusCommandsTest` | tratamento das respostas `A`/`M` e do bolus |
 | `activities/BolusProgressCallbackTest` | root cause 7 |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-08, 4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-08, 4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---

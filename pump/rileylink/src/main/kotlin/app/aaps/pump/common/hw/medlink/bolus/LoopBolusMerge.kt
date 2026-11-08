@@ -17,7 +17,8 @@ import kotlin.math.roundToLong
  *  - a TBR / SMB merges into a queued loop bolus, and a TBR into a queued manual bolus;
  *  - an SMB never merges into a manual bolus by itself: only [canAbsorbIntoManual] with the user's consent;
  *  - at most one part of each type: one TBR, one SMB, one manual;
- *  - only into a bolus that was never posted (not tracked, nothing written), see MedLinkBLE;
+ *  - only into a bolus the pump has not received: never posted, tracked but the dose not written yet,
+ *    or proved not delivered by `M` before a re-send (4i, [canJoinTracked]), see MedLinkBLE;
  *  - the delivered amount is split over the parts in queue order, the last part takes the rest;
  *  - part i is recorded at pump time + i * [PART_OFFSET_MS]: the DB temporary id comes from the
  *    timestamp, so equal times would drop the second part. The offset stays inside the pump minute,
@@ -36,6 +37,19 @@ object LoopBolusMerge {
     fun canMerge(partTypes: List<MedLinkCommandType>, newType: MedLinkCommandType): Boolean =
         isLoopBolus(newType) && partTypes.isNotEmpty() && partTypes.all { it in mergeableTypes } && newType !in partTypes &&
             !(newType == MedLinkCommandType.SMBBolus && MedLinkCommandType.Bolus in partTypes)
+
+    /**
+     * 4i: may a bolus of [newType] join the tracked bolus made of [partTypes] that the pump has not received:
+     * not written yet (QUEUED), or proved not delivered by `M` and about to be re-sent.
+     * Any type may join, at most one of each; SMB and manual together only with the user's consent (T16).
+     */
+    fun canJoinTracked(partTypes: List<MedLinkCommandType>, newType: MedLinkCommandType, smbConsent: Boolean): Boolean =
+        newType in mergeableTypes && partTypes.isNotEmpty() && partTypes.all { it in mergeableTypes } && newType !in partTypes &&
+            when (newType) {
+                MedLinkCommandType.SMBBolus -> MedLinkCommandType.Bolus !in partTypes || smbConsent
+                MedLinkCommandType.Bolus    -> MedLinkCommandType.SMBBolus !in partTypes || smbConsent
+                else                        -> true
+            }
 
     /** T16: may a queued loop bolus part of [type] be taken into a manual bolus made of [partTypes]? */
     fun canAbsorbIntoManual(partTypes: List<MedLinkCommandType>, type: MedLinkCommandType, smbConsent: Boolean): Boolean =
