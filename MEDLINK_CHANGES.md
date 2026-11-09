@@ -355,6 +355,19 @@ Logs: `logs/basal_problem.log` (SMB 0,4 U às 11:29) e `logs/failed_bolus_sample
 
 **Pendente**: confirmar no campo se o `M` mostra o valor entregue durante um bolus normal (`square bolus ... delivered`); senão o diálogo usa a estimativa pelo tempo.
 
+## 4n. Despertares do seletor de comandos multiplicavam (2026-11-09)
+
+**Sintoma:** o loop deixou de rodar a cada 5 min e o LeakCanary passou a coletar heap dumps com frequência.
+
+**Causa:** `mayRun` (bolus esperando o minuto seguinte, bomba entregando outro bolus, STOP segurado pelo `StopGate`)
+chamava `scheduleNextCommand`, que postava um `nextCommand()` novo a cada chamada. O seletor (`nextCommand` getter) é
+avaliado várias vezes por `nextCommand()` (até 8 só em `needToAddConnectCommand` quando desconectado), então cada
+despertar gerava vários outros: o número crescia exponencialmente a cada segundo enquanto o comando esperava,
+inundando a thread do BLE e a memória.
+
+**Correção:** `MedLinkBLE.scheduleNextCommand` mantém um único `Runnable` pendente; um pedido para mais tarde que o já
+agendado é ignorado, um pedido mais cedo reagenda.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

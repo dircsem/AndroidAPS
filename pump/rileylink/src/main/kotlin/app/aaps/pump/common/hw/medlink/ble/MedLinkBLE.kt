@@ -2854,8 +2854,25 @@ class MedLinkBLE //extends RileyLinkBLE
         handler.post { if (connectionStatus == ConnectionStatus.CLOSED) medLinkConnect() else nextCommand() }
     }
 
+    private val scheduledNextCommand = Runnable {
+        synchronized(this) { scheduledNextCommandAt = 0L }
+        nextCommand()
+    }
+    private var scheduledNextCommandAt = 0L
+
+    /**
+     * One pending wake-up at most. [mayRun] runs many times per [nextCommand] (the picker is evaluated several times
+     * by [needToAddConnectCommand]); posting a new wake-up on every evaluation multiplied them every second while a
+     * bolus or STOP waited, flooding the BLE thread and the heap.
+     */
     private fun scheduleNextCommand(delay: Long) {
-        handler.postDelayed({ nextCommand() }, maxOf(delay, 1_000L))
+        val at = System.currentTimeMillis() + maxOf(delay, 1_000L)
+        synchronized(this) {
+            if (scheduledNextCommandAt in 1..at) return
+            scheduledNextCommandAt = at
+        }
+        handler.removeCallbacks(scheduledNextCommand)
+        handler.postDelayed(scheduledNextCommand, maxOf(delay, 1_000L))
     }
 
     /** Bookkeeping right before an executor is written. */
