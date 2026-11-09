@@ -8,8 +8,8 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.queue.Callback
-import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
-import app.aaps.pump.common.hw.medlink.bolus.PumpStateAnswer
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkPumpAnswerState
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkPumpStateAnswer
 import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpRunningState
 
 class BleStartCommand(
@@ -28,18 +28,18 @@ class BleStartCommand(
         aapsLogger.info(LTag.PUMPBTCOMM, answer)
         aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
         when {
-            PumpStateAnswer.isBolusing(answer) ||
+            MedLinkPumpStateAnswer.isBolusing(answer) ||
                 answer.contains("pump normal state") -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "status command")
                 aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
                 pumpResponse.append(answer)
                 // T2: a bolusing pump is not suspended, but it is not "Running" either
-                if (PumpStateAnswer.isBolusing(answer)) {
+                if (MedLinkPumpStateAnswer.isBolusing(answer)) {
                     bleComm.setLastPumpStatus(MedLinkPumpRunningState.Bolusing)
-                    bleComm.onPumpAnswerState(PumpAnswerState.BOLUSING)
+                    bleComm.onPumpAnswerState(MedLinkPumpAnswerState.BOLUSING)
                 } else {
                     bleComm.setLastPumpStatus(MedLinkPumpRunningState.Running)
-                    bleComm.onPumpAnswerState(PumpAnswerState.RUNNING)
+                    bleComm.onPumpAnswerState(MedLinkPumpAnswerState.RUNNING)
                 }
 
                 if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.NoCommand || bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
@@ -59,7 +59,7 @@ class BleStartCommand(
 
             answer.contains("pump suspend state")    -> {
                 bleComm.setLastPumpStatus(MedLinkPumpRunningState.Suspended)
-                bleComm.onPumpAnswerState(PumpAnswerState.SUSPENDED)
+                bleComm.onPumpAnswerState(MedLinkPumpAnswerState.SUSPENDED)
                 if (bleComm.currentCommand?.nextCommand() == MedLinkCommandType.StartPump) {
                     // answer to A: the pump is suspended as expected, write START now
                     bleComm.completedCommand()

@@ -6,7 +6,7 @@ package app.aaps.pump.common.hw.medlink.bolus
  * step of the next attempt finishes at once when the pump already runs.
  * Staying suspended is the risk here (no basal), so retry with a growing delay and alarm early.
  */
-object StartRetryRule {
+object MedLinkStartRetryRule {
 
     /** Failures before giving up (with alarm). */
     const val MAX_FAILURES = 5

@@ -8,7 +8,7 @@ import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpRunningState
  * read from the pump after the last start/stop was sent, is less than 60 s old, and matches.
  * Never on Bolusing or Unknow.
  */
-object StartStopSkipRule {
+object MedLinkStartStopSkipRule {
 
     private const val MAX_AGE_MS = 60_000L
 

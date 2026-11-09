@@ -27,17 +27,17 @@ O `MedLinkBLE` só executa o que essas classes decidem.
 
 | Classe | Função |
 |---|---|
-| `BolusStatusSnapshot` | Resposta `M` já parseada. `inProgress` = bomba em bolus, ou bolus quadrado > 0 e entregue < quadrado. |
-| `BolusStatusInterpreter` | Compara o snapshot com o pedido e o baseline → `NOT_STARTED / DELIVERING / DELIVERED / PARTIAL / UNKNOWN`. |
-| `BolusTracker` | Máquina de estados de cada bolus (QUEUED → SENT → CONFIRMED/DELIVERING/UNRESOLVED/UNKNOWN → DELIVERED/PARTIAL/FAILED). Devolve ações: Resend, ReadStatusAt, Record, Fail, Alarm, AskUser. |
-| `StopGate` | Decide se um **stop automático** pode ir agora, se precisa ler `M` antes ou se deve esperar o bolus terminar. Stop do usuário vai sempre. |
-| `StartStopSkipRule` | Só pula start/stop "já feito" se o estado veio de uma resposta da bomba **depois** do último start/stop enviado e tem menos de 60 s. |
+| `MedLinkBolusStatusSnapshot` | Resposta `M` já parseada. `inProgress` = bomba em bolus, ou bolus quadrado > 0 e entregue < quadrado. |
+| `MedLinkBolusStatusInterpreter` | Compara o snapshot com o pedido e o baseline → `NOT_STARTED / DELIVERING / DELIVERED / PARTIAL / UNKNOWN`. |
+| `MedLinkBolusTracker` | Máquina de estados de cada bolus (QUEUED → SENT → CONFIRMED/DELIVERING/UNRESOLVED/UNKNOWN → DELIVERED/PARTIAL/FAILED). Devolve ações: Resend, ReadStatusAt, Record, Fail, Alarm, AskUser. |
+| `MedLinkStopGate` | Decide se um **stop automático** pode ir agora, se precisa ler `M` antes ou se deve esperar o bolus terminar. Stop do usuário vai sempre. |
+| `MedLinkStartStopSkipRule` | Só pula start/stop "já feito" se o estado veio de uma resposta da bomba **depois** do último start/stop enviado e tem menos de 60 s. |
 | ~~`BolusProgressRule`~~ | Removida no 4m com o `BolusProgressCallback` (o tracker segue o bolus e atualiza o diálogo). |
-| `BolusCommandAnswer` | (4m) Resposta do próprio comando BOLUS: valor e hora do último bolus, bomba em bolus ou não. |
-| `PumpClock` | (4m) Ignora o ano da bomba quando está claramente errado (`00`). |
-| `StartRetryRule` | (2026-11-08) Quando reenviar um START recusado: 30/60/120/300 s, alarme a partir da 2ª falha, desiste com alarme na 5ª. Cancela o reenvio se outro start/stop foi enviado depois ou se a bomba já respondeu Running. |
+| `MedLinkBolusCommandAnswer` | (4m) Resposta do próprio comando BOLUS: valor e hora do último bolus, bomba em bolus ou não. |
+| `MedLinkPumpClock` | (4m) Ignora o ano da bomba quando está claramente errado (`00`). |
+| `MedLinkStartRetryRule` | (2026-11-08) Quando reenviar um START recusado: 30/60/120/300 s, alarme a partir da 2ª falha, desiste com alarme na 5ª. Cancela o reenvio se outro start/stop foi enviado depois ou se a bomba já respondeu Running. |
 
-Regras importantes do `BolusTracker`:
+Regras importantes do `MedLinkBolusTracker`:
 - Primeiro `M` mostrando NOT_STARTED → UNRESOLVED e uma nova leitura de `M`. Só no **segundo** NOT_STARTED pode haver reenvio:
   - sem baseline → FAILED + alarme;
   - ~~bolus do loop com mais de 5 min → falha~~ (removido em 4k);
@@ -54,11 +54,11 @@ Regras importantes do `BolusTracker`:
 ## 3. Alterações por tarefa
 
 - **T0 — Suspender pelo usuário**
-  - `StopOrigin { USER, AUTOMATIC }` (core/interfaces).
+  - `MedLinkStopOrigin { USER, AUTOMATIC }` (core/interfaces).
   - Nova ação "Suspend pump" no MedLink (`MedtronicCustomActionType.MedLinkSuspendPump`).
   - `MedLinkPumpPluginBase.userSuspend()`; `CommandStopPump` chama esse método para MedLink.
   - O stop do usuário vai para o início da fila e descarta os bolus ainda não enviados (com alarme).
-- **T1 — Stop automático não interrompe bolus**: `StopGate` lê `M` antes e adia o stop enquanto há bolus em andamento, sem `sleep`.
+- **T1 — Stop automático não interrompe bolus**: `MedLinkStopGate` lê `M` antes e adia o stop enquanto há bolus em andamento, sem `sleep`.
 - **T2 — "Bolusing" ≠ "Suspended"**: novo estado `MedLinkPumpRunningState.Bolusing`; `BleStopCommand` e `BleStartCommand` tratam a resposta corretamente.
 - **T3 — Stop durante bolus**: lê `M` e registra o valor parcial; o restante **nunca** é reenviado.
 - **T4 — Reconexão**: se há bolus não resolvido, o primeiro comando após conectar é um `M`.
@@ -110,13 +110,13 @@ Antes, um bolus que o `M` mostrava como entregue depois de uma desconexão nunca
 
 **Correção**
 - `BleStartCommand`: "pump suspend state" com o próximo passo = `StartPump` → resposta ao `A`, segue normal. Senão → `bleComm.onStartFailed(...)`.
-- `MedLinkBLE.onStartFailed` / `scheduleStartRetry` / `retryStart`: tira o executor das filas, decide pelo `StartRetryRule`, reenfileira com `postDelayed` (sem sleep), com `clearExecutedCommand()` e `resetRetries()`. Não duplica se já há outro START na fila.
+- `MedLinkBLE.onStartFailed` / `scheduleStartRetry` / `retryStart`: tira o executor das filas, decide pelo `MedLinkStartRetryRule`, reenfileira com `postDelayed` (sem sleep), com `clearExecutedCommand()` e `resetRetries()`. Não duplica se já há outro START na fila.
 - Os dois caminhos de `MAX_TRIES` (`completedCommand` e `retryCommand`) também chamam `scheduleStartRetry` quando o executor é um START.
 - `setLastPumpStatus(Running)` zera o contador de falhas.
 - Reenviar START é seguro: nunca entrega insulina, e se a bomba já estiver rodando o passo `A` termina logo.
 - O alarme usa o `bolusAlarmHandler` existente (título "bolus alarm").
 
-**Testes**: `bolus/StartRetryRuleTest` (novo) e 2 testes novos em `ble/command/BleStopStartCommandTest`.
+**Testes**: `bolus/MedLinkStartRetryRuleTest` (novo) e 2 testes novos em `ble/command/BleStopStartCommandTest`.
 
 ### 4c. Causa real do bug 4, achada nos logs de campo (2026-11-08)
 
@@ -154,13 +154,13 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 **Por quê**: o bolus de microbolus (TBR) e o SMB costumam chegar quase juntos. Cada bolus demora na bomba e o tracker exige 1 min entre envios (o `M` tem resolução de minuto), então o segundo esperava.
 
 **O que mudou**
-- `bolus/LoopBolusMerge` (regra pura): só TBRBolus/SMBBolus se juntam, no máximo um TBR e um SMB, nunca bolus manual. Divide o entregue entre as partes na ordem da fila (a última fica com o resto) e dá a cada parte o horário `pumpTime + i * 1 s`.
+- `bolus/MedLinkLoopBolusMerge` (regra pura): só TBRBolus/SMBBolus se juntam, no máximo um TBR e um SMB, nunca bolus manual. Divide o entregue entre as partes na ordem da fila (a última fica com o resto) e dá a cada parte o horário `pumpTime + i * 1 s`.
 - `MedLinkBLE.addCommands` → `mergeLoopBolus`: se chega um TBR/SMB e há na `bolusExecutionQueue` um bolus de loop do outro tipo **nunca postado** (não rastreado, não é o `currentCommand`, nada escrito), o argumento `BOLUS` desse executor é reescrito com a soma (0,1 + 0,4 → 0,5) e a mensagem nova não entra na fila (nem o `M` suplementar dela).
 - O momento em que o bolus passa a ser rastreado (`beforePost`) e a junção usam o mesmo lock (`bolusMergeLock`): depois de rastreado, o valor não muda mais. O tracker recebe a soma como `requested`.
-- Registro (`BolusAction.Record` → `recordParts`): cada parte é gravada com a própria `DetailedBolusInfo` (tipo TBR → `isBasalInsulin`, tipo SMB). O id temporário do banco vem do horário; por isso as partes têm horários diferentes. A parte 0 fica no horário da bomba, então o bolus único de 0,5 U lido depois do histórico cai no mesmo id e não é somado de novo. O callback antigo do executor (parte 0) continua igual.
+- Registro (`MedLinkBolusAction.Record` → `recordParts`): cada parte é gravada com a própria `DetailedBolusInfo` (tipo TBR → `isBasalInsulin`, tipo SMB). O id temporário do banco vem do horário; por isso as partes têm horários diferentes. A parte 0 fica no horário da bomba, então o bolus único de 0,5 U lido depois do histórico cai no mesmo id e não é somado de novo. O callback antigo do executor (parte 0) continua igual.
 - A parte juntada recebe o resultado por `BleBolusCommand.onQueueResult` (antes `onMergedResult`) (ligado no `deliverBolus` do plugin): sucesso com o valor gravado para ela, ou falha quando o bolus falha, é descartado por stop do usuário ou é recusado antes da escrita (bomba suspensa). Na falha, o dono (operação de TBR / loop) pede de novo.
 
-**Testes**: `bolus/LoopBolusMergeTest` (8). rileylink 458/458, `:pump:medtronic:compileFullDebugKotlin` OK.
+**Testes**: `bolus/MedLinkLoopBolusMergeTest` (8). rileylink 458/458, `:pump:medtronic:compileFullDebugKotlin` OK.
 
 **Limites**
 - Só junta enquanto o primeiro bolus ainda espera na fila. Depois de postado, o plugin recusa bolus novo até o atual ser resolvido (T6), como antes.
@@ -180,24 +180,24 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 
 **Antes**: o `deliverBolus` do plugin recusava qualquer bolus ("previous bolus unresolved") enquanto o tracker tinha um bolus sem confirmação, inclusive um microbolus de TBR. Além disso, a fila de bolus do `MedLinkBLE` era FIFO: um manual que chegava depois de um TBR ainda não enviado ficava atrás dele.
 
-**Agora** (`bolus/ManualBolusRule`):
+**Agora** (`bolus/MedLinkManualBolusRule`):
 - Plugin: se o bolus pendente é um TBR (`MedLinkBLE.unresolvedBolusType()`), o manual não é recusado; vai para a fila e o `MedLinkBLE` envia quando o TBR for resolvido pelo `M` (continua um bolus por vez). Se o pendente é SMB ou manual, continua recusado.
 - `MedLinkBLE.prioritizeManualBolus`: o manual passa na frente dos bolus de loop ainda não postados (junto com o `M` de progresso de cada um). Comparações por identidade (`CommandExecutor.equals` compara a lista de comandos).
-- Um manual esperando mais de 5 min (`ManualBolusRule.MAX_WAIT_MS`) é descartado com alarme, e o resultado vai como falha via `onQueueResult`. Ele não pode ser entregue muito depois do pedido.
+- Um manual esperando mais de 5 min (`MedLinkManualBolusRule.MAX_WAIT_MS`) é descartado com alarme, e o resultado vai como falha via `onQueueResult`. Ele não pode ser entregue muito depois do pedido.
 - Continua valendo a espera de até 1 min depois de um bolus (o `M` tem resolução de minuto) e a espera enquanto a bomba está entregando outro bolus. São esperas, não recusas.
 
-**Testes**: `bolus/ManualBolusRuleTest` (3). rileylink 461/461, `:pump:medtronic:compileFullDebugKotlin` OK.
+**Testes**: `bolus/MedLinkManualBolusRuleTest` (3). rileylink 461/461, `:pump:medtronic:compileFullDebugKotlin` OK.
 
 ## 4g. T16: bolus manual junta o TBR; SMB pendente pede confirmação ao usuário (2026-11-08)
 
 **Manual + TBR**
 - Quando um manual entra na fila, `MedLinkBLE.absorbIntoManual` traz para dentro dele os bolus de loop ainda não postados (substitui o `prioritizeManualBolus` do T15). O executor do manual recebe a soma no `BOLUS` e os executores absorvidos saem da fila, junto com o `M` de progresso de cada um.
-- Um TBR que chega com um manual na fila (não postado) também se junta ao manual (`LoopBolusMerge.canMerge`).
+- Um TBR que chega com um manual na fila (não postado) também se junta ao manual (`MedLinkLoopBolusMerge.canMerge`).
 - O manual é sempre a parte 0: é preenchido primeiro numa entrega parcial e fica com o horário da bomba. A origem no tracker continua MANUAL, então ele nunca é reenviado sem o usuário.
 
 **SMB antes do manual**
 - No `deliverBolus` do plugin, se há SMB pendente (`MedLinkBLE.pendingSmbAmount()`: na fila ou enviado e não resolvido), abre `dialog/MedLinkBolusConfirmActivity` ("Há um SMB de X U em andamento...").
-  - **OK**: o manual segue com `smbConsent`. O SMB na fila é juntado (manual + SMB + TBR). Se o SMB já foi enviado, o manual espera por ele (`ManualBolusRule.mayQueueBehind(SMB, consent)`).
+  - **OK**: o manual segue com `smbConsent`. O SMB na fila é juntado (manual + SMB + TBR). Se o SMB já foi enviado, o manual espera por ele (`MedLinkManualBolusRule.mayQueueBehind(SMB, consent)`).
   - **Cancelar**, botão voltar ou 2 min sem resposta: o manual é cancelado e o callback recebe falha ("Bolus manual cancelado: SMB em andamento").
 - A activity é translúcida e iniciada com `FLAG_ACTIVITY_NEW_TASK`, igual ao `ErrorHelperActivity`.
 
@@ -206,39 +206,39 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 - Um SMB na fila sem consentimento, ou um segundo TBR, não é juntado ao manual: ele falha via `onQueueResult` e o dono pede de novo.
 - Se o manual expira (5 min, T15), as partes juntadas também recebem falha.
 
-**Testes**: `LoopBolusMergeTest` e `ManualBolusRuleTest` atualizados (rileylink 465/465). `:app:assembleFullDebug` OK. A activity e o fluxo do diálogo não têm teste automático.
+**Testes**: `MedLinkLoopBolusMergeTest` e `MedLinkManualBolusRuleTest` atualizados (rileylink 465/465). `:app:assembleFullDebug` OK. A activity e o fluxo do diálogo não têm teste automático.
 
 ## 4h. Bolus descartado da fila libera o tracker (2026-11-08)
 
-**Sintoma** (log real, build anterior ao T15): `deliverBolus refused: previous bolus BolusRequest(id=TBRBolus-…, state=QUEUED, attempts=0) unresolved` por mais de 10 min; todo SMB era recusado.
+**Sintoma** (log real, build anterior ao T15): `deliverBolus refused: previous bolus MedLinkBolusRequest(id=TBRBolus-…, state=QUEUED, attempts=0) unresolved` por mais de 10 min; todo SMB era recusado.
 
 **Causa**: o tracker põe o pedido em `QUEUED` quando o primeiro comando do executor é escrito. Ele só saía de `QUEUED` por `onWritten` (dose escrita) ou `onRejectedBeforeWrite`. Se o executor saía da fila antes de a dose ser escrita (máximo de tentativas, erro com `removeFirstCommand(true)`, "nothing left to write", stop do usuário), ninguém avisava o tracker e o pedido ficava `QUEUED` para sempre.
 
 **Agora**:
-- `BolusTracker.onDropped(reason)`: um pedido `QUEUED` (dose nunca escrita) vira `FAILED` e novos bolus são liberados. Um pedido já escrito não muda: o `M` decide.
+- `MedLinkBolusTracker.onDropped(reason)`: um pedido `QUEUED` (dose nunca escrita) vira `FAILED` e novos bolus são liberados. Um pedido já escrito não muda: o `M` decide.
 - `MedLinkBLE.onBolusExecutorDropped` é chamado em `removeFirstCommand`, no `DROP_COMPLETED` do seletor de comandos e no `addUserStop`. As partes juntadas (T14) recebem falha.
-- Stop do usuário: os bolus na fila são removidos e o tracker é avisado; um bolus em andamento continua sendo interrompido pelo STOP (`StopOrigin.USER`).
+- Stop do usuário: os bolus na fila são removidos e o tracker é avisado; um bolus em andamento continua sendo interrompido pelo STOP (`MedLinkStopOrigin.USER`).
 - Conexão perdida: nenhum bolus é descartado. O caminho "GATT is null" limpava a fila de prioridade inteira, inclusive o `M` que verifica um bolus escrito; agora ele mantém os executores de bolus e de `BolusStatus` (`keepOnConnectionLoss`). Um bolus não escrito continua na fila (`holdCurrentBolus`), um escrito vai para o hold e é verificado pelo `M`.
 
-**Testes**: `BolusTrackerTest` (+3). rileylink 468/468.
+**Testes**: `MedLinkBolusTrackerTest` (+3). rileylink 468/468.
 
 ## 4i. Só bolus do mesmo tipo é recusado; os outros juntam ou esperam o M (2026-11-08)
 
 **Antes**: com um bolus sem resolução no tracker, o plugin recusava qualquer SMB/TBR ("previous bolus unresolved"); só o manual entrava na fila (T15/T16). Nada se juntava a um bolus já rastreado.
 
-**Agora** (`ManualBolusRule.refuses`, `LoopBolusMerge.canJoinTracked`, `MedLinkBLE.pendingBolusTypes/joinTracked/joinWaitingInto`):
+**Agora** (`MedLinkManualBolusRule.refuses`, `MedLinkLoopBolusMerge.canJoinTracked`, `MedLinkBLE.pendingBolusTypes/joinTracked/joinWaitingInto`):
 - **Recusa**: só quando um bolus do mesmo tipo está pendente (na fila, juntado em outro, ou enviado sem resolução). Continua valendo do T16: SMB recusado com manual pendente (foi calculado sem o manual no IOB).
-- **Dose ainda não escrita** (rastreado em `QUEUED`): um bolus de outro tipo se junta a ele (o valor do `BOLUS` é reescrito e `BolusTracker.onMerged` atualiza o pedido). O `onWritten` do `beforePost` roda sob o `bolusMergeLock`: depois do valor gravado nada mais entra.
+- **Dose ainda não escrita** (rastreado em `QUEUED`): um bolus de outro tipo se junta a ele (o valor do `BOLUS` é reescrito e `MedLinkBolusTracker.onMerged` atualiza o pedido). O `onWritten` do `beforePost` roda sob o `bolusMergeLock`: depois do valor gravado nada mais entra.
 - **Escrito e sem resolução** (`UNRESOLVED`/`UNKNOWN`, ex.: conexão perdida): o novo bolus entra na fila e um `M` é lido na hora.
   - `M` prova que não foi entregue (dois `M`, regra do T7) e o tracker decide reenviar: os bolus que esperam se juntam ao reenvio (`joinWaitingInto`), a bomba recebe um bolus com a soma.
   - `M` mostra entregue/parcial/em andamento: o bolus que espera roda logo depois, sozinho.
   - Manual não entregue continua sem reenvio automático (T7): alarme, e o que espera roda sozinho.
 - Um manual juntado a um bolus de loop muda a origem do pedido para `MANUAL` (nunca reenviado sem o usuário). SMB e manual juntos só com o consentimento do diálogo (T16).
-- Como agora os bolus esperam em vez de serem recusados, todo bolus na fila (não só o manual) expira após 5 min (`ManualBolusRule.MAX_WAIT_MS`). Loop: falha sem alarme, o loop pede de novo; manual: falha com alarme.
+- Como agora os bolus esperam em vez de serem recusados, todo bolus na fila (não só o manual) expira após 5 min (`MedLinkManualBolusRule.MAX_WAIT_MS`). Loop: falha sem alarme, o loop pede de novo; manual: falha com alarme.
 
-**Diálogo do T16**: continua avisando o valor do SMB pendente; agora tem um campo com o valor do bolus manual, que o usuário pode **diminuir** (`ManualBolusRule.editedAmount`: arredonda para baixo no passo da bomba, maior que zero e no máximo o pedido, que já passou pelos limites do AAPS). Valor inválido mantém o diálogo aberto com erro.
+**Diálogo do T16**: continua avisando o valor do SMB pendente; agora tem um campo com o valor do bolus manual, que o usuário pode **diminuir** (`MedLinkManualBolusRule.editedAmount`: arredonda para baixo no passo da bomba, maior que zero e no máximo o pedido, que já passou pelos limites do AAPS). Valor inválido mantém o diálogo aberto com erro.
 
-**Testes**: `ManualBolusRuleTest` (refuses, editedAmount), `LoopBolusMergeTest` (canJoinTracked), `BolusTrackerTest` (onMerged). rileylink 475/475, `:app:assembleFullDebug` OK. O fluxo no `MedLinkBLE` e o diálogo não têm teste automático (T10).
+**Testes**: `MedLinkManualBolusRuleTest` (refuses, editedAmount), `MedLinkLoopBolusMergeTest` (canJoinTracked), `MedLinkBolusTrackerTest` (onMerged). rileylink 475/475, `:app:assembleFullDebug` OK. O fluxo no `MedLinkBLE` e o diálogo não têm teste automático (T10).
 
 ## 4j. Bomba bloqueada, bolus de fora e tempo de vida da fila (2026-11-08)
 
@@ -252,9 +252,9 @@ Logs analisados: `~/Downloads/AndroidAPS_LOG_*.zip` (2024-05, 2024-07/08, 2026-0
 - `NOT_ACCEPTING_COMMANDS` tem prioridade sobre `UNREACHABLE`.
 - Com a bomba bloqueada o plugin recusa novos bolus, TBR (exceto 100 %) e perfil. Leitura de status, cancelar TBR e o `M`/START do próprio driver continuam.
 
-**Bolus que o driver não enviou** (`BolusTracker.isOtherBolusInProgress`): o `M` mostra um bolus em andamento que não é o rastreado (dado nos botões da bomba, onda quadrada/dupla, ou começado antes do nosso). Se há bolus esperando, o usuário recebe um alarme com o valor programado e o já entregue, uma vez por bolus da bomba.
+**Bolus que o driver não enviou** (`MedLinkBolusTracker.isOtherBolusInProgress`): o `M` mostra um bolus em andamento que não é o rastreado (dado nos botões da bomba, onda quadrada/dupla, ou começado antes do nosso). Se há bolus esperando, o usuário recebe um alarme com o valor programado e o já entregue, uma vez por bolus da bomba.
 
-**Testes**: `PumpBlockRuleTest` (4), `BolusTrackerTest` (+3). rileylink 482/482, `:app:assembleFullDebug` OK. Watchdog, notificação e recusas no plugin sem teste automático (T10).
+**Testes**: `PumpBlockRuleTest` (4), `MedLinkBolusTrackerTest` (+3). rileylink 482/482, `:app:assembleFullDebug` OK. Watchdog, notificação e recusas no plugin sem teste automático (T10).
 
 ## 4k. Bomba travada (PUMP_LOCKED), tentativas no lugar do tempo de vida, falhas do `M` e SMB de 0 U (2026-11-09)
 
@@ -276,24 +276,24 @@ Log analisado: `logs/invalid_smb.log` (dois SMB recusados).
 - A causa do `UNKNOWN` não aparece no log (o baseline foi lido antes do trecho). **Pendente**: log de antes do envio do bolus.
 
 **O que mudou**
-- `UNREACHABLE` e `NOT_ACCEPTING_COMMANDS` foram substituídos por `PumpBlock.PUMP_LOCKED` (`bolus/PumpLockRule`):
-  - um comando confirmado pela MedLink sem efeito na bomba conta como evidência: START e a bomba continua suspensa (`onStartFailed`), STOP e a bomba continua rodando (`onStopFailed`, novo), bolus confirmado que dois `M` provam não entregue (`BolusTracker.onConfirmedWithoutEffect`);
+- `UNREACHABLE` e `NOT_ACCEPTING_COMMANDS` foram substituídos por `MedLinkPumpBlock.PUMP_LOCKED` (`bolus/MedLinkPumpLockRule`):
+  - um comando confirmado pela MedLink sem efeito na bomba conta como evidência: START e a bomba continua suspensa (`onStartFailed`), STOP e a bomba continua rodando (`onStopFailed`, novo), bolus confirmado que dois `M` provam não entregue (`MedLinkBolusTracker.onConfirmedWithoutEffect`);
   - 2 seguidos (`LOCK_AFTER`) → travada: notificação urgente + alarme "Bomba bloqueada";
   - qualquer efeito (bolus entregue ou em entrega, bomba muda entre suspensa e rodando) zera a contagem e libera;
   - **nada é recusado** com a bomba travada: os comandos continuam indo (cada um com as próprias tentativas) e servem de teste; o primeiro que funcionar libera. O plugin não recusa mais bolus, TBR e perfil (`pumpBlockedResult` removido).
-- STOP confirmado com a bomba ainda rodando: antes era removido em silêncio. Agora é reenviado como o START (`StartRetryRule`: 30/60/120/300 s, alarme a partir da 2ª falha, desiste com alarme na 5ª; cancelado se outro start/stop foi enviado ou se a bomba já está suspensa).
-- **Sem tempo de vida na fila** (removidos `ManualBolusRule.MAX_WAIT_MS/expired`, `bolusQueuedAt`, `dropExpiredBolus` e o "stale loop bolus" de 5 min do tracker). No lugar:
-  - `BolusRequest.attempts` conta **toda vez que o executor do bolus é postado** (`BolusTracker.onTry`), inclusive quando a conexão cai antes de a dose ser escrita. Um bolus já escrito só conta outra tentativa quando o `M` autoriza o reenvio;
+- STOP confirmado com a bomba ainda rodando: antes era removido em silêncio. Agora é reenviado como o START (`MedLinkStartRetryRule`: 30/60/120/300 s, alarme a partir da 2ª falha, desiste com alarme na 5ª; cancelado se outro start/stop foi enviado ou se a bomba já está suspensa).
+- **Sem tempo de vida na fila** (removidos `MedLinkManualBolusRule.MAX_WAIT_MS/expired`, `bolusQueuedAt`, `dropExpiredBolus` e o "stale loop bolus" de 5 min do tracker). No lugar:
+  - `MedLinkBolusRequest.attempts` conta **toda vez que o executor do bolus é postado** (`MedLinkBolusTracker.onTry`), inclusive quando a conexão cai antes de a dose ser escrita. Um bolus já escrito só conta outra tentativa quando o `M` autoriza o reenvio;
   - até 5 tentativas (`MAX_ATTEMPTS`; antes, 1 reenvio). Um bolus `QUEUED` sem tentativas sobrando sai da fila e falha (`dropBolusOutOfTries`; manual → alarme);
   - um bolus esperando atrás de outro espera até esse ser resolvido, o que agora é limitado pelas tentativas e pelas falhas do `M`.
-- **Falhas do `M`** (`BolusRequest.statusFailures`, `BolusTracker.onStatusFailed`): "invalid command", `M` pedido há 60 s sem resposta (conexão caiu ou MedLink fora), resposta ilegível ou ambígua (`UNKNOWN`).
+- **Falhas do `M`** (`MedLinkBolusRequest.statusFailures`, `MedLinkBolusTracker.onStatusFailed`): "invalid command", `M` pedido há 60 s sem resposta (conexão caiu ou MedLink fora), resposta ilegível ou ambígua (`UNKNOWN`).
   - Cada falha relê o `M`; uma resposta que decide (entregando / não começou / entregue) zera a contagem.
   - 5 seguidas → o bolus vira FAILED com alarme ("pode ter sido entregue e não foi registrado: confira o histórico da bomba") e o tracker é liberado. **Risco aceito**: se o bolus tiver entrado, o IOB fica mais baixo que o real.
 - `M` → "invalid command" (`BleBolusStatusCommand` → `MedLinkBLE.onBolusStatusInvalid`): conta como falha e relê. **2 seguidos** (`M_INVALID_RESET`) → a conexão com a MedLink é reiniciada (`close(true)`, reconecta porque há comandos na fila). Antes, o segundo "invalid command" em 20 s removia o `M` em silêncio.
 - O watchdog (30 s) não expira mais bolus: com bolus escrito e sem resolução, pede `M` a cada 60 s (reconectando se preciso) e conta o `M` não respondido como falha.
-- `StopGate`: `MAX_UNKNOWN` virou `MAX_UNREADABLE_FOR_STOP` (mesmo valor, 3).
+- `MedLinkStopGate`: `MAX_UNKNOWN` virou `MAX_UNREADABLE_FOR_STOP` (mesmo valor, 3).
 
-**Testes**: `PumpLockRuleTest` (novo, substitui `PumpBlockRuleTest`), `BolusTrackerTest` (5 tentativas, tentativa com queda de conexão, sem tempo de vida, falhas do `M`, sinais de trava). rileylink 484/484, `:app:assembleFullDebug` OK. Sem teste automático (T10): `onBolusStatusInvalid`/reset da conexão, watchdog, `onStopFailed`/reenvio do STOP, `dropBolusOutOfTries`.
+**Testes**: `MedLinkPumpLockRuleTest` (novo, substitui `PumpBlockRuleTest`), `MedLinkBolusTrackerTest` (5 tentativas, tentativa com queda de conexão, sem tempo de vida, falhas do `M`, sinais de trava). rileylink 484/484, `:app:assembleFullDebug` OK. Sem teste automático (T10): `onBolusStatusInvalid`/reset da conexão, watchdog, `onStopFailed`/reenvio do STOP, `dropBolusOutOfTries`.
 
 **No log, durante o teste de campo**: `BOLUS[id] try N/5`, `BOLUS[id] M failure N/5: ...`, `M answered invalid command (N in a row)`, `resetting the MedLink connection`, `command without effect (...), N in a row`, `pump block none -> PUMP_LOCKED`, `pump accepts commands again`, `STOP refused: pump still running`, `STOP retry N`, `BOLUS ... dropped: not written after N tries`.
 
@@ -332,26 +332,26 @@ Logs: `logs/basal_problem.log` (SMB 0,4 U às 11:29) e `logs/failed_bolus_sample
 - A MedLink manda às vezes o ano `00` (`09-11-00 11:03`) e às vezes `26` para o mesmo bolus. Com isso o baseline parecia 26 anos mais velho ou mais novo que a resposta: provável causa do "cannot tell last bolus from the sent one" do `logs/invalid_smb.log` (4k).
 
 **O que mudou**
-- `bolus/BolusCommandAnswer.parse`: lê a resposta inteira do BOLUS (pedaços juntados, no "ready"). `BleBolusCommand` → `MedLinkBLE.onBolusAnswer` → `BolusTracker.onBolusAnswer`:
+- `bolus/MedLinkBolusCommandAnswer.parse`: lê a resposta inteira do BOLUS (pedaços juntados, no "ready"). `BleBolusCommand` → `MedLinkBLE.onBolusAnswer` → `MedLinkBolusTracker.onBolusAnswer`:
   - bomba em bolus e mesmo valor → `DELIVERING` (conta como efeito para a trava);
   - estado normal com bolus mais novo que o baseline → `DELIVERED`, registrado com a hora da bomba, sem `M`;
   - estado normal com o bolus anterior → não entregue, **sem segundo `M`**: a própria bomba verificou logo depois do comando. Conta como tentativa e como evidência de trava (confirmado sem efeito); reenvia se houver tentativas;
   - sem `last bolus` ou outro valor em bolus → o `M` decide (como antes).
 - `M` agora só acompanha um bolus em entrega: bolus manual a cada 15 s (`PROGRESS_READ_MS`) para o diálogo; SMB/TBR uma vez no fim previsto. `BleBolusStatusCommand` não relê mais em loop. Nenhum `M` é enfileirado junto com o bolus (`bolusStatusMessage` = null); removidos `BolusProgressCallback`, `BolusProgressRule` e o executor contínuo do `M`.
-- Diálogo de progresso: `BolusTracker.onProgress` → `BleBolusCommand.onProgress` → `EventOverviewBolusProgress` (só bolus manual; com TBR/SMB juntados mostra a parte do manual). Sem valor no `M`, estima pelo tempo (40 s/U, no máximo 95 %). No fim: 100 % + `EventDismissBolusProgressIfRunning`.
+- Diálogo de progresso: `MedLinkBolusTracker.onProgress` → `BleBolusCommand.onProgress` → `EventOverviewBolusProgress` (só bolus manual; com TBR/SMB juntados mostra a parte do manual). Sem valor no `M`, estima pelo tempo (40 s/U, no máximo 95 %). No fim: 100 % + `EventDismissBolusProgressIfRunning`.
 - Um só resultado por bolus: `onQueueResult` agora também é chamado para a parte do próprio executor (registro, falha, alarme final, descarte); o plugin guarda a primeira chamada (`AtomicBoolean`). O `andThen` do `BolusCallback` só registra no log.
-- `bolus/PumpClock.normalizeYear`: uma hora da bomba a mais de 180 dias da leitura vai para o ano mais próximo da hora do telefone. Usado no `M` e na resposta do BOLUS.
+- `bolus/MedLinkPumpClock.normalizeYear`: uma hora da bomba a mais de 180 dias da leitura vai para o ano mais próximo da hora do telefone. Usado no `M` e na resposta do BOLUS.
 
-**Testes**: `BolusCommandAnswerTest` (4, textos reais), `PumpClockTest` (3), `BolusTrackerTest` (+5: em entrega, progresso do manual, não entregue sem 2º `M`, entregue pela resposta, `M` decide), `BleBolusCommandsTest` (resposta inteira no "ready"; `M` em andamento não relê em loop). rileylink 485/485, medtronic 143/143, `:app:assembleFullDebug` OK. Diálogo e fluxo no `MedLinkBLE` sem teste automático (T10).
+**Testes**: `MedLinkBolusCommandAnswerTest` (4, textos reais), `MedLinkPumpClockTest` (3), `MedLinkBolusTrackerTest` (+5: em entrega, progresso do manual, não entregue sem 2º `M`, entregue pela resposta, `M` decide), `BleBolusCommandsTest` (resposta inteira no "ready"; `M` em andamento não relê em loop). rileylink 485/485, medtronic 143/143, `:app:assembleFullDebug` OK. Diálogo e fluxo no `MedLinkBLE` sem teste automático (T10).
 
 **No log, durante o teste de campo**: `BOLUS[id] bolus answer: last xU@t bolusing=...`, `not delivered: the bolus answer shows the previous bolus`, `bolus answer ...: decided by the tracker`, `bolus result success=... delivered=...` (uma vez por bolus).
 
 **Bolus com menos insulina (4m, complemento — `logs/bolus_success.log`)**
 - Com comunicação ruim a bomba pode receber menos do que foi enviado. Depois do "BOLUS command confirmed":
-  - **sem hora** (`Pump is bolusing state / Last bolus: 0.4u`): é o nosso bolus em entrega; o valor é o que a bomba recebeu. Se for menor que o pedido, ele é seguido como `DELIVERING` com esse valor (`BolusRequest.programmed`), o `M` é lido no fim desse valor e o registro é `PARTIAL`. O resto **nunca** é reenviado. Valor maior que o pedido → o `M` decide;
+  - **sem hora** (`Pump is bolusing state / Last bolus: 0.4u`): é o nosso bolus em entrega; o valor é o que a bomba recebeu. Se for menor que o pedido, ele é seguido como `DELIVERING` com esse valor (`MedLinkBolusRequest.programmed`), o `M` é lido no fim desse valor e o registro é `PARTIAL`. O resto **nunca** é reenviado. Valor maior que o pedido → o `M` decide;
   - **com hora**: normalmente o bolus anterior (não entregue). Bolus pequeno (< 0,3 U, `SMALL_BOLUS`) pode já ter terminado e mostrar a própria hora; o que decide é a hora comparada com o baseline. Hora nova e valor menor com a bomba em estado normal → `PARTIAL` na hora (antes esperava o fim previsto). Hora nova em bolus ≥ 0,3 U só gera um aviso no log.
 - A procura por "ready"/"last bolus" na resposta não diferencia maiúsculas.
-- Testes: `BolusTrackerTest` (+2: bomba recebeu menos; bolus pequeno parcial), `BolusCommandAnswerTest` (+1: `bolus_success.log`). rileylink 488/488, `:app:assembleFullDebug` OK.
+- Testes: `MedLinkBolusTrackerTest` (+2: bomba recebeu menos; bolus pequeno parcial), `MedLinkBolusCommandAnswerTest` (+1: `bolus_success.log`). rileylink 488/488, `:app:assembleFullDebug` OK.
 
 **Pendente**: confirmar no campo se o `M` mostra o valor entregue durante um bolus normal (`square bolus ... delivered`); senão o diálogo usa a estimativa pelo tempo.
 
@@ -359,7 +359,7 @@ Logs: `logs/basal_problem.log` (SMB 0,4 U às 11:29) e `logs/failed_bolus_sample
 
 **Sintoma:** o loop deixou de rodar a cada 5 min e o LeakCanary passou a coletar heap dumps com frequência.
 
-**Causa:** `mayRun` (bolus esperando o minuto seguinte, bomba entregando outro bolus, STOP segurado pelo `StopGate`)
+**Causa:** `mayRun` (bolus esperando o minuto seguinte, bomba entregando outro bolus, STOP segurado pelo `MedLinkStopGate`)
 chamava `scheduleNextCommand`, que postava um `nextCommand()` novo a cada chamada. O seletor (`nextCommand` getter) é
 avaliado várias vezes por `nextCommand()` (até 8 só em `needToAddConnectCommand` quando desconectado), então cada
 despertar gerava vários outros: o número crescia exponencialmente a cada segundo enquanto o comando esperava,
@@ -379,15 +379,15 @@ NOT_STARTED, mesmo sendo entregue.
 do "last bolus" (igual ao baseline → NOT_STARTED) e o tracker chamava aquilo de "outro bolus".
 
 **Correção:**
-- `MedLinkStatusParser` lê a duração da linha "square bolus time" (`BolusStatusSnapshot.squareMinutes`); duração 0
+- `MedLinkStatusParser` lê a duração da linha "square bolus time" (`MedLinkBolusStatusSnapshot.squareMinutes`); duração 0
   (ou sem a linha) é um bolus normal na linha square (`normalBolusOnSquareLine`).
-- `BolusStatusInterpreter.isSentBolusOnSquareLine`: bolus normal na linha square, lido depois do envio, não maior que
+- `MedLinkBolusStatusInterpreter.isSentBolusOnSquareLine`: bolus normal na linha square, lido depois do envio, não maior que
   o pedido e que o baseline não mostrava = o bolus enviado. Em andamento → DELIVERING com o `delivered` da linha
   (progresso real); terminado na linha square mas "last bolus" ainda antigo → UNKNOWN (lê de novo, nunca reenvia).
-- `BolusTracker.isOtherBolusInProgress` não acusa mais o bolus enviado (sem o alarme).
+- `MedLinkBolusTracker.isOtherBolusInProgress` não acusa mais o bolus enviado (sem o alarme).
 - Square maior que o pedido ou com duração > 0 continua sendo outro bolus (espera ele terminar).
 
-**Testes:** `BolusStatusInterpreterTest` (respostas do log), `BolusTrackerTest` (resposta do BOLUS → `M` na linha
+**Testes:** `MedLinkBolusStatusInterpreterTest` (respostas do log), `MedLinkBolusTrackerTest` (resposta do BOLUS → `M` na linha
 square → "last bolus" novo = registrado).
 
 ## 4p. Diálogo de progresso: etapas antes da entrega com barra em movimento (2026-11-09)
@@ -395,7 +395,7 @@ square → "last bolus" novo = registrado).
 Antes de a bomba começar a entregar, o diálogo de um bolus manual mostra o que o bolus está esperando, com a barra
 horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (do `M`, ver 4o).
 
-- `BolusPhase`: CONNECTING, READING_STATUS (baseline `M`), SENDING (com "tentativa n de 5" a partir da 2ª),
+- `MedLinkBolusPhase`: CONNECTING, READING_STATUS (baseline `M`), SENDING (com "tentativa n de 5" a partir da 2ª),
   CONFIRMED (MedLink confirmou, bomba ainda não começou), WAITING_OTHER_BOLUS.
 - `MedLinkBLE.reportBolusPhase` chama `BleBolusCommand.onPhase` em `connectGatt`, no `mayRun` (baseline / outro bolus),
   no `beforePost` (cada tentativa) e na confirmação; não repete a mesma etapa e se cala quando o bolus está DELIVERING.
@@ -418,14 +418,14 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | Arquivo (`pump/rileylink/src/test/kotlin/.../medlink/`) | Cobre |
 |---|---|
 | `bolus/MedLinkStatusParserSnapshotTest` | parse do `M` em pedaços BLE |
-| `bolus/BolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
-| `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h), junção (4i), bolus de fora (4j), tentativas, falhas do `M` e sinais de trava (4k) |
-| `bolus/PumpLockRuleTest` | bomba travada (PUMP_LOCKED) depois de 2 comandos confirmados sem efeito (4k) |
-| `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest` | stop, skip |
-| `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14), junção ao bolus rastreado (4i) |
-| `bolus/ManualBolusRuleTest` | recusa só do mesmo tipo (4i), valor editado no diálogo (T16) |
+| `bolus/MedLinkBolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
+| `bolus/MedLinkBolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h), junção (4i), bolus de fora (4j), tentativas, falhas do `M` e sinais de trava (4k) |
+| `bolus/MedLinkPumpLockRuleTest` | bomba travada (PUMP_LOCKED) depois de 2 comandos confirmados sem efeito (4k) |
+| `bolus/MedLinkStopGateTest`, `bolus/MedLinkStartStopSkipRuleTest` | stop, skip |
+| `bolus/MedLinkLoopBolusMergeTest` | junção TBR + SMB (T14), junção ao bolus rastreado (4i) |
+| `bolus/MedLinkManualBolusRuleTest` | recusa só do mesmo tipo (4i), valor editado no diálogo (T16) |
 | `ble/command/BleStopStartCommandTest`, `ble/command/BleBolusCommandsTest` | tratamento das respostas `A`/`M` e do bolus |
-| `bolus/BolusCommandAnswerTest`, `bolus/PumpClockTest` | resposta do BOLUS (falha, em entrega, ano 00), normalização do ano (4m) |
+| `bolus/MedLinkBolusCommandAnswerTest`, `bolus/MedLinkPumpClockTest` | resposta do BOLUS (falha, em entrega, ano 00), normalização do ano (4m) |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
@@ -444,7 +444,7 @@ Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `READ
 - T11: os sleeps restantes (`BleCommand` 700 ms, `BleConnectCommand` 500 ms, `BleCalCommand` 60 s, o espaçamento de 2,2 s do executor, `medLinkConnect`).
 - T13: ~~nova tentativa ou alarme quando a bomba continua suspensa depois do START~~ feito (seção 4b). Falta: o callback do START (e o REACTIVATE do agendador) não recebe o resultado quando o START é recusado; o reenvio é só no nível BLE. O alarme ainda usa o título de bolus.
 - ~~Confirmar a resposta de um START recusado~~: os logs não têm nenhum caso (seção 4c); a causa real era outra.
-- ~~`BleStopCommand` procurava `pump bolusing state`~~ corrigido em 2026-11-08: novo `bolus/PumpStateAnswer.isBolusing()` (texto real `pump is bolusing st`, cobre o pedaço BLE `pump is bolusing sta`), usado por `BleStopCommand` e `BleStartCommand`. Antes, a resposta "bolusing" do `A` não era reconhecida (caía no tratamento genérico) e a proteção do stop automático dependia só da leitura do `M` feita antes (StopGate). Agora o `A` também retém o stop (T1). Testes e fixture `a_bolusing.txt` usam o texto real.
+- ~~`BleStopCommand` procurava `pump bolusing state`~~ corrigido em 2026-11-08: novo `bolus/MedLinkPumpStateAnswer.isBolusing()` (texto real `pump is bolusing st`, cobre o pedaço BLE `pump is bolusing sta`), usado por `BleStopCommand` e `BleStartCommand`. Antes, a resposta "bolusing" do `A` não era reconhecida (caía no tratamento genérico) e a proteção do stop automático dependia só da leitura do `M` feita antes (MedLinkStopGate). Agora o `A` também retém o stop (T1). Testes e fixture `a_bolusing.txt` usam o texto real.
 - Um BOLUS de microbolus que falha volta a `isCommandIssued = false`, mas o refresh pode já tê-lo removido (microbolus perdido: entrega a menos, não a mais).
 - `MedLinkCommandSMBBolus`: a condição do `deliverAtTheLatest` está invertida (`+ 3 min < now` entrega só pedidos vencidos; upstream é `+ 1 min > now`). Não corrigido ainda.
 - T16: teste de campo do diálogo com o app em segundo plano (bolus pelo relógio/NS). A abertura da activity depende da mesma permissão usada pelos alarmes.

@@ -6,7 +6,7 @@ import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.pump.common.hw.medlink.ble.CommandExecutor
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
-import app.aaps.pump.common.hw.medlink.bolus.BolusStatusSnapshot
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusStatusSnapshot
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -75,7 +75,7 @@ class BleBolusCommandsTest {
         verify(ble, never()).onBolusStatus(anyOrNull())
         val captor = argumentCaptor<String>()
         verify(ble).onBolusAnswer(captor.capture())
-        val answer = app.aaps.pump.common.hw.medlink.bolus.BolusCommandAnswer.parse(captor.firstValue, Fixtures_now)!!
+        val answer = app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusCommandAnswer.parse(captor.firstValue, Fixtures_now)!!
         assertEquals(2.0, answer.lastBolusAmount, 0.0001)
         assertEquals(false, answer.bolusing)
     }
@@ -93,7 +93,7 @@ class BleBolusCommandsTest {
     @Test
     fun `M answer is passed to the tracker and completes`() {
         feedStatus("m command confirmed", "last bolus: 0.5u 10-06-21 17:45", "square bolus: 0.0u delivered: 0.000u", "ready")
-        val captor = argumentCaptor<BolusStatusSnapshot>()
+        val captor = argumentCaptor<MedLinkBolusStatusSnapshot>()
         verify(ble).onBolusStatus(captor.capture())
         assertEquals(0.5, captor.firstValue.lastBolusAmount, 0.0001)
         verify(ble).completedCommand()

@@ -6,12 +6,12 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-class StartStopSkipRuleTest {
+class MedLinkStartStopSkipRuleTest {
 
     private val now = 1_000_000L
 
     private fun skip(cmd: MedLinkCommandType, state: MedLinkPumpRunningState, stateAt: Long, lastSent: Long) =
-        StartStopSkipRule.shouldSkip(cmd, state, stateAt, lastSent, now)
+        MedLinkStartStopSkipRule.shouldSkip(cmd, state, stateAt, lastSent, now)
 
     @Test
     fun `stop is skipped when the pump said suspended after the last stop was sent`() {

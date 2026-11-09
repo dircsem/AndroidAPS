@@ -12,7 +12,7 @@ package app.aaps.pump.common.hw.medlink.bolus
  * @param squareMinutes     longest duration of the "square bolus time" line in minutes, null when the line is missing.
  *                          0 means a normal bolus: while it runs the pump shows it on the square line
  */
-data class BolusStatusSnapshot(
+data class MedLinkBolusStatusSnapshot(
     val lastBolusAmount: Double,
     val lastBolusTime: Long,
     val squareBolusAmount: Double?,
@@ -26,7 +26,7 @@ data class BolusStatusSnapshot(
     /** A bolus is still being delivered: explicit bolusing flag, or a square bolus not delivered yet. */
     val inProgress: Boolean
         get() = pumpBolusing ||
-            (squareBolusAmount != null && squareBolusAmount > 0.0 && (deliveredAmount ?: 0.0) < squareBolusAmount - BolusStatusInterpreter.TOLERANCE)
+            (squareBolusAmount != null && squareBolusAmount > 0.0 && (deliveredAmount ?: 0.0) < squareBolusAmount - MedLinkBolusStatusInterpreter.TOLERANCE)
 
     /**
      * The square line holds a normal bolus (duration 0, or no duration line): the pump shows a running normal bolus

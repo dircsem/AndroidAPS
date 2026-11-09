@@ -12,9 +12,9 @@ import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
  *  - T16 (in the plugin): an SMB is still refused while a manual bolus is pending, it was computed
  *    without the manual bolus in IOB; a manual bolus with an SMB pending asks the user first;
  *  - there is no time to live: a waiting bolus runs when the one in flight is resolved, which is bounded by
- *    the tries of that bolus and its `M` failures (see BolusTracker).
+ *    the tries of that bolus and its `M` failures (see MedLinkBolusTracker).
  */
-object ManualBolusRule {
+object MedLinkManualBolusRule {
 
     /** Is a bolus of [newType] refused while boluses of [pendingTypes] are pending? */
     fun refuses(pendingTypes: Set<MedLinkCommandType>, newType: MedLinkCommandType): Boolean = newType in pendingTypes

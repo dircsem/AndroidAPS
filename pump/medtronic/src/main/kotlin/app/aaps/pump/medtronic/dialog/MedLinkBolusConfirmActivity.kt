@@ -10,7 +10,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkManualBolusRule
 import app.aaps.pump.medtronic.R
 import java.util.Locale
 import java.util.UUID
@@ -104,7 +104,7 @@ class MedLinkBolusConfirmActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 val entered = input.text.toString().trim().replace(',', '.').toDoubleOrNull()
-                val amount = ManualBolusRule.editedAmount(requested, entered, step)
+                val amount = MedLinkManualBolusRule.editedAmount(requested, entered, step)
                 if (amount == null) input.error = getString(R.string.medlink_smb_pending_amount_invalid, step, requested)
                 else close(amount)
             }

@@ -8,7 +8,7 @@ import java.util.Calendar
  * than the answer), so `M` "cannot tell last bolus from the sent one". The pump year is ignored when it is
  * clearly wrong: the date is moved to the year that puts it nearest to the phone time of the read.
  */
-object PumpClock {
+object MedLinkPumpClock {
 
     private const val MAX_TRUSTED_DISTANCE_MS = 180L * 24 * 60 * 60 * 1000
 

@@ -11,7 +11,7 @@ import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
  * Created by Dirceu on 24/03/21.
  *
  * T7: this command never re-sends a bolus by itself. Any unclear answer is handed to MedLinkBLE,
- * which verifies the bolus with `M` and lets the BolusTracker decide.
+ * which verifies the bolus with `M` and lets the MedLinkBolusTracker decide.
  */
 class BleBolusCommand(
     aapsLogger: AAPSLogger,
@@ -33,7 +33,7 @@ class BleBolusCommand(
     var onProgress: ((delivered: Double, requested: Double) -> Unit)? = null
 
     /** 4p: before the pump delivers: what the bolus waits for (try = 1-based try for SENDING, else 0). */
-    var onPhase: ((phase: app.aaps.pump.common.hw.medlink.bolus.BolusPhase, attempt: Int, maxAttempts: Int) -> Unit)? = null
+    var onPhase: ((phase: app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusPhase, attempt: Int, maxAttempts: Int) -> Unit)? = null
 
     /** T16: manual bolus only: the user confirmed it while an SMB was pending, so the SMB may be merged into it. */
     var smbConsent: Boolean = false

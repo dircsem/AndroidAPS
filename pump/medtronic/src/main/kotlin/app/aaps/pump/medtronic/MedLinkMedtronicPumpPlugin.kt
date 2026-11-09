@@ -1,7 +1,7 @@
 package app.aaps.pump.medtronic
 
-import app.aaps.pump.common.hw.medlink.bolus.BolusPhase
-import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusPhase
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkManualBolusRule
 import app.aaps.pump.medtronic.dialog.MedLinkBolusConfirmActivity
 import android.annotation.SuppressLint
 import android.content.ComponentName
@@ -34,7 +34,7 @@ import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
-import app.aaps.pump.common.hw.medlink.bolus.PumpBlock
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkPumpBlock
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.plugin.PluginBase
@@ -46,7 +46,7 @@ import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.actions.CustomAction
-import app.aaps.core.interfaces.pump.StopOrigin
+import app.aaps.core.interfaces.pump.MedLinkStopOrigin
 import app.aaps.core.interfaces.pump.actions.CustomActionType
 import app.aaps.core.interfaces.pump.defs.determineCorrectBasalSize
 import app.aaps.core.interfaces.queue.Callback
@@ -334,10 +334,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         aapsLogger.info(LTag.PUMP, "MedtronicPumpPlugin::userSuspend")
         stopPump(callback ?: object : Callback() {
             override fun run() {}
-        }, StopOrigin.USER)
+        }, MedLinkStopOrigin.USER)
     }
 
-    private fun stopPump(callback: Callback, origin: StopOrigin = StopOrigin.AUTOMATIC) {
+    private fun stopPump(callback: Callback, origin: MedLinkStopOrigin = MedLinkStopOrigin.AUTOMATIC) {
         aapsLogger.info(LTag.PUMP, "MedtronicPumpPlugin::stopPump - $origin")
         aapsLogger.info(LTag.PUMP, "batteryDelta $batteryDelta")
         val currentLevel = receiverStatusStore.batteryLevel
@@ -364,7 +364,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             // context.startActivity(i)
             return
         }
-        if (origin == StopOrigin.USER || PumpRunningState.Suspended != medLinkPumpStatus.pumpRunningState || medLinkPumpStatus.pumpRunningState == PumpRunningState.TempBasalSuspended) {
+        if (origin == MedLinkStopOrigin.USER || PumpRunningState.Suspended != medLinkPumpStatus.pumpRunningState || medLinkPumpStatus.pumpRunningState == PumpRunningState.TempBasalSuspended) {
             val function = ChangeStatusCallback(
                 aapsLogger,
                 ChangeStatusCallback.OperationType.STOP, this
@@ -3562,7 +3562,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             else        -> MedLinkCommandType.Bolus
         }
         val pendingTypes = ble?.pendingBolusTypes().orEmpty()
-        if (ManualBolusRule.refuses(pendingTypes, newType)) {
+        if (MedLinkManualBolusRule.refuses(pendingTypes, newType)) {
             aapsLogger.info(LTag.PUMP, "deliverBolus refused: a $newType is pending (pending $pendingTypes, tracker ${ble?.bolusTracker?.current})")
             func.invoke(
                 pumpEnactResultProvider.get().success(false).enacted(false)
@@ -3627,7 +3627,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val bolusCallback = BolusCallback(aapsLogger, bolus)
             val andThen: Function<Supplier<Stream<String>>, MedLinkStandardReturn<String>> =
                 bolusCallback.andThen { f: MedLinkStandardReturn<BolusAnswer> ->
-                    // the bolus answer is decided by MedLinkBLE / BolusTracker (onBolusAnswer): it records the
+                    // the bolus answer is decided by MedLinkBLE / MedLinkBolusTracker (onBolusAnswer): it records the
                     // bolus with the pump time and reports the result once through onQueueResult. The old
                     // decision here reported the previous bolus ("Last bolus: 2.0u ... 13:22") as delivered.
                     aapsLogger.info(LTag.PUMPBTCOMM, "bolus answer ${f.functionResult.response.name}: decided by the tracker")
@@ -3693,13 +3693,13 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             if (manual) {
                 bleBolusCommand.onPhase = { phase, attempt, maxAttempts ->
                     val text = when (phase) {
-                        BolusPhase.CONNECTING          -> rh.gs(R.string.medlink_bolus_phase_connecting)
-                        BolusPhase.READING_STATUS      -> rh.gs(R.string.medlink_bolus_phase_reading_status)
-                        BolusPhase.SENDING             ->
+                        MedLinkBolusPhase.CONNECTING          -> rh.gs(R.string.medlink_bolus_phase_connecting)
+                        MedLinkBolusPhase.READING_STATUS      -> rh.gs(R.string.medlink_bolus_phase_reading_status)
+                        MedLinkBolusPhase.SENDING             ->
                             if (attempt > 1) rh.gs(R.string.medlink_bolus_phase_sending_try, attempt, maxAttempts)
                             else rh.gs(R.string.medlink_bolus_phase_sending)
-                        BolusPhase.CONFIRMED           -> rh.gs(R.string.medlink_bolus_phase_confirmed)
-                        BolusPhase.WAITING_OTHER_BOLUS -> rh.gs(R.string.medlink_bolus_phase_waiting_other)
+                        MedLinkBolusPhase.CONFIRMED           -> rh.gs(R.string.medlink_bolus_phase_confirmed)
+                        MedLinkBolusPhase.WAITING_OTHER_BOLUS -> rh.gs(R.string.medlink_bolus_phase_waiting_other)
                     }
                     rxBus.send(EventOverviewBolusProgress(text, id = detailedBolusInfo.id, waiting = true))
                 }
@@ -3770,9 +3770,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }
     }
 
-    private fun pumpBlockText(block: PumpBlock): String = rh.gs(
+    private fun pumpBlockText(block: MedLinkPumpBlock): String = rh.gs(
         when (block) {
-            PumpBlock.PUMP_LOCKED -> R.string.medlink_pump_block_locked
+            MedLinkPumpBlock.PUMP_LOCKED -> R.string.medlink_pump_block_locked
         }
     )
 
@@ -3790,7 +3790,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }
         ble.bolusStatusMessageProvider = {
             BolusStatusMedLinkMessage(
-                // plain read: the answer only feeds the BolusTracker via BleBolusStatusCommand, no side effects
+                // plain read: the answer only feeds the MedLinkBolusTracker via BleBolusStatusCommand, no side effects
                 object : app.aaps.pump.common.hw.medlink.activities.BaseStringAggregatorCallback() {},
                 btSleepTime,
                 BleBolusStatusCommand(aapsLogger, medLinkMedtronicService?.medLinkServiceData, this)

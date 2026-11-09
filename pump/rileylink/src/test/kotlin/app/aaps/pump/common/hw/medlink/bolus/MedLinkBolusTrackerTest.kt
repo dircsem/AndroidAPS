@@ -1,12 +1,12 @@
 package app.aaps.pump.common.hw.medlink.bolus
 
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.Alarm
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.AskUser
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.Fail
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.None
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.ReadStatusAt
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.Record
-import app.aaps.pump.common.hw.medlink.bolus.BolusAction.Resend
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.Alarm
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.AskUser
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.Fail
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.None
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.ReadStatusAt
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.Record
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction.Resend
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -15,9 +15,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-class BolusTrackerTest {
+class MedLinkBolusTrackerTest {
 
-    private class FakeClock(var t: Long) : Clock {
+    private class FakeClock(var t: Long) : MedLinkClock {
 
         override fun now() = t
         fun advance(ms: Long) {
@@ -26,14 +26,14 @@ class BolusTrackerTest {
     }
 
     private val min = 60_000L
-    private val t0 = Fixtures.pumpTime("10-06-21 17:45") + 10_000
+    private val t0 = MedLinkBolusFixtures.pumpTime("10-06-21 17:45") + 10_000
     private lateinit var clock: FakeClock
     private lateinit var log: MutableList<String>
-    private lateinit var tracker: BolusTracker
+    private lateinit var tracker: MedLinkBolusTracker
 
-    private val baseline = Fixtures.snapshot(amount = 0.3, time = Fixtures.pumpTime("10-06-21 17:30"), readAt = t0 - 2_000)
+    private val baseline = MedLinkBolusFixtures.snapshot(amount = 0.3, time = MedLinkBolusFixtures.pumpTime("10-06-21 17:30"), readAt = t0 - 2_000)
     private fun applied(amount: Double, minuteOffset: Int = 0, readAt: Long = clock.now()) =
-        Fixtures.snapshot(amount = amount, time = Fixtures.pumpTime("10-06-21 17:45") + minuteOffset * min, readAt = readAt)
+        MedLinkBolusFixtures.snapshot(amount = amount, time = MedLinkBolusFixtures.pumpTime("10-06-21 17:45") + minuteOffset * min, readAt = readAt)
 
     private fun notStarted() = baseline.copy(readAt = clock.now())
 
@@ -41,10 +41,10 @@ class BolusTrackerTest {
     fun setup() {
         clock = FakeClock(t0)
         log = mutableListOf()
-        tracker = BolusTracker(clock, strict = true) { log.add(it) }
+        tracker = MedLinkBolusTracker(clock, strict = true) { log.add(it) }
     }
 
-    private fun sendLoopBolus(amount: Double = 0.5, origin: BolusOrigin = BolusOrigin.LOOP): BolusRequest {
+    private fun sendLoopBolus(amount: Double = 0.5, origin: MedLinkBolusOrigin = MedLinkBolusOrigin.LOOP): MedLinkBolusRequest {
         val r = tracker.onQueued("b1", origin, amount)!!
         tracker.onBaseline(baseline)
         tracker.onWritten()
@@ -56,16 +56,16 @@ class BolusTrackerTest {
     @Test
     fun `happy path moves queued-sent-confirmed-delivered and records once`() {
         val r = sendLoopBolus()
-        assertEquals(BolusState.SENT, r.state)
+        assertEquals(MedLinkBolusState.SENT, r.state)
         val verify = tracker.onConfirmed()
-        assertEquals(BolusState.CONFIRMED, r.state)
+        assertEquals(MedLinkBolusState.CONFIRMED, r.state)
         assertInstanceOf(ReadStatusAt::class.java, verify)
         assertTrue((verify as ReadStatusAt).time >= t0 + (0.5 * 40_000).toLong())
 
         clock.advance(2 * min)
         val action = tracker.onStatus(applied(0.5))
         assertEquals(Record(0.5, applied(0.5).lastBolusTime), action)
-        assertEquals(BolusState.DELIVERED, r.state)
+        assertEquals(MedLinkBolusState.DELIVERED, r.state)
         assertTrue(tracker.canSendNewBolus())
     }
 
@@ -80,19 +80,19 @@ class BolusTrackerTest {
     @Test
     fun `only one bolus in flight`() {
         sendLoopBolus()
-        assertEquals(null, tracker.onQueued("b2", BolusOrigin.LOOP, 0.3))
+        assertEquals(null, tracker.onQueued("b2", MedLinkBolusOrigin.LOOP, 0.3))
     }
 
     @Test
     fun `illegal transition throws in strict mode`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertThrows<IllegalStateException> { tracker.onConfirmed() }
     }
 
     @Test
     fun `illegal transition alarms in release mode`() {
-        val relaxed = BolusTracker(clock, strict = false) { log.add(it) }
-        relaxed.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        val relaxed = MedLinkBolusTracker(clock, strict = false) { log.add(it) }
+        relaxed.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertInstanceOf(Alarm::class.java, relaxed.onConfirmed())
     }
 
@@ -122,7 +122,7 @@ class BolusTrackerTest {
         clock.advance(min)
         val first = tracker.onStatus(notStarted())
         assertInstanceOf(ReadStatusAt::class.java, first, "first not-started must ask for a fresh M")
-        assertEquals(BolusState.UNRESOLVED, r.state)
+        assertEquals(MedLinkBolusState.UNRESOLVED, r.state)
 
         clock.advance(5_000)
         assertEquals(Resend, tracker.onStatus(notStarted()))
@@ -139,28 +139,28 @@ class BolusTrackerTest {
     @Test
     fun `not started is resent until the fifth attempt, then alarm and no further resend`() {
         sendLoopBolus()
-        repeat(BolusTracker.MAX_ATTEMPTS - 1) {
+        repeat(MedLinkBolusTracker.MAX_ATTEMPTS - 1) {
             tracker.onConfirmed()
             clock.advance(min)
             tracker.onStatus(notStarted())
             assertEquals(Resend, tracker.onStatus(notStarted()), "attempt ${it + 1}")
             tracker.onWritten()
         }
-        assertEquals(BolusTracker.MAX_ATTEMPTS, tracker.current!!.attempts)
+        assertEquals(MedLinkBolusTracker.MAX_ATTEMPTS, tracker.current!!.attempts)
         clock.advance(min)
         tracker.onStatus(notStarted())
         val action = tracker.onStatus(notStarted())
         assertInstanceOf(Alarm::class.java, action)
-        assertEquals(BolusState.FAILED, tracker.current!!.state)
+        assertEquals(MedLinkBolusState.FAILED, tracker.current!!.state)
         assertTrue(tracker.canSendNewBolus())
     }
 
     @Test
     fun `every post is a try, also when the connection drops before the dose is written`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         repeat(3) { tracker.onTry() }
         assertEquals(3, tracker.current!!.attempts)
-        assertEquals(BolusTracker.MAX_ATTEMPTS - 3, tracker.triesLeft())
+        assertEquals(MedLinkBolusTracker.MAX_ATTEMPTS - 3, tracker.triesLeft())
         // the write of the fourth post does not count twice
         tracker.onTry()
         tracker.onBaseline(baseline)
@@ -185,15 +185,15 @@ class BolusTrackerTest {
         assertInstanceOf(ReadStatusAt::class.java, tracker.onDisconnect())
         setup()
         sendLoopBolus(); tracker.onConfirmed()
-        tracker.onStatus(Fixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 0.5, delivered = 0.2))
-        assertEquals(BolusState.DELIVERING, tracker.current!!.state)
+        tracker.onStatus(MedLinkBolusFixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 0.5, delivered = 0.2))
+        assertEquals(MedLinkBolusState.DELIVERING, tracker.current!!.state)
         assertInstanceOf(ReadStatusAt::class.java, tracker.onDisconnect())
-        assertEquals(BolusState.UNRESOLVED, tracker.current!!.state)
+        assertEquals(MedLinkBolusState.UNRESOLVED, tracker.current!!.state)
     }
 
     @Test
     fun `disconnect before the bolus was written does nothing`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertEquals(None, tracker.onDisconnect())
     }
 
@@ -208,7 +208,7 @@ class BolusTrackerTest {
 
     @Test
     fun `manual bolus not started asks the user`() {
-        sendLoopBolus(origin = BolusOrigin.MANUAL)
+        sendLoopBolus(origin = MedLinkBolusOrigin.MANUAL)
         tracker.onConfirmed()
         tracker.onStatus(notStarted())
         assertInstanceOf(AskUser::class.java, tracker.onStatus(notStarted()))
@@ -218,7 +218,7 @@ class BolusTrackerTest {
 
     @Test
     fun `manual bolus declined by the user fails`() {
-        sendLoopBolus(origin = BolusOrigin.MANUAL)
+        sendLoopBolus(origin = MedLinkBolusOrigin.MANUAL)
         tracker.onStatus(notStarted())
         tracker.onStatus(notStarted())
         assertInstanceOf(Fail::class.java, tracker.onUserResendAnswer(false))
@@ -231,7 +231,7 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(5 * min)
         assertEquals(Record(0.3, applied(0.3).lastBolusTime), tracker.onStatus(applied(0.3)))
-        assertEquals(BolusState.PARTIAL, tracker.current!!.state)
+        assertEquals(MedLinkBolusState.PARTIAL, tracker.current!!.state)
         assertEquals(0, tracker.resendCount())
         assertTrue(tracker.current!!.appliedTotal <= tracker.current!!.requested)
     }
@@ -241,7 +241,7 @@ class BolusTrackerTest {
         sendLoopBolus(amount = 1.0)
         tracker.onConfirmed()
         clock.advance(20_000)
-        val action = tracker.onStatus(Fixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.6, readAt = clock.now()))
+        val action = tracker.onStatus(MedLinkBolusFixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.6, readAt = clock.now()))
         assertEquals(ReadStatusAt(clock.now() + 16_000 + 15_000), action)
     }
 
@@ -254,7 +254,7 @@ class BolusTrackerTest {
 
         clock.advance(2 * min)
         assertTrue(tracker.nextSendAllowedAt() <= clock.now())
-        tracker.onQueued("b2", BolusOrigin.LOOP, 0.3)
+        tracker.onQueued("b2", MedLinkBolusOrigin.LOOP, 0.3)
         tracker.onBaseline(firstSnapshot.copy(readAt = clock.now()))
         tracker.onWritten()
         // M still shows the first SMB -> not started, not "delivered"
@@ -273,7 +273,7 @@ class BolusTrackerTest {
 
     // ---- bolus answer (no M needed to know the outcome) --------------------------------------
 
-    private fun answer(amount: Double, time: Long?, bolusing: Boolean) = BolusCommandAnswer(amount, time, bolusing, "raw")
+    private fun answer(amount: Double, time: Long?, bolusing: Boolean) = MedLinkBolusCommandAnswer(amount, time, bolusing, "raw")
 
     @Test
     fun `bolus answer pump bolusing with the same amount - delivering, no M right away`() {
@@ -281,7 +281,7 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(20_000)
         val action = tracker.onBolusAnswer(answer(0.4, null, bolusing = true))
-        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(MedLinkBolusState.DELIVERING, r.state)
         assertInstanceOf(ReadStatusAt::class.java, action)
         assertTrue((action as ReadStatusAt).time > clock.now(), "loop bolus: one M at the expected end")
     }
@@ -290,13 +290,13 @@ class BolusTrackerTest {
     fun `manual bolus delivering is followed with M for the progress dialog`() {
         val progress = mutableListOf<Double>()
         tracker.onProgress = { _, d -> progress += d }
-        sendLoopBolus(5.0, origin = BolusOrigin.MANUAL)
+        sendLoopBolus(5.0, origin = MedLinkBolusOrigin.MANUAL)
         tracker.onConfirmed()
         val action = tracker.onBolusAnswer(answer(5.0, null, bolusing = true)) as ReadStatusAt
-        assertEquals(clock.now() + BolusTracker.PROGRESS_READ_MS, action.time)
+        assertEquals(clock.now() + MedLinkBolusTracker.PROGRESS_READ_MS, action.time)
         assertEquals(listOf(0.0), progress)
-        clock.advance(BolusTracker.PROGRESS_READ_MS)
-        tracker.onStatus(Fixtures.snapshot(5.0, applied(5.0).lastBolusTime, square = 5.0, delivered = 1.5, readAt = clock.now()))
+        clock.advance(MedLinkBolusTracker.PROGRESS_READ_MS)
+        tracker.onStatus(MedLinkBolusFixtures.snapshot(5.0, applied(5.0).lastBolusTime, square = 5.0, delivered = 1.5, readAt = clock.now()))
         assertEquals(listOf(0.0, 1.5), progress)
     }
 
@@ -308,7 +308,7 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(20_000)
         assertEquals(Resend, tracker.onBolusAnswer(answer(baseline.lastBolusAmount, baseline.lastBolusTime, bolusing = false)))
-        assertEquals(BolusState.UNRESOLVED, r.state)
+        assertEquals(MedLinkBolusState.UNRESOLVED, r.state)
         assertEquals(1, noEffect.size, "confirmed and not delivered: lock evidence")
     }
 
@@ -319,7 +319,7 @@ class BolusTrackerTest {
         clock.advance(20_000)
         val pumpTime = applied(0.1).lastBolusTime
         assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
-        assertEquals(BolusState.DELIVERED, r.state)
+        assertEquals(MedLinkBolusState.DELIVERED, r.state)
     }
 
     @Test
@@ -328,13 +328,13 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(20_000)
         val action = tracker.onBolusAnswer(answer(0.3, null, bolusing = true)) as ReadStatusAt
-        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(MedLinkBolusState.DELIVERING, r.state)
         assertEquals(0.3, r.programmed!!, 1e-9)
         // the next M is at the end of the 0.3 U the pump took, not of the 0.5 U sent
-        assertTrue(action.time <= r.sentAt + (0.3 * BolusTracker.MS_PER_UNIT).toLong() + BolusTracker.DELIVERY_MARGIN_MS + 20_000)
+        assertTrue(action.time <= r.sentAt + (0.3 * MedLinkBolusTracker.MS_PER_UNIT).toLong() + MedLinkBolusTracker.DELIVERY_MARGIN_MS + 20_000)
         clock.advance(min)
         assertEquals(Record(0.3, applied(0.3).lastBolusTime), tracker.onStatus(applied(0.3)))
-        assertEquals(BolusState.PARTIAL, r.state)
+        assertEquals(MedLinkBolusState.PARTIAL, r.state)
         assertEquals(0, tracker.resendCount())
     }
 
@@ -345,7 +345,7 @@ class BolusTrackerTest {
         clock.advance(20_000)
         val pumpTime = applied(0.1).lastBolusTime
         assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
-        assertEquals(BolusState.PARTIAL, r.state)
+        assertEquals(MedLinkBolusState.PARTIAL, r.state)
     }
 
     @Test
@@ -362,7 +362,7 @@ class BolusTrackerTest {
     fun `unknown M keeps reading and blocking until delivered`() {
         sendLoopBolus()
         tracker.onConfirmed()
-        repeat(BolusTracker.MAX_STATUS_FAILURES - 1) { assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(null)) }
+        repeat(MedLinkBolusTracker.MAX_STATUS_FAILURES - 1) { assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(null)) }
         assertFalse(tracker.canSendNewBolus())
         // later delivered clears it and records once
         assertInstanceOf(Record::class.java, tracker.onStatus(applied(0.5)))
@@ -379,7 +379,7 @@ class BolusTrackerTest {
         tracker.onStatus(null)
         val action = tracker.onStatusFailed("M answered invalid command")
         assertInstanceOf(Alarm::class.java, action)
-        assertEquals(BolusState.FAILED, r.state)
+        assertEquals(MedLinkBolusState.FAILED, r.state)
         assertTrue(tracker.canSendNewBolus())
     }
 
@@ -388,14 +388,14 @@ class BolusTrackerTest {
         val r = sendLoopBolus(1.0)
         tracker.onConfirmed()
         repeat(4) { tracker.onStatusFailed("invalid") }
-        tracker.onStatus(Fixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.2))
+        tracker.onStatus(MedLinkBolusFixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.2))
         assertEquals(0, r.statusFailures)
         assertInstanceOf(ReadStatusAt::class.java, tracker.onStatusFailed("invalid"))
     }
 
     @Test
     fun `M failures are not counted with nothing written`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertEquals(None, tracker.onStatusFailed("invalid"))
     }
 
@@ -440,8 +440,8 @@ class BolusTrackerTest {
     fun `pump suspended while delivering makes the bolus unresolved and reads M right away`() {
         sendLoopBolus(1.0)
         tracker.onConfirmed()
-        tracker.onStatus(Fixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.4))
-        val action = tracker.onPumpState(PumpAnswerState.SUSPENDED)
+        tracker.onStatus(MedLinkBolusFixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.4))
+        val action = tracker.onPumpState(MedLinkPumpAnswerState.SUSPENDED)
         assertEquals(ReadStatusAt(clock.now()), action)
         clock.advance(5 * min)
         assertEquals(Record(0.4, applied(0.4).lastBolusTime), tracker.onStatus(applied(0.4)))
@@ -452,16 +452,16 @@ class BolusTrackerTest {
     fun `pump bolusing state moves a confirmed bolus to delivering`() {
         sendLoopBolus(1.0)
         tracker.onConfirmed()
-        assertInstanceOf(ReadStatusAt::class.java, tracker.onPumpState(PumpAnswerState.BOLUSING))
-        assertEquals(BolusState.DELIVERING, tracker.current!!.state)
+        assertInstanceOf(ReadStatusAt::class.java, tracker.onPumpState(MedLinkPumpAnswerState.BOLUSING))
+        assertEquals(MedLinkBolusState.DELIVERING, tracker.current!!.state)
     }
 
     @Test
     fun `not started without a baseline never resends - alarm instead (pump clock offset unknown)`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         tracker.onBaseline(null)
         tracker.onWritten()
-        val old = Fixtures.snapshot(0.5, t0 - 30 * min, readAt = clock.now())
+        val old = MedLinkBolusFixtures.snapshot(0.5, t0 - 30 * min, readAt = clock.now())
         tracker.onStatus(old)
         val action = tracker.onStatus(old)
         assertInstanceOf(Alarm::class.java, action)
@@ -479,7 +479,7 @@ class BolusTrackerTest {
 
     @Test
     fun `aborted before the dose was written fails without verification`() {
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertEquals(true, tracker.onRejectedBeforeWrite())
         assertTrue(tracker.canSendNewBolus())
     }
@@ -488,34 +488,34 @@ class BolusTrackerTest {
     fun `rejection after the dose was written is unresolved, not failed`() {
         sendLoopBolus()
         assertEquals(false, tracker.onRejectedBeforeWrite())
-        assertEquals(BolusState.UNRESOLVED, tracker.current!!.state)
+        assertEquals(MedLinkBolusState.UNRESOLVED, tracker.current!!.state)
     }
 
     // ---- dropped executor (TBR bolus stuck QUEUED blocked every SMB) --------------------------
 
     @Test
     fun `queued bolus dropped from the queue fails and releases the tracker`() {
-        val r = tracker.onQueued("TBRBolus-1", BolusOrigin.LOOP, 0.1)!!
+        val r = tracker.onQueued("TBRBolus-1", MedLinkBolusOrigin.LOOP, 0.1)!!
         tracker.onBaseline(baseline)
         assertFalse(tracker.canSendNewBolus())
         assertTrue(tracker.onDropped("max tries"))
-        assertEquals(BolusState.FAILED, r.state)
+        assertEquals(MedLinkBolusState.FAILED, r.state)
         assertTrue(tracker.canSendNewBolus())
-        assertTrue(tracker.onQueued("SMBBolus-2", BolusOrigin.LOOP, 0.4) != null)
+        assertTrue(tracker.onQueued("SMBBolus-2", MedLinkBolusOrigin.LOOP, 0.4) != null)
     }
 
     @Test
     fun `written bolus dropped from the queue stays under M`() {
         val r = sendLoopBolus()
         assertFalse(tracker.onDropped("removed"))
-        assertEquals(BolusState.SENT, r.state)
+        assertEquals(MedLinkBolusState.SENT, r.state)
         assertFalse(tracker.canSendNewBolus())
     }
 
     @Test
     fun `dropping twice or with nothing tracked is a no-op`() {
         assertFalse(tracker.onDropped("removed"))
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertTrue(tracker.onDropped("user stop"))
         assertFalse(tracker.onDropped("removed"))
     }
@@ -524,12 +524,12 @@ class BolusTrackerTest {
 
     @Test
     fun `a bolus joins a queued request before the dose is written`() {
-        val r = tracker.onQueued("TBRBolus-1", BolusOrigin.LOOP, 0.1)!!
+        val r = tracker.onQueued("TBRBolus-1", MedLinkBolusOrigin.LOOP, 0.1)!!
         assertTrue(tracker.onMerged(0.5, manual = false))
         assertEquals(0.5, r.requested, 1e-9)
-        assertEquals(BolusOrigin.LOOP, r.origin)
+        assertEquals(MedLinkBolusOrigin.LOOP, r.origin)
         assertTrue(tracker.onMerged(2.5, manual = true))
-        assertEquals(BolusOrigin.MANUAL, r.origin, "a joined manual bolus is never re-sent without the user")
+        assertEquals(MedLinkBolusOrigin.MANUAL, r.origin, "a joined manual bolus is never re-sent without the user")
     }
 
     @Test
@@ -539,7 +539,7 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(min)
         tracker.onStatus(notStarted())
-        assertEquals(BolusState.UNRESOLVED, r.state)
+        assertEquals(MedLinkBolusState.UNRESOLVED, r.state)
         assertFalse(tracker.onMerged(0.5, manual = false), "one not-started M is not proof")
         clock.advance(5_000)
         assertEquals(Resend, tracker.onStatus(notStarted()))
@@ -558,7 +558,7 @@ class BolusTrackerTest {
         tracker.onConfirmed()
         clock.advance(2 * min)
         tracker.onStatus(applied(0.5))
-        assertEquals(BolusState.DELIVERED, r.state)
+        assertEquals(MedLinkBolusState.DELIVERED, r.state)
         assertFalse(tracker.onMerged(0.9, manual = false))
         assertTrue(tracker.canSendNewBolus(), "the waiting bolus runs on its own after M")
     }
@@ -567,17 +567,17 @@ class BolusTrackerTest {
 
     @Test
     fun `a bolus in progress with nothing tracked is another bolus`() {
-        val pumpBolus = Fixtures.snapshot(amount = 3.0, time = t0, delivered = 1.0, bolusing = true, readAt = t0 + 5_000)
+        val pumpBolus = MedLinkBolusFixtures.snapshot(amount = 3.0, time = t0, delivered = 1.0, bolusing = true, readAt = t0 + 5_000)
         assertTrue(tracker.isOtherBolusInProgress(pumpBolus))
-        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
         assertTrue(tracker.isOtherBolusInProgress(pumpBolus), "ours is not written yet")
     }
 
     @Test
     fun `a bolus in progress older than the baseline is another bolus, a newer one is ours`() {
         sendLoopBolus(0.5)
-        val older = Fixtures.snapshot(amount = 2.0, time = baseline.lastBolusTime, delivered = 0.5, bolusing = true, readAt = clock.now())
-        val ours = Fixtures.snapshot(amount = 0.5, time = Fixtures.pumpTime("10-06-21 17:45"), delivered = 0.2, bolusing = true, readAt = clock.now())
+        val older = MedLinkBolusFixtures.snapshot(amount = 2.0, time = baseline.lastBolusTime, delivered = 0.5, bolusing = true, readAt = clock.now())
+        val ours = MedLinkBolusFixtures.snapshot(amount = 0.5, time = MedLinkBolusFixtures.pumpTime("10-06-21 17:45"), delivered = 0.2, bolusing = true, readAt = clock.now())
         assertTrue(tracker.isOtherBolusInProgress(older))
         assertFalse(tracker.isOtherBolusInProgress(ours))
     }
@@ -597,20 +597,20 @@ class BolusTrackerTest {
 
     @Test
     fun `manual bolus running on the square line stays delivering with progress, not another bolus`() {
-        val r = sendLoopBolus(0.7, BolusOrigin.MANUAL)
+        val r = sendLoopBolus(0.7, MedLinkBolusOrigin.MANUAL)
         val progress = mutableListOf<Double>()
         tracker.onProgress = { _, d -> progress += d }
         clock.advance(25_000)
         assertInstanceOf(ReadStatusAt::class.java, tracker.onBolusAnswer(answer(0.7, null, bolusing = true)))
-        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(MedLinkBolusState.DELIVERING, r.state)
         clock.advance(1_000)
         val running = baseline.copy(squareBolusAmount = 0.7, deliveredAmount = 0.2, squareMinutes = 0, readAt = clock.now())
         assertFalse(tracker.isOtherBolusInProgress(running))
         assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(running))
-        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(MedLinkBolusState.DELIVERING, r.state)
         assertEquals(0.2, progress.last(), 0.0001)
         clock.advance(30_000)
-        assertEquals(Record(0.7, Fixtures.pumpTime("10-06-21 17:45")), tracker.onStatus(applied(0.7)))
-        assertEquals(BolusState.DELIVERED, r.state)
+        assertEquals(Record(0.7, MedLinkBolusFixtures.pumpTime("10-06-21 17:45")), tracker.onStatus(applied(0.7)))
+        assertEquals(MedLinkBolusState.DELIVERED, r.state)
     }
 }

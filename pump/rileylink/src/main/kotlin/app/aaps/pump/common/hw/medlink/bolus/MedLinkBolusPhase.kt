@@ -1,7 +1,7 @@
 package app.aaps.pump.common.hw.medlink.bolus
 
 /** What a bolus waits for before the pump starts delivering it: shown by the progress dialog of a manual bolus. */
-enum class BolusPhase {
+enum class MedLinkBolusPhase {
 
     /** Connecting to the MedLink. */
     CONNECTING,

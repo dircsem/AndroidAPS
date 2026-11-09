@@ -24,7 +24,7 @@ import kotlin.math.roundToLong
  *    timestamp, so equal times would drop the second part. The offset stays inside the pump minute,
  *    so the single bolus read later from the pump history maps onto part 0 and is not added again.
  */
-object LoopBolusMerge {
+object MedLinkLoopBolusMerge {
 
     const val PART_OFFSET_MS = 1_000L
 

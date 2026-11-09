@@ -5,7 +5,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.source.BgSync
-import app.aaps.pump.common.hw.medlink.bolus.BolusStatusSnapshot
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusStatusSnapshot
 import app.aaps.pump.common.hw.medlink.data.MedLinkPartialBolus
 
 import java.lang.Exception
@@ -172,7 +172,7 @@ class MedLinkStatusParser {
          * Returns null when the "last bolus" amount or time is missing, so callers treat the answer
          * as unknown instead of using a 0.0 default.
          */
-        fun parseBolusSnapshot(lines: List<String>, readAt: Long): BolusStatusSnapshot? {
+        fun parseBolusSnapshot(lines: List<String>, readAt: Long): MedLinkBolusStatusSnapshot? {
             val text = lines.joinToString("")
             val last = lastBolusSnapshotPattern.matcher(text)
             if (!last.find()) return null
@@ -185,10 +185,10 @@ class MedLinkStatusParser {
                 squareTime.group(1).toInt() * 60 + squareTime.group(2).toInt(),
                 squareTime.group(3).toInt() * 60 + squareTime.group(4).toInt()
             ) else null
-            return BolusStatusSnapshot(
+            return MedLinkBolusStatusSnapshot(
                 lastBolusAmount = last.group(1).toDouble(),
                 // the MedLink sometimes sends year 00 for the same bolus: never trust a clearly wrong year
-                lastBolusTime = app.aaps.pump.common.hw.medlink.bolus.PumpClock.normalizeYear(time.time, readAt),
+                lastBolusTime = app.aaps.pump.common.hw.medlink.bolus.MedLinkPumpClock.normalizeYear(time.time, readAt),
                 squareBolusAmount = if (hasSquare) square.group(1).toDouble() else null,
                 deliveredAmount = if (hasSquare) square.group(2).toDouble() else null,
                 pumpBolusing = text.contains("bolusing"),

@@ -1,7 +1,7 @@
 package app.aaps.pump.common.hw.medlink.bolus
 
 /** Why the driver reports the pump as blocked. */
-enum class PumpBlock {
+enum class MedLinkPumpBlock {
 
     /**
      * START, STOP or bolus commands were confirmed by the MedLink and did nothing (pump still suspended /
@@ -19,10 +19,10 @@ enum class PumpBlock {
  *  - new commands are not refused while locked: they keep going to the pump (each one with its own tries)
  *    and the first one that works clears the lock.
  */
-object PumpLockRule {
+object MedLinkPumpLockRule {
 
     const val LOCK_AFTER = 2
 
-    fun decide(confirmedWithoutEffect: Int): PumpBlock? =
-        if (confirmedWithoutEffect >= LOCK_AFTER) PumpBlock.PUMP_LOCKED else null
+    fun decide(confirmedWithoutEffect: Int): MedLinkPumpBlock? =
+        if (confirmedWithoutEffect >= LOCK_AFTER) MedLinkPumpBlock.PUMP_LOCKED else null
 }

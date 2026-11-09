@@ -4,17 +4,17 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
-class PumpLockRuleTest {
+class MedLinkPumpLockRuleTest {
 
     @Test
     fun `one confirmed command without effect is not a lock`() {
-        assertNull(PumpLockRule.decide(0))
-        assertNull(PumpLockRule.decide(1))
+        assertNull(MedLinkPumpLockRule.decide(0))
+        assertNull(MedLinkPumpLockRule.decide(1))
     }
 
     @Test
     fun `two or more confirmed commands without effect lock the pump`() {
-        assertEquals(PumpBlock.PUMP_LOCKED, PumpLockRule.decide(PumpLockRule.LOCK_AFTER))
-        assertEquals(PumpBlock.PUMP_LOCKED, PumpLockRule.decide(5))
+        assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(MedLinkPumpLockRule.LOCK_AFTER))
+        assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(5))
     }
 }

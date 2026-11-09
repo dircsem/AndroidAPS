@@ -3,7 +3,7 @@ package app.aaps.pump.common.hw.medlink.bolus
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-object Fixtures {
+object MedLinkBolusFixtures {
 
     fun lines(name: String): List<String> =
         requireNotNull(javaClass.classLoader!!.getResource("medlink/$name")) { "missing fixture $name" }
@@ -21,7 +21,7 @@ object Fixtures {
         delivered: Double? = 0.0,
         bolusing: Boolean = false,
         readAt: Long = time + 60_000
-    ) = BolusStatusSnapshot(
+    ) = MedLinkBolusStatusSnapshot(
         lastBolusAmount = amount,
         lastBolusTime = time,
         squareBolusAmount = square,

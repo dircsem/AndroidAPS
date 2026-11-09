@@ -11,7 +11,7 @@ import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 /**
  * `M` (BolusStatus) answer handler.
  *
- * T5: the answer is parsed strictly and handed to MedLinkBLE / BolusTracker, which alone decides
+ * T5: the answer is parsed strictly and handed to MedLinkBLE / MedLinkBolusTracker, which alone decides
  * whether a held bolus was delivered, is still delivering, or may be re-sent.
  */
 class BleBolusStatusCommand(

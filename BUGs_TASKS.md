@@ -176,10 +176,10 @@ The rule from `DEV.md` applies to every task: **write the unit tests first, see 
 `MedLinkBLE` is tied to `BluetoothGatt`, handlers and threads, so it is hard to unit test. The plan moves every **decision** out of it into small pure-Kotlin classes that take pump answers and a clock and return a decision. `MedLinkBLE` and the `Ble*Command` classes only carry out those decisions.
 
 - New package `app.aaps.pump.common.hw.medlink.bolus` in `pump/rileylink` (no Android imports):
-  - `BolusStatusSnapshot` — one parsed `M` answer: `lastBolusAmount`, `lastBolusTime`, `deliveredAmount`, `pumpBolusing`, `readAt`, `raw`.
-  - `BolusOutcome` + `BolusStatusInterpreter` (T5).
-  - `BolusRequest` + `BolusTracker` (T7/T9) — the one bolus in flight and its state.
-  - `StopGate` (T1) — decides if an automatic stop may be sent now.
+  - `MedLinkBolusStatusSnapshot` — one parsed `M` answer: `lastBolusAmount`, `lastBolusTime`, `deliveredAmount`, `pumpBolusing`, `readAt`, `raw`.
+  - `MedLinkBolusOutcome` + `MedLinkBolusStatusInterpreter` (T5).
+  - `MedLinkBolusRequest` + `MedLinkBolusTracker` (T7/T9) — the one bolus in flight and its state.
+  - `MedLinkStopGate` (T1) — decides if an automatic stop may be sent now.
   - `Clock` interface (`now()`), with a fake in tests.
 - Tests go in `pump/rileylink/src/test/kotlin/app/aaps/pump/common/hw/medlink/...`, JUnit 5 + mockito-kotlin from `:shared:tests` (already a `testImplementation` of `pump/rileylink`).
 - Recorded pump answers go in `pump/rileylink/src/test/resources/medlink/` (`m_idle.txt`, `m_bolusing.txt`, `m_partial_aborted.txt`, `a_bolusing.txt`, `a_suspended.txt`, `a_normal.txt`, …). **Open item:** we need real captures from the pump. In particular, the exact `M` line that says "still bolusing" is not in the parser yet. `parseBolusInfo` only reads `last bolus` and `square bolus: X delivered: Y`.
@@ -188,12 +188,12 @@ The rule from `DEV.md` applies to every task: **write the unit tests first, see 
 ## T10 + T12 — test harness and bolus logging (do first)
 
 **Tests first**
-- `MedLinkStatusParserTest`: every fixture parses into the expected `BolusStatusSnapshot`. Cover: the time with minute resolution, `0.0u` square bolus, and the missing `delivered` field.
-- `FakeMedLinkTransport` (test-only): a script of `(command → answer lines | DISCONNECT)` steps. Later tasks use it to drive `BolusTracker` + `StopGate`, and for the replay cases listed in T10.
+- `MedLinkStatusParserTest`: every fixture parses into the expected `MedLinkBolusStatusSnapshot`. Cover: the time with minute resolution, `0.0u` square bolus, and the missing `delivered` field.
+- `FakeMedLinkTransport` (test-only): a script of `(command → answer lines | DISCONNECT)` steps. Later tasks use it to drive `MedLinkBolusTracker` + `MedLinkStopGate`, and for the replay cases listed in T10.
 
 **Changes**
-- `MedLinkStatusParser`: add `parseBolusSnapshot(lines, readAt): BolusStatusSnapshot?`. It returns `null` when `last bolus` is missing, so callers get **unknown** and never a default of `0.0`. The two existing `parseBolusInfo` overloads delegate to it.
-- `BolusTracker` logs every transition on `LTag.PUMPBTCOMM` with prefix `BOLUS[id]`: `state old→new`, requested, delivered, attempt, raw `M`/`A` answer. That covers T12. Log lines from the `Ble*Command` classes about bolus/stop also carry the request id.
+- `MedLinkStatusParser`: add `parseBolusSnapshot(lines, readAt): MedLinkBolusStatusSnapshot?`. It returns `null` when `last bolus` is missing, so callers get **unknown** and never a default of `0.0`. The two existing `parseBolusInfo` overloads delegate to it.
+- `MedLinkBolusTracker` logs every transition on `LTag.PUMPBTCOMM` with prefix `BOLUS[id]`: `state old→new`, requested, delivered, attempt, raw `M`/`A` answer. That covers T12. Log lines from the `Ble*Command` classes about bolus/stop also carry the request id.
 
 ## T2 — `Bolusing` running state
 
@@ -204,12 +204,12 @@ The rule from `DEV.md` applies to every task: **write the unit tests first, see 
 
 **Changes**
 - `MedLinkPumpRunningState`: add `Bolusing`.
-- `BleStopCommand` (`:41-46`): set `Bolusing`, remove `SystemClock.sleep(15000)` + `retryCommand()`, and branch on the stop origin (T0): `AUTOMATIC` → `bleComm.holdStop(StopGate.recheckDelay(...))` (T1); `USER` → wait for the suspend answer, then trigger T3.
+- `BleStopCommand` (`:41-46`): set `Bolusing`, remove `SystemClock.sleep(15000)` + `retryCommand()`, and branch on the stop origin (T0): `AUTOMATIC` → `bleComm.holdStop(MedLinkStopGate.recheckDelay(...))` (T1); `USER` → wait for the suspend answer, then trigger T3.
 - `MedLinkBLE.startCommandStatusMatch` becomes a small pure function `shouldSkipStartStop(command, lastStatus, lastStatusSet, lastStopOrStartSent, now)`. It skips only when the state was read from the pump **after** the last start/stop was sent and is less than 60 s old, and never when the state is `Bolusing`/`Unknow`. `setLastPumpStatus` already stores the time; add `lastStartStopSent`, set when a `StopStartPump` executor is posted.
 
 ## T5 — strict `M` interpreter
 
-**Tests first** (`BolusStatusInterpreterTest`, table-driven, one row per outcome)
+**Tests first** (`MedLinkBolusStatusInterpreterTest`, table-driven, one row per outcome)
 - not started: snapshot `lastBolusTime` ≤ baseline time (same dose, older time → **not started**, the bug in root cause 4).
 - delivering: newer than baseline, delivered < requested, `pumpBolusing=true`.
 - delivered: newer, `|delivered − requested| ≤ 0.05`.
@@ -218,26 +218,26 @@ The rule from `DEV.md` applies to every task: **write the unit tests first, see 
 - Clock skew: snapshot time within the pump-clock tolerance of `sentAt` is judged against the **baseline**, not the phone clock.
 
 **Changes**
-- `BolusStatusInterpreter.interpret(snapshot: BolusStatusSnapshot?, request: BolusRequest): BolusOutcome`.
+- `MedLinkBolusStatusInterpreter.interpret(snapshot: MedLinkBolusStatusSnapshot?, request: MedLinkBolusRequest): MedLinkBolusOutcome`.
   - "Newer" means `snapshot.lastBolusTime > request.baseline.lastBolusTime`. If there is no baseline, it falls back to `sentAt − pumpClockOffset − 60 s`. The pump clock is not the phone clock, so the baseline is the main reference.
-  - The pump time has minute resolution, so two equal SMBs inside the same minute cannot be told apart. `BolusTracker` therefore does not send the next bolus until the pump minute has changed since the previous one (this replaces the 5 s sleep at `MedLinkBLE.kt:1581`).
-- `BleBolusStatusCommand` (`:48`) and `BleBolusCommand` (`:52`) drop their `==` / `> 0.2` checks and pass the snapshot to `BolusTracker.onStatus(snapshot)`.
+  - The pump time has minute resolution, so two equal SMBs inside the same minute cannot be told apart. `MedLinkBolusTracker` therefore does not send the next bolus until the pump minute has changed since the previous one (this replaces the 5 s sleep at `MedLinkBLE.kt:1581`).
+- `BleBolusStatusCommand` (`:48`) and `BleBolusCommand` (`:52`) drop their `==` / `> 0.2` checks and pass the snapshot to `MedLinkBolusTracker.onStatus(snapshot)`.
 - `BolusProgressCallback` (`:62`): remove `|| bolusDeliveredAmount == 0.0` (root cause 7). Progress UI and recording are driven by the tracker outcome. **delivered**/**partial** record the bolus; **not started**/**unknown** never record it.
 
 ## T9 — one state per bolus (built together with T5, used by T1/T3/T4/T6/T7)
 
 Kept here because T1–T7 all depend on it. It is the cleanest way to get rid of the scattered flags.
 
-**Tests first** (`BolusTrackerTest`, fake clock)
+**Tests first** (`MedLinkBolusTrackerTest`, fake clock)
 - Allowed transitions only: `QUEUED → SENT → CONFIRMED → DELIVERING → DELIVERED | PARTIAL | FAILED | UNKNOWN` (plus `SENT/CONFIRMED → UNRESOLVED` on disconnect). An illegal transition throws in tests and logs + alarms in release.
 - Only `onStatus(snapshot)` / `onPumpState(A)` move a request out of `CONFIRMED`.
 - `canSendNewBolus()` is false while a request is not in a final state.
 
 **Changes**
-- `BolusRequest(id, detailedBolusInfo, origin: LOOP|MANUAL, requested, createdAt, sentAt, baseline, attempts, appliedTotal, state, lastSnapshot)`.
-- `BolusTracker` (singleton owned by `MedLinkBLE`, injected with `Clock`, `AAPSLogger`, and a `BolusRecorder` interface that the plugin implements):
+- `MedLinkBolusRequest(id, detailedBolusInfo, origin: LOOP|MANUAL, requested, createdAt, sentAt, baseline, attempts, appliedTotal, state, lastSnapshot)`.
+- `MedLinkBolusTracker` (singleton owned by `MedLinkBLE`, injected with `Clock`, `AAPSLogger`, and a `BolusRecorder` interface that the plugin implements):
   - `onQueued`, `onWritten`, `onConfirmed`, `onDisconnect`, `onStatus(snapshot)`, `onPumpState(state)`
-  - each returns a `BolusAction`: `None | ReadStatusAt(time) | Resend | Record(amount, pumpTime) | Fail(reason) | Alarm(reason)`.
+  - each returns a `MedLinkBolusAction`: `None | ReadStatusAt(time) | Resend | Record(amount, pumpTime) | Fail(reason) | Alarm(reason)`.
 - `MedLinkBLE`: delete `isCommandConfirmed` use for boluses, `bolusCommandToBeChecked`, `needToCheckOnHold`, `onHoldCommandQueue`, `reprocessOnHold`. `setConfirmedCommand` calls `tracker.onConfirmed()`. `MedLinkBLE` runs the returned action:
   - `ReadStatusAt` → enqueue a `BolusStatus` executor at that time (`handler.postDelayed`)
   - `Resend` → enqueue the bolus again
@@ -286,15 +286,15 @@ Kept here because T1–T7 all depend on it. It is the cleanest way to get rid of
 - An `AUTOMATIC` stop is queued as today.
 
 **Changes**
-- `enum class StopOrigin { USER, AUTOMATIC }` in `core/interfaces/.../pump` (needed by `MedLinkPumpPluginBase`).
-- `BleStopCommand(..., val origin: StopOrigin)`. `MedLinkMedtronicPumpPlugin.stopPump(callback, origin = AUTOMATIC)`; the four existing callers (`:1034`, `:1832`, `:2234`, `:4158`) stay `AUTOMATIC` by default.
+- `enum class MedLinkStopOrigin { USER, AUTOMATIC }` in `core/interfaces/.../pump` (needed by `MedLinkPumpPluginBase`).
+- `BleStopCommand(..., val origin: MedLinkStopOrigin)`. `MedLinkMedtronicPumpPlugin.stopPump(callback, origin = AUTOMATIC)`; the four existing callers (`:1034`, `:1832`, `:2234`, `:4158`) stay `AUTOMATIC` by default.
 - User path: add `fun userSuspend(callback)` to `MedLinkPumpPluginBase`. `CommandStopPump.execute` (`implementation/.../CommandStopPump.kt:33`) gets a `pump is MedLinkPumpPluginBase` branch, and `ActionsFragment` shows the suspend action for MedLink. Alternative with less change to the shared core: a MedLink `CustomAction` "Suspend pump" in the plugin's custom actions.
 - `MedLinkBLE.addWriteCharacteristic`: `USER` stop → `priorityExecutionCommandQueue.addFirst`, and `bolusExecutionQueue.removeIf { not yet written }` (tracker state `QUEUED`).
 - Note: `addWriteCharacteristic` / `nextCommand` / `removeFirstCommand` are tangled. Extract the four deques + `bolusExecutionHash` into a `CommandQueues` class with `pickNext(state)`, `enqueue(executor, priority, origin)`, `remove(executor)`. That class is unit-testable. `MedLinkBLE` keeps the GATT side.
 
 ## T1 — automatic stop never interrupts a bolus
 
-**Tests first** (`StopGateTest`, fake clock + tracker states)
+**Tests first** (`MedLinkStopGateTest`, fake clock + tracker states)
 - no bolus in flight and last `A` not bolusing → `Send`.
 - bolus `SENT/CONFIRMED/DELIVERING/UNRESOLVED`, or one sent < 5 min ago → `ReadStatusFirst`.
 - after `M` = delivering (0.6 of 1.0) → `DeferUntil(now + 0.4 × 40 s + 15 s)`.
@@ -303,8 +303,8 @@ Kept here because T1–T7 all depend on it. It is the cleanest way to get rid of
 - `USER` origin → always `Send`.
 
 **Changes**
-- `StopGate.decide(origin, tracker, lastPumpState, now): StopDecision`.
-- `MedLinkBLE.nextCommand`: when the picked executor is `StopStartPump/StopPump` with origin `AUTOMATIC`, ask `StopGate`.
+- `MedLinkStopGate.decide(origin, tracker, lastPumpState, now): MedLinkStopDecision`.
+- `MedLinkBLE.nextCommand`: when the picked executor is `StopStartPump/StopPump` with origin `AUTOMATIC`, ask `MedLinkStopGate`.
   - `ReadStatusFirst` → put a `BolusStatus` in front of it.
   - `DeferUntil` → leave the stop queued, pick the next command that is neither a stop nor a bolus, and `handler.postDelayed({ nextCommand() }, delay)`.
 - `BleStopCommand` on `pump bolusing state` with `AUTOMATIC` → `bleComm.holdStop(...)`, which does the same deferral (no sleep).
@@ -315,7 +315,7 @@ Kept here because T1–T7 all depend on it. It is the cleanest way to get rid of
 
 **Changes**
 - `BleStopCommand`, on success when the tracker has a non-final bolus or the previous `A` said `Bolusing`: enqueue an `M` right after the stop (priority queue head) and mark the request `UNRESOLVED`.
-- `BolusTracker.onStatus` after a stop: `partial` → `Record(delivered)` and final state `PARTIAL`. `T7` guarantees no remainder re-send.
+- `MedLinkBolusTracker.onStatus` after a stop: `partial` → `Record(delivered)` and final state `PARTIAL`. `T7` guarantees no remainder re-send.
 - `USER` origin: `rxBus.send(EventDismissBolusProgressIfRunning)` + a notification with "Delivered X of Y U".
 
 ## T4 — resolve held boluses on reconnect
@@ -376,13 +376,13 @@ Each step is one PR. It must pass `./gradlew :pump:rileylink:testFullDebugUnitTe
 # Implementation status (2026-11-07)
 
 Pure decision layer in `pump/rileylink/.../hw/medlink/bolus/` (tests in `src/test/.../medlink/`, 100 tests):
-`BolusStatusSnapshot` + `MedLinkStatusParser.parseBolusSnapshot` (chunk-safe), `BolusStatusInterpreter` (T5),
-`BolusTracker` (T7/T8/T9/T12), `StopGate` (T1), `StartStopSkipRule` (T2/T13), `BolusProgressRule` (root cause 7).
+`MedLinkBolusStatusSnapshot` + `MedLinkStatusParser.parseBolusSnapshot` (chunk-safe), `MedLinkBolusStatusInterpreter` (T5),
+`MedLinkBolusTracker` (T7/T8/T9/T12), `MedLinkStopGate` (T1), `MedLinkStartStopSkipRule` (T2/T13), `BolusProgressRule` (root cause 7).
 
 | Task | Status |
 |---|---|
-| T0 | Done: `StopOrigin`, `BleStopCommand.origin`, `userSuspend` → `CommandStopPump` branch + MedLink custom action "Suspend pump"; USER stop to priority head, unsent boluses dropped + alarm |
-| T1 | Done: `StopGate` in the command picker; `BleStopCommand` bolusing → `holdStop()` (no sleep) |
+| T0 | Done: `MedLinkStopOrigin`, `BleStopCommand.origin`, `userSuspend` → `CommandStopPump` branch + MedLink custom action "Suspend pump"; USER stop to priority head, unsent boluses dropped + alarm |
+| T1 | Done: `MedLinkStopGate` in the command picker; `BleStopCommand` bolusing → `holdStop()` (no sleep) |
 | T2 | Done: `Bolusing` state in stop/start commands; skip rule never acts on it |
 | T3 | Done: `A` suspended → tracker reads `M` now → partial recorded, never re-sent |
 | T4 | Done: held bolus verified by `M` on reconnect; picker no longer runs `onHoldCommandQueue` |
