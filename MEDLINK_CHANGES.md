@@ -32,7 +32,9 @@ O `MedLinkBLE` só executa o que essas classes decidem.
 | `BolusTracker` | Máquina de estados de cada bolus (QUEUED → SENT → CONFIRMED/DELIVERING/UNRESOLVED/UNKNOWN → DELIVERED/PARTIAL/FAILED). Devolve ações: Resend, ReadStatusAt, Record, Fail, Alarm, AskUser. |
 | `StopGate` | Decide se um **stop automático** pode ir agora, se precisa ler `M` antes ou se deve esperar o bolus terminar. Stop do usuário vai sempre. |
 | `StartStopSkipRule` | Só pula start/stop "já feito" se o estado veio de uma resposta da bomba **depois** do último start/stop enviado e tem menos de 60 s. |
-| `BolusProgressRule` | Regra usada pelo `BolusProgressCallback` para decidir se registra o bolus. |
+| ~~`BolusProgressRule`~~ | Removida no 4m com o `BolusProgressCallback` (o tracker segue o bolus e atualiza o diálogo). |
+| `BolusCommandAnswer` | (4m) Resposta do próprio comando BOLUS: valor e hora do último bolus, bomba em bolus ou não. |
+| `PumpClock` | (4m) Ignora o ano da bomba quando está claramente errado (`00`). |
 | `StartRetryRule` | (2026-11-08) Quando reenviar um START recusado: 30/60/120/300 s, alarme a partir da 2ª falha, desiste com alarme na 5ª. Cancela o reenvio se outro start/stop foi enviado depois ou se a bomba já respondeu Running. |
 
 Regras importantes do `BolusTracker`:
@@ -314,6 +316,38 @@ Log: `logs/basal_problem.log`.
 
 **Testes**: medtronic 143/143, `:pump:medtronic:compileFullDebugKotlin` OK. Sem teste automático para `handlePumpStatus`.
 
+## 4m. A resposta do BOLUS decide; `M` só acompanha a entrega e o diálogo de progresso (2026-11-09)
+
+Logs: `logs/basal_problem.log` (SMB 0,4 U às 11:29) e `logs/failed_bolus_sample`.
+
+**A MedLink já responde o resultado do bolus** (depois de "bolus verification"):
+- Entregando: `check pump status / pump is bolusing state / last bolus: 0.4u / ready` — sem hora enquanto entrega.
+- Não entregue: `Pump normal state / Last bolus: 2.0u 09-11-26 13:22 / Ready` — o bolus anterior (enviado às 13:30).
+- Bolus pequeno já entregue: `pump normal state / last bolus: <valor> <hora do nosso bolus>`.
+
+**O que estava errado**
+- `BleBolusCommand` mandava ao tracker só o pedaço BLE com `last bolus` (sem a hora) → "no M answer" → `UNKNOWN`, uma falha de `M` e mais um `M`.
+- `BolusCallback` (plugin) tratava qualquer `last bolus` com hora como entregue: no caso de falha registrava de novo o 2,0 U antigo e respondia **sucesso** para o bolus de 0,5 U que não entrou. No caso de sucesso (`DeliveringBolus`) não chamava o callback da fila.
+- O diálogo de progresso só fechava se houvesse um `M` extra (bolus > 0,2 U, `BolusProgressCallback`) e não mostrava progresso: o `M` em andamento era relido em loop (`clearExecutedCommand`) sem repassar o valor.
+- A MedLink manda às vezes o ano `00` (`09-11-00 11:03`) e às vezes `26` para o mesmo bolus. Com isso o baseline parecia 26 anos mais velho ou mais novo que a resposta: provável causa do "cannot tell last bolus from the sent one" do `logs/invalid_smb.log` (4k).
+
+**O que mudou**
+- `bolus/BolusCommandAnswer.parse`: lê a resposta inteira do BOLUS (pedaços juntados, no "ready"). `BleBolusCommand` → `MedLinkBLE.onBolusAnswer` → `BolusTracker.onBolusAnswer`:
+  - bomba em bolus e mesmo valor → `DELIVERING` (conta como efeito para a trava);
+  - estado normal com bolus mais novo que o baseline → `DELIVERED`, registrado com a hora da bomba, sem `M`;
+  - estado normal com o bolus anterior → não entregue, **sem segundo `M`**: a própria bomba verificou logo depois do comando. Conta como tentativa e como evidência de trava (confirmado sem efeito); reenvia se houver tentativas;
+  - sem `last bolus` ou outro valor em bolus → o `M` decide (como antes).
+- `M` agora só acompanha um bolus em entrega: bolus manual a cada 15 s (`PROGRESS_READ_MS`) para o diálogo; SMB/TBR uma vez no fim previsto. `BleBolusStatusCommand` não relê mais em loop. Nenhum `M` é enfileirado junto com o bolus (`bolusStatusMessage` = null); removidos `BolusProgressCallback`, `BolusProgressRule` e o executor contínuo do `M`.
+- Diálogo de progresso: `BolusTracker.onProgress` → `BleBolusCommand.onProgress` → `EventOverviewBolusProgress` (só bolus manual; com TBR/SMB juntados mostra a parte do manual). Sem valor no `M`, estima pelo tempo (40 s/U, no máximo 95 %). No fim: 100 % + `EventDismissBolusProgressIfRunning`.
+- Um só resultado por bolus: `onQueueResult` agora também é chamado para a parte do próprio executor (registro, falha, alarme final, descarte); o plugin guarda a primeira chamada (`AtomicBoolean`). O `andThen` do `BolusCallback` só registra no log.
+- `bolus/PumpClock.normalizeYear`: uma hora da bomba a mais de 180 dias da leitura vai para o ano mais próximo da hora do telefone. Usado no `M` e na resposta do BOLUS.
+
+**Testes**: `BolusCommandAnswerTest` (4, textos reais), `PumpClockTest` (3), `BolusTrackerTest` (+5: em entrega, progresso do manual, não entregue sem 2º `M`, entregue pela resposta, `M` decide), `BleBolusCommandsTest` (resposta inteira no "ready"; `M` em andamento não relê em loop). rileylink 485/485, medtronic 143/143, `:app:assembleFullDebug` OK. Diálogo e fluxo no `MedLinkBLE` sem teste automático (T10).
+
+**No log, durante o teste de campo**: `BOLUS[id] bolus answer: last xU@t bolusing=...`, `not delivered: the bolus answer shows the previous bolus`, `bolus answer ...: decided by the tracker`, `bolus result success=... delivered=...` (uma vez por bolus).
+
+**Pendente**: confirmar no campo se o `M` mostra o valor entregue durante um bolus normal (`square bolus ... delivered`); senão o diálogo usa a estimativa pelo tempo.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -332,16 +366,16 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `bolus/BolusStatusInterpreterTest` | regras de novo/velho/ambíguo, parcial, desconhecido |
 | `bolus/BolusTrackerTest` | estados, reenvio, alarmes, registro, executor descartado (4h), junção (4i), bolus de fora (4j), tentativas, falhas do `M` e sinais de trava (4k) |
 | `bolus/PumpLockRuleTest` | bomba travada (PUMP_LOCKED) depois de 2 comandos confirmados sem efeito (4k) |
-| `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest`, `bolus/BolusProgressRuleTest` | stop, skip, progresso |
+| `bolus/StopGateTest`, `bolus/StartStopSkipRuleTest` | stop, skip |
 | `bolus/LoopBolusMergeTest` | junção TBR + SMB (T14), junção ao bolus rastreado (4i) |
 | `bolus/ManualBolusRuleTest` | recusa só do mesmo tipo (4i), valor editado no diálogo (T16) |
 | `ble/command/BleStopStartCommandTest`, `ble/command/BleBolusCommandsTest` | tratamento das respostas `A`/`M` e do bolus |
-| `activities/BolusProgressCallbackTest` | root cause 7 |
+| `bolus/BolusCommandAnswerTest`, `bolus/PumpClockTest` | resposta do BOLUS (falha, em entrega, ano 00), normalização do ano (4m) |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-09, 4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-09, 4m): rileylink 485/485, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---

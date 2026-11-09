@@ -180,7 +180,8 @@ class MedLinkStatusParser {
             val hasSquare = square.find()
             return BolusStatusSnapshot(
                 lastBolusAmount = last.group(1).toDouble(),
-                lastBolusTime = time.time,
+                // the MedLink sometimes sends year 00 for the same bolus: never trust a clearly wrong year
+                lastBolusTime = app.aaps.pump.common.hw.medlink.bolus.PumpClock.normalizeYear(time.time, readAt),
                 squareBolusAmount = if (hasSquare) square.group(1).toDouble() else null,
                 deliveredAmount = if (hasSquare) square.group(2).toDouble() else null,
                 pumpBolusing = text.contains("bolusing"),

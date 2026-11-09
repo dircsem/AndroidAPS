@@ -20,6 +20,8 @@ import org.mockito.kotlin.whenever
 
 class BleBolusCommandsTest {
 
+    private val Fixtures_now = java.text.SimpleDateFormat("dd-MM-yy HH:mm", java.util.Locale.US).parse("09-11-26 13:31")!!.time
+
     private val logger: AAPSLogger = mock()
     private val plugin: MedLinkPumpPluginBase = mock()
     private val status: MedLinkPumpStatus = mock()
@@ -64,11 +66,18 @@ class BleBolusCommandsTest {
     }
 
     @Test
-    fun `last bolus line goes to the tracker, never resets the bolus (root cause 5)`() {
-        bolusCommand().characteristicChanged("last bolus: 1.6u 10-06-21 17:39", ble, "")
-        val captor = argumentCaptor<BolusStatusSnapshot>()
-        verify(ble).onBolusStatus(captor.capture())
-        assertEquals(1.6, captor.firstValue.lastBolusAmount, 0.0001)
+    fun `the whole bolus answer goes to the tracker at ready, a chunk alone is not an M answer`() {
+        // real field answer (failed bolus), as 20-byte BLE chunks
+        val chunks = listOf("bolus verification\n", "check pump status\n", "pump normal state\n", "last bolus: 2.0u 09-", "11-26 13:22\nre", "ady\n")
+        val cmd = bolusCommand()
+        var last = ""
+        chunks.forEach { cmd.characteristicChanged(it, ble, last); last = it }
+        verify(ble, never()).onBolusStatus(anyOrNull())
+        val captor = argumentCaptor<String>()
+        verify(ble).onBolusAnswer(captor.capture())
+        val answer = app.aaps.pump.common.hw.medlink.bolus.BolusCommandAnswer.parse(captor.firstValue, Fixtures_now)!!
+        assertEquals(2.0, answer.lastBolusAmount, 0.0001)
+        assertEquals(false, answer.bolusing)
     }
 
     // ---- BleBolusStatusCommand (T5) ---------------------------------------------------------
@@ -91,11 +100,11 @@ class BleBolusCommandsTest {
     }
 
     @Test
-    fun `M answer with a bolus in progress is read again, not completed`() {
+    fun `M answer with a bolus in progress completes, the tracker schedules the next read (no tight loop)`() {
         feedStatus("m command confirmed", "last bolus: 1.0u 10-06-21 17:45", "square bolus: 1.0u delivered: 0.400u", "ready")
         verify(ble).onBolusStatus(anyOrNull())
-        verify(ble).clearExecutedCommand()
-        verify(ble, never()).completedCommand()
+        verify(ble, never()).clearExecutedCommand()
+        verify(ble).completedCommand()
     }
 
     @Test

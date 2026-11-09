@@ -17,7 +17,6 @@ import app.aaps.core.utils.pump.ByteUtil
 import app.aaps.core.utils.pump.ThreadUtil
 import app.aaps.pump.common.hw.medlink.MedLinkConst
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
-import app.aaps.pump.common.hw.medlink.activities.BolusProgressCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.ble.command.BleCommand
 import app.aaps.pump.common.hw.medlink.ble.command.BleConnectCommand
@@ -90,6 +89,7 @@ class MedLinkBLE //extends RileyLinkBLE
     val bolusTracker = BolusTracker(clock = { System.currentTimeMillis() }) { aapsLogger.info(LTag.PUMPBTCOMM, it) }.also {
         it.onConfirmedWithoutEffect = { what -> onCommandWithoutEffect(what) }
         it.onPumpEffect = { what -> onCommandEffect(what) }
+        it.onProgress = { r, delivered -> reportBolusProgress(r, delivered) }
     }
 
     /** Builds an `M` (BolusStatus) message; set by the pump plugin. */
@@ -637,83 +637,8 @@ class MedLinkBLE //extends RileyLinkBLE
                 BleCommand>>,
     ):
             CommandExecutor<B> {
-        return if (MedLinkCommandType.BolusStatus.isSameCommand(commands[0].command) && commands[0].commandHandler.isPresent && commands[0].parseFunction.get() is BolusProgressCallback) {
-            object : ContinuousCommandExecutor<B>(commands, aapsLogger) {
-                override fun run() {
-                    if (this.nextCommand() == MedLinkCommandType.NoCommand) {
-                        if (currentCommand != null) {
-                            currentCommand!!.clearExecutedCommand()
-                        }
-                        return
-                    }
-                    isCommandConfirmed = false
-                    lastExecutedCommand = System.currentTimeMillis()
-                    if (bluetoothConnectionGatt != null && bluetoothConnectionGatt!!.getService(serviceUUID) != null) {
-                        val chara = bluetoothConnectionGatt!!.getService(serviceUUID)
-                            .getCharacteristic(charaUUID)
-
-                        chara.value = this.nextRaw()
-                        //                                    chara.setWriteType(PROPERTY_WRITE); //TODO validate
-                        nrRetries++
-                        aapsLogger.debug(LTag.PUMPBTCOMM, "running command")
-                        commands[0].command.code.let { aapsLogger.debug(LTag.PUMPBTCOMM, it) }
-                        val count = 0
-                        //                        while (lastReceived == lastReceivedCharacteristic && count < MAX_TRIES) {
-                        if (bluetoothConnectionGatt == null || !bluetoothConnectionGatt!!.writeCharacteristic(
-                                chara
-                            )
-                        ) {
-                            aapsLogger.info(
-                                LTag.PUMPBTCOMM,
-                                String.format(
-                                    "ERROR: writeCharacteristic failed for characteristic: %s",
-                                    chara.uuid
-                                )
-                            )
-                            needRetry = true
-
-                            //Trying to fix
-                            if (commands[0].command != MedLinkCommandType.Connect) {
-                                currentCommand.let { it?.clearExecutedCommand() }
-                            }
-                            commandQueueBusy = CommandQueueBusy(false)
-                            //                                break;
-                        } else {
-                            if (isConnected && commands[0].command == MedLinkCommandType.Connect) {
-                                removeFirstCommand(true)
-                            }
-                            needRetry = false
-                            aapsLogger.info(
-                                LTag.PUMPBTCOMM,
-                                String.format(
-                                    "writing <%s> to characteristic <%s>",
-                                    commands[0].command.code,
-                                    chara.uuid
-                                )
-                            )
-                            currentCommand.let { it?.commandExecution = System.currentTimeMillis() }
-
-                        }
-                        //                            count++;
-//                            SystemClock.sleep(4000);
-//                        }
-                    } else {
-                        aapsLogger.info(LTag.PUMPBTCOMM, "connection gatt is null need retry")
-                        needRetry = true
-                    }
-                    aapsLogger.info(LTag.PUMPBTCOMM, "ZZZZZZZZZZZZZZZZZZZZZ")
-                    if (needRetry && connectionStatus != ConnectionStatus.DISCOVERING) {
-                        aapsLogger.info(LTag.PUMPBTCOMM, "needretry")
-                        if (currentCommand != null) {
-                            clearExecutedCommand()
-                        }
-                        needRetry = false
-                        disconnect()
-                    }
-                    super.run()
-                }
-            }
-        } else {
+        // the old continuous M executor (BolusProgressCallback) re-read M in a loop during a bolus: the tracker schedules M now
+        return run {
             object : CommandExecutor<B>(commands, aapsLogger) {
                 override fun run() {
                     val payload = dataToWrite()
@@ -1782,6 +1707,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (bolusTracker.onDropped(reason)) {
             aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS ${bolusAmount(executor)}U dropped before the dose was written ($reason): tracker released")
             failMergedParts(executor, reason)
+            reportOwnResult(executor, false, 0.0)
         }
     }
 
@@ -2645,6 +2571,31 @@ class MedLinkBLE //extends RileyLinkBLE
         return notWritten
     }
 
+    /**
+     * The whole answer of the BOLUS command (joined BLE chunks, up to "ready"). It tells whether the bolus is
+     * delivering, delivered or not delivered, so `M` is only needed to follow a delivering bolus.
+     */
+    fun onBolusAnswer(text: String) {
+        val executor = currentCommand
+        if (executor == null || executor !== trackedBolusExecutor) return
+        executeBolusAction(bolusTracker.onBolusAnswer(app.aaps.pump.common.hw.medlink.bolus.BolusCommandAnswer.parse(text, System.currentTimeMillis())))
+    }
+
+    /** Delivering: tell the bolus owner (progress dialog of a manual bolus). Estimated from the time when `M` has no amount. */
+    private fun reportBolusProgress(r: app.aaps.pump.common.hw.medlink.bolus.BolusRequest, delivered: Double) {
+        val own = trackedBolusExecutor?.let { bleBolusCommand(it) } ?: return
+        val callback = own.onProgress ?: return
+        val estimated = ((System.currentTimeMillis() - r.sentAt).toDouble() / BolusTracker.MS_PER_UNIT).coerceIn(0.0, r.requested * 0.95)
+        val shown = if (delivered > 0.0) delivered else estimated
+        handler.post { callback(shown, r.requested) }
+    }
+
+    /** The result of the executor's own bolus (part 0); the owner ignores repeated calls. */
+    private fun reportOwnResult(executor: CommandExecutor<*>?, success: Boolean, delivered: Double) {
+        val cb = executor?.let { bleBolusCommand(it) }?.onQueueResult ?: return
+        handler.post { cb(success, delivered) }
+    }
+
     /** Every `M` answer (null when it cannot be parsed). */
     fun onBolusStatus(snapshot: BolusStatusSnapshot?) {
         if (snapshot != null) {
@@ -2790,6 +2741,7 @@ class MedLinkBLE //extends RileyLinkBLE
             is BolusAction.Fail       -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS failed: ${action.reason}")
                 failMergedParts(trackedBolusExecutor, action.reason)
+                reportOwnResult(trackedBolusExecutor, false, bolusTracker.current?.appliedTotal ?: 0.0)
                 dropHeldBolus()
             }
 
@@ -2797,6 +2749,7 @@ class MedLinkBLE //extends RileyLinkBLE
                 raiseBolusAlarm(action.reason)
                 if (bolusTracker.current?.state?.isFinal == true) {
                     failMergedParts(trackedBolusExecutor, action.reason)
+                    reportOwnResult(trackedBolusExecutor, false, bolusTracker.current?.appliedTotal ?: 0.0)
                     dropHeldBolus()
                 }
             }
@@ -2824,6 +2777,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (parts.isEmpty()) {
             if (recorder == null) aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS no recorder installed, record lost")
             else handler.post { recorder(amount, pumpTime, null) }
+            reportOwnResult(executor, amount > 0.0, amount)
             return
         }
         val amounts = LoopBolusMerge.split(parts.map { it.detailedBolusInfo.insulin }, amount)
@@ -2835,8 +2789,8 @@ class MedLinkBLE //extends RileyLinkBLE
                 if (recorder == null) aapsLogger.error(LTag.PUMPBTCOMM, "BOLUS no recorder installed, record lost")
                 else handler.post { recorder(partAmount, partTime, part.detailedBolusInfo) }
             }
-            // the executor's own bolus reports through its command callback, the merged-in ones here
-            if (i > 0) part.onQueueResult?.let { cb -> handler.post { cb(partAmount > 0.0, partAmount) } }
+            // every part, the executor's own one too, gets its result here: the bolus answer callback does not decide
+            part.onQueueResult?.let { cb -> handler.post { cb(partAmount > 0.0, partAmount) } }
         }
     }
 

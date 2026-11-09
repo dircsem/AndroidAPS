@@ -22,8 +22,7 @@ class NoSleepOnBolusPathTest {
             "ble/command/BleStopCommand.kt",
             "ble/command/BleStartCommand.kt",
             "ble/command/BleBolusCommand.kt",
-            "ble/command/BleBolusStatusCommand.kt",
-            "activities/BolusProgressCallback.kt"
+            "ble/command/BleBolusStatusCommand.kt"
         ).forEach { assertTrue(!sleep.containsMatchIn(source(it)), "$it sleeps") }
     }
 

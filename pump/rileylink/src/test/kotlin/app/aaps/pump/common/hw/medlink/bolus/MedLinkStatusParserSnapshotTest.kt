@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test
 
 class MedLinkStatusParserSnapshotTest {
 
-    private val readAt = 1_000_000L
+    // near the fixture dates (2021): a date far from the read time gets its year normalized (PumpClock)
+    private val readAt = Fixtures.pumpTime("10-06-21 17:45")
 
     @Test
     fun `idle answer parses last bolus, time with minute resolution and zero square bolus`() {

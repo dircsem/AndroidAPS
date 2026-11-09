@@ -271,6 +271,65 @@ class BolusTrackerTest {
         assertEquals(t0 + min, tracker.nextSendAllowedAt())
     }
 
+    // ---- bolus answer (no M needed to know the outcome) --------------------------------------
+
+    private fun answer(amount: Double, time: Long?, bolusing: Boolean) = BolusCommandAnswer(amount, time, bolusing, "raw")
+
+    @Test
+    fun `bolus answer pump bolusing with the same amount - delivering, no M right away`() {
+        val r = sendLoopBolus(0.4)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        val action = tracker.onBolusAnswer(answer(0.4, null, bolusing = true))
+        assertEquals(BolusState.DELIVERING, r.state)
+        assertInstanceOf(ReadStatusAt::class.java, action)
+        assertTrue((action as ReadStatusAt).time > clock.now(), "loop bolus: one M at the expected end")
+    }
+
+    @Test
+    fun `manual bolus delivering is followed with M for the progress dialog`() {
+        val progress = mutableListOf<Double>()
+        tracker.onProgress = { _, d -> progress += d }
+        sendLoopBolus(5.0, origin = BolusOrigin.MANUAL)
+        tracker.onConfirmed()
+        val action = tracker.onBolusAnswer(answer(5.0, null, bolusing = true)) as ReadStatusAt
+        assertEquals(clock.now() + BolusTracker.PROGRESS_READ_MS, action.time)
+        assertEquals(listOf(0.0), progress)
+        clock.advance(BolusTracker.PROGRESS_READ_MS)
+        tracker.onStatus(Fixtures.snapshot(5.0, applied(5.0).lastBolusTime, square = 5.0, delivered = 1.5, readAt = clock.now()))
+        assertEquals(listOf(0.0, 1.5), progress)
+    }
+
+    @Test
+    fun `bolus answer with the previous bolus - not delivered, resent without a second M`() {
+        val noEffect = mutableListOf<String>()
+        tracker.onConfirmedWithoutEffect = { noEffect += it }
+        val r = sendLoopBolus(0.5)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        assertEquals(Resend, tracker.onBolusAnswer(answer(baseline.lastBolusAmount, baseline.lastBolusTime, bolusing = false)))
+        assertEquals(BolusState.UNRESOLVED, r.state)
+        assertEquals(1, noEffect.size, "confirmed and not delivered: lock evidence")
+    }
+
+    @Test
+    fun `bolus answer with our bolus already delivered - recorded at its pump time`() {
+        val r = sendLoopBolus(0.1)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        val pumpTime = applied(0.1).lastBolusTime
+        assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
+        assertEquals(BolusState.DELIVERED, r.state)
+    }
+
+    @Test
+    fun `no bolus answer or another amount bolusing - M decides`() {
+        sendLoopBolus(0.5)
+        tracker.onConfirmed()
+        assertEquals(ReadStatusAt(clock.now()), tracker.onBolusAnswer(null))
+        assertEquals(ReadStatusAt(clock.now()), tracker.onBolusAnswer(answer(2.0, null, bolusing = true)))
+    }
+
     // ---- T8 alarm ---------------------------------------------------------------------------
 
     @Test

@@ -39,23 +39,18 @@ class BleBolusStatusCommand(
         } else if (answer.contains("ready")) {
             pumpResponse.append(answer)
             val fullResponse = pumpResponse.toString()
-            var inProgress = false
             if (fullResponse.contains("last")) {
                 val lines = fullResponse.substring(fullResponse.indexOf("last")).split("\n")
                 val snapshot = MedLinkStatusParser.parseBolusSnapshot(lines, System.currentTimeMillis())
                 aapsLogger.info(LTag.PUMPBTCOMM, "M answer: $snapshot")
                 snapshot?.let { updatePumpStatus(it.lastBolusAmount, it.lastBolusTime, it.deliveredAmount) }
+                // a bolus in progress is read again when the tracker / bolus picker schedules it (progress every
+                // few seconds for a manual bolus, the expected end for a loop bolus), never in a tight loop
                 bleComm.onBolusStatus(snapshot)
-                inProgress = snapshot?.inProgress == true
             }
             aapsLogger.info(LTag.PUMPBTCOMM, fullResponse)
-            if (inProgress) {
-                // a bolus is still being delivered: read M again (this re-reads status, it never re-sends a bolus)
-                bleComm.clearExecutedCommand()
-            } else {
-                bleComm.currentCommand?.let { applyResponse(fullResponse, it, bleComm) }
-                bleComm.completedCommand()
-            }
+            bleComm.currentCommand?.let { applyResponse(fullResponse, it, bleComm) }
+            bleComm.completedCommand()
             pumpResponse = StringBuffer()
         } else if (!(lastCharacteristic + answer).contains("time to powerdown") || answer.contains("confirmed")) {
             super.characteristicChanged(answer, bleComm, lastCharacteristic)

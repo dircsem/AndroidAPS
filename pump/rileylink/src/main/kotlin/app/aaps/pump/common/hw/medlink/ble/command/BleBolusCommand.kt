@@ -6,7 +6,6 @@ import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
-import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 
 /**
  * Created by Dirceu on 24/03/21.
@@ -24,11 +23,14 @@ class BleBolusCommand(
     BleActivePumpCommand(aapsLogger, medLinkServiceData, medLinkPumpPluginAbstract) {
 
     /**
-     * Result reported by MedLinkBLE when this command's own answer callback will not run:
-     * T14 folded into another queued loop bolus (the part of the merged dose recorded for it), or
-     * T15 a manual bolus dropped from the queue. Called once; success=false, 0.0 when not delivered.
+     * The result of this bolus, reported by MedLinkBLE once the tracker resolved it (delivered / partial
+     * recorded from the bolus answer or `M`, failed, dropped), also when it was merged into another bolus.
+     * May be called more than once: the owner keeps the first call. success=false, 0.0 when not delivered.
      */
     var onQueueResult: ((success: Boolean, delivered: Double) -> Unit)? = null
+
+    /** While the pump delivers this bolus: (delivered so far, total requested). Used by the progress dialog. */
+    var onProgress: ((delivered: Double, requested: Double) -> Unit)? = null
 
     /** T16: manual bolus only: the user confirmed it while an SMB was pending, so the SMB may be merged into it. */
     var smbConsent: Boolean = false
@@ -62,13 +64,12 @@ class BleBolusCommand(
                 bleComm.completedCommand()
             }
 
-            trimmed.contains("last bolus")                                                                                                -> {
-                pumpResponse.append(answer)
-                bleComm.onBolusStatus(MedLinkStatusParser.parseBolusSnapshot(answer.split("\n"), System.currentTimeMillis()))
-            }
-
-            else                                                                                                                          ->
+            else                                                                                                                          -> {
+                // the answer ends with "ready": the whole text (chunks joined) tells the outcome of the bolus
+                if ((lastCharacteristic + answer).contains("ready") && pumpResponse.contains("last bolus"))
+                    bleComm.onBolusAnswer(pumpResponse.toString() + answer)
                 super.characteristicChanged(answer, bleComm, lastCharacteristic)
+            }
         }
     }
 }

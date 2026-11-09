@@ -133,12 +133,18 @@ class BolusTracker(
     /** `M` shows the bolus being delivered or delivered: the pump accepts commands. */
     var onPumpEffect: ((String) -> Unit)? = null
 
+    /** The bolus in flight is being delivered: amount delivered so far (from `M`, 0.0 when unknown). */
+    var onProgress: ((BolusRequest, Double) -> Unit)? = null
+
     companion object {
 
         const val MINUTE = 60_000L
         const val MS_PER_UNIT = 40_000L
         const val DELIVERY_MARGIN_MS = 15_000L
         const val UNKNOWN_RETRY_MS = 30_000L
+
+        /** A manual bolus is followed with `M` this often while delivering (progress dialog); loop boluses only at the expected end. */
+        const val PROGRESS_READ_MS = 15_000L
         const val MAX_ATTEMPTS = 5
         const val MAX_STATUS_FAILURES = 5
 
@@ -359,8 +365,44 @@ class BolusTracker(
         }
     }
 
+    /**
+     * The answer of the BOLUS command itself (after "bolus verification"). It already tells the outcome, so
+     * no `M` is needed to check it: the pump delivering the same amount -> DELIVERING; normal state with a
+     * bolus newer than the baseline -> DELIVERED; normal state with the previous bolus -> not delivered,
+     * proven by the pump right after the command (no second `M`). Anything else is left to `M`.
+     */
     @Synchronized
-    fun onStatus(snapshot: BolusStatusSnapshot?): BolusAction {
+    fun onBolusAnswer(answer: BolusCommandAnswer?): BolusAction {
+        val r = current ?: return BolusAction.None
+        if (r.state.isFinal || r.state == BolusState.QUEUED) return BolusAction.None
+        val now = clock.now()
+        log("BOLUS[${r.id}] bolus answer: ${answer?.let { "last ${it.lastBolusAmount}U@${it.lastBolusTime} bolusing=${it.bolusing}" } ?: "none"}")
+        if (answer == null) return BolusAction.ReadStatusAt(now)
+        val time = answer.lastBolusTime
+        if (answer.bolusing || time == null) {
+            if (!answer.bolusing || abs(answer.lastBolusAmount - r.requested) > BolusStatusInterpreter.TOLERANCE) return BolusAction.ReadStatusAt(now)
+            onPumpEffect?.invoke("bolus ${r.id} delivering")
+            r.statusFailures = 0
+            if (r.state != BolusState.DELIVERING) transition(r, BolusState.DELIVERING)?.let { return it }
+            onProgress?.invoke(r, 0.0)
+            return BolusAction.ReadStatusAt(nextDeliveringRead(r, 0.0, now))
+        }
+        val snapshot = BolusStatusSnapshot(
+            lastBolusAmount = answer.lastBolusAmount, lastBolusTime = time, squareBolusAmount = null, deliveredAmount = null,
+            pumpBolusing = false, readAt = now, raw = answer.raw
+        )
+        return handleStatus(snapshot, provenNotStarted = true)
+    }
+
+    @Synchronized
+    fun onStatus(snapshot: BolusStatusSnapshot?): BolusAction = handleStatus(snapshot, provenNotStarted = false)
+
+    private fun nextDeliveringRead(r: BolusRequest, delivered: Double, now: Long): Long {
+        val end = now + remainingMs(r.requested, delivered)
+        return if (r.origin == BolusOrigin.MANUAL) minOf(end, now + PROGRESS_READ_MS) else end
+    }
+
+    private fun handleStatus(snapshot: BolusStatusSnapshot?, provenNotStarted: Boolean): BolusAction {
         if (snapshot == null) consecutiveUnknownReads++ else {
             consecutiveUnknownReads = 0
             latestSnapshot = snapshot
@@ -381,10 +423,11 @@ class BolusTracker(
             BolusOutcome.Type.DELIVERING  -> {
                 r.unknownCount = 0
                 if (r.state != BolusState.DELIVERING) transition(r, BolusState.DELIVERING)?.let { return it }
-                BolusAction.ReadStatusAt(now + remainingMs(r.requested, outcome.deliveredAmount))
+                onProgress?.invoke(r, outcome.deliveredAmount)
+                BolusAction.ReadStatusAt(nextDeliveringRead(r, outcome.deliveredAmount, now))
             }
 
-            BolusOutcome.Type.NOT_STARTED -> notStarted(r, snapshot!!, now)
+            BolusOutcome.Type.NOT_STARTED -> notStarted(r, snapshot!!, now, provenNotStarted)
             BolusOutcome.Type.UNKNOWN     -> unknown(r, now, outcome.reason)
         }
     }
@@ -438,7 +481,8 @@ class BolusTracker(
         return BolusAction.Record(amount, pumpTime)
     }
 
-    private fun notStarted(r: BolusRequest, snapshot: BolusStatusSnapshot, now: Long): BolusAction {
+    /** @param proven the pump said "normal state" with the previous bolus right after the command: no fresh `M` needed. */
+    private fun notStarted(r: BolusRequest, snapshot: BolusStatusSnapshot, now: Long, proven: Boolean = false): BolusAction {
         r.unknownCount = 0
         if (snapshot.inProgress) {
             // the pump is busy with another bolus: wait for it to end, this is not a failed attempt
@@ -446,14 +490,19 @@ class BolusTracker(
             log("BOLUS[${r.id}] pump busy with another bolus ($programmed U), waiting")
             return BolusAction.ReadStatusAt(now + remainingMs(programmed, snapshot.deliveredAmount ?: 0.0))
         }
-        val firstSeen = r.notStartedSeenAt
-        if (firstSeen == null || r.state != BolusState.UNRESOLVED) {
-            // guard: confirm with a fresh M on the same connection before any re-send
+        if (proven) {
             if (r.state != BolusState.UNRESOLVED) transition(r, BolusState.UNRESOLVED)?.let { return it }
-            r.notStartedSeenAt = snapshot.readAt
-            return BolusAction.ReadStatusAt(now)
+            log("BOLUS[${r.id}] not delivered: the bolus answer shows the previous bolus")
+        } else {
+            val firstSeen = r.notStartedSeenAt
+            if (firstSeen == null || r.state != BolusState.UNRESOLVED) {
+                // guard: confirm with a fresh M on the same connection before any re-send
+                if (r.state != BolusState.UNRESOLVED) transition(r, BolusState.UNRESOLVED)?.let { return it }
+                r.notStartedSeenAt = snapshot.readAt
+                return BolusAction.ReadStatusAt(now)
+            }
+            if (snapshot.readAt < firstSeen) return BolusAction.ReadStatusAt(now)
         }
-        if (snapshot.readAt < firstSeen) return BolusAction.ReadStatusAt(now)
         if (r.confirmedThisAttempt) {
             // the MedLink confirmed it and the pump did not deliver it: pump lock evidence (or a one-off failure)
             r.confirmedThisAttempt = false

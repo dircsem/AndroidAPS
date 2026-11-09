@@ -31,6 +31,8 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
+import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
+import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import app.aaps.pump.common.hw.medlink.bolus.PumpBlock
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
@@ -81,7 +83,6 @@ import app.aaps.pump.common.dialog.MedLinkBLEConfigActivity
 import app.aaps.pump.common.hw.medlink.PumpResponses
 import app.aaps.pump.common.hw.medlink.activities.BolusCallback
 import app.aaps.pump.common.hw.medlink.activities.BolusDeliverCallback
-import app.aaps.pump.common.hw.medlink.activities.BolusProgressCallback
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.ble.CommandPriority
 import app.aaps.pump.common.hw.medlink.ble.command.BleBolusCommand
@@ -3299,9 +3300,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 else -> MedLinkCommandType
                     .Bolus
             }
-            val bolusMessage = if (detailedBolusInfo.insulin > 0.2) {
-                buildBolusStatusMessage(detailedBolusInfo.copy())
-            } else null
+            // no M queued with the bolus: the tracker reads M only to follow a bolus being delivered
+            val bolusMessage: BolusStatusMedLinkMessage<String>? = null
 
             val msg = BolusMedLinkMessage(
                 bolusCommand,
@@ -3626,38 +3626,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val bolusCallback = BolusCallback(aapsLogger, bolus)
             val andThen: Function<Supplier<Stream<String>>, MedLinkStandardReturn<String>> =
                 bolusCallback.andThen { f: MedLinkStandardReturn<BolusAnswer> ->
-                    // val answer = Supplier { f.answer }
-                    aapsLogger.info(LTag.PUMPBTCOMM, f.functionResult.response.name)
-                    if (PumpResponses.BolusDelivered == f.functionResult.response) {
-                        bolusHistoryCheck = false
-                        bolusDeliveryType = BolusDeliveryType.Idle
-                        processDeliveredBolus(f.functionResult)
-                        func.invoke(
-                            pumpEnactResultProvider.get().success(true) //
-                                .enacted(true) //
-                                .bolusDelivered(bolus.insulin) //
-                            // .carbsDelivered(bolus.carbs)
-                        )
-                    } else if (PumpResponses.UnknownAnswer == f.functionResult.response) {
-                        val bolusAnswer = f.functionResult
-                        bolusHistoryCheck = true
-                        if (bolusAnswer.delivered == bolus.insulin) {
-                            handleNewTreatmentData(of(bolusToJson(bolusAnswer.detailedBolusInfo)))
-                        } else {
-                            //TODO postpone this message to later,  call status logic before to guarantee that the bolus has not been delivered
-                            aapsLogger.info(LTag.PUMPBTCOMM, "pump is not deliverying")
-                            if (f.functionResult.delivered > 0.0) {
-                                processDeliveredBolus(f.functionResult)
-                            } else {
-
-                                readBolusData(detailedBolusInfo)
-                            }
-                        }
-                    } else if (PumpResponses.DeliveringBolus == f.functionResult.response) {
-                        bolusHistoryCheck = true
-                        lastDetailedBolusInfo = bolus
-                        aapsLogger.info(LTag.PUMPBTCOMM, "and themmmm")
-                    }
+                    // the bolus answer is decided by MedLinkBLE / BolusTracker (onBolusAnswer): it records the
+                    // bolus with the pump time and reports the result once through onQueueResult. The old
+                    // decision here reported the previous bolus ("Last bolus: 2.0u ... 13:22") as delivered.
+                    aapsLogger.info(LTag.PUMPBTCOMM, "bolus answer ${f.functionResult.response.name}: decided by the tracker")
                     if (f.functionResult.answer != null) {
                         MedLinkStandardReturn(f.answer, f.functionResult.answer!!)
                     } else {
@@ -3683,10 +3655,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     BS.Type.SMB -> MedLinkCommandType.SMBBolus
                     else -> MedLinkCommandType.Bolus
                 }
-            var bolusStatusMessage: MedLinkPumpMessage<String, Any>? = null
-            if (bolus.insulin > 0.2) {
-                bolusStatusMessage = buildBolusStatusMessage(bolus)
-            }
+            // no M queued with the bolus: the bolus answer tells the outcome and the tracker reads M only to
+            // follow a bolus being delivered (progress dialog of a manual bolus, expected end of a loop bolus)
+            val bolusStatusMessage: MedLinkPumpMessage<String, Any>? = null
 
             val bleBolusCommand = BleBolusCommand(
                 aapsLogger,
@@ -3695,14 +3666,27 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 detailedBolusInfo, bolusStatusMessage != null
             )
             bleBolusCommand.smbConsent = smbConsent
-            // T14/T15: result from MedLinkBLE when the bolus was merged into another one or dropped from the queue
+            // the one result of this bolus (resolved by the tracker, merged, dropped): the first call wins
+            val resultSent = java.util.concurrent.atomic.AtomicBoolean(false)
+            val manual = bolus.bolusType == BS.Type.NORMAL
             bleBolusCommand.onQueueResult = { success, delivered ->
-                aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U queue result success=$success delivered=$delivered")
-                if (success) bolusDeliveryType = BolusDeliveryType.Idle
-                func.invoke(
-                    pumpEnactResultProvider.get().success(success).enacted(success).bolusDelivered(delivered)
-                        .also { if (!success) it.comment(rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered)) }
-                )
+                if (resultSent.compareAndSet(false, true)) {
+                    aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U result success=$success delivered=$delivered")
+                    if (success) bolusDeliveryType = BolusDeliveryType.Idle
+                    if (manual) {
+                        if (success) rxBus.send(EventOverviewBolusProgress(rh, percent = 100, id = detailedBolusInfo.id))
+                        rxBus.send(EventDismissBolusProgressIfRunning(success, detailedBolusInfo.id))
+                    }
+                    func.invoke(
+                        pumpEnactResultProvider.get().success(success).enacted(success).bolusDelivered(delivered)
+                            .also { if (!success) it.comment(rh.gs(R.string.medtronic_cmd_bolus_could_not_be_delivered)) }
+                    )
+                } else aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U result already sent, ignoring success=$success delivered=$delivered")
+            }
+            // progress dialog of a manual bolus (a merged TBR/SMB is part of the total: show the manual share)
+            if (manual) bleBolusCommand.onProgress = { delivered, requested ->
+                val fraction = if (requested > 0.0) (delivered / requested).coerceIn(0.0, 1.0) else 0.0
+                rxBus.send(EventOverviewBolusProgress(rh, bolus.insulin * fraction, id = detailedBolusInfo.id))
             }
             val msg = BolusMedLinkMessage(
                 bolusCommand, bolus,
@@ -3767,19 +3751,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             finishAction("Bolus")
             bolusDeliveryType = BolusDeliveryType.Idle
         }
-    }
-
-    private fun buildBolusStatusMessage(bolusInfo: DetailedBolusInfo): BolusStatusMedLinkMessage<String> {
-        val bolusCallback = BolusProgressCallback(
-            rh, rxBus, aapsLogger,
-            this, bolusInfo
-        )
-        val bolusStatusCommand =
-            BleBolusStatusCommand(aapsLogger, medLinkMedtronicService?.medLinkServiceData, this)
-        return BolusStatusMedLinkMessage<String>(
-            bolusCallback, btSleepTime,
-            bolusStatusCommand
-        )
     }
 
     private fun pumpBlockText(block: PumpBlock): String = rh.gs(
