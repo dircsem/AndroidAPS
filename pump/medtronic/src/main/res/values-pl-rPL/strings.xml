@@ -88,4 +88,17 @@
     <string name="medtronic_history_type">Typ:</string>
     <string name="clicked_refresh" comment="26 characters max for translation">Naciśnięto odśwież</string>
     <string name="scheduled_status_refresh" comment="26 characters max for translation">Planowe odświeżenie statusu</string>
+    <string name="medlink_smb_pending_title">SMB w toku</string>
+    <string name="medlink_smb_pending_message">Trwa podawanie SMB %1$.2f j. Kontynuować bolus ręczny %2$.2f j.? Poniżej możesz zmniejszyć dawkę. OK poda go razem z SMB (lub zaraz po nim), Anuluj anuluje bolus ręczny.</string>
+    <string name="medlink_smb_pending_cancelled">Bolus ręczny anulowany: SMB w toku</string>
+    <string name="medlink_smb_pending_amount_hint">Bolus ręczny (j.)</string>
+    <string name="medlink_smb_pending_amount_invalid">Podaj dawkę od %1$.2f do %2$.2f j.</string>
+    <string name="medlink_pump_block_locked">Pompa zablokowana: polecenia start, stop lub bolusa zostały potwierdzone przez MedLink, ale stan pompy się nie zmienił. Sprawdź, czy na ekranie pompy jest komunikat, i usuń go. AAPS ponawia próby; alert zniknie, gdy polecenie zadziała.</string>
+    <string name="medlink_pump_block_locked_title">Pompa zablokowana</string>
+    <string name="medlink_bolus_phase_connecting">Łączenie z pompą…</string>
+    <string name="medlink_bolus_phase_reading_status">Odczyt stanu bolusa z pompy…</string>
+    <string name="medlink_bolus_phase_sending">Wysyłanie polecenia bolusa…</string>
+    <string name="medlink_bolus_phase_sending_try">Wysyłanie polecenia bolusa (próba %1$d z %2$d)…</string>
+    <string name="medlink_bolus_phase_confirmed">Polecenie bolusa potwierdzone, oczekiwanie na rozpoczęcie przez pompę…</string>
+    <string name="medlink_bolus_phase_waiting_other">Pompa podaje inny bolus, oczekiwanie na jego zakończenie…</string>
 </resources>

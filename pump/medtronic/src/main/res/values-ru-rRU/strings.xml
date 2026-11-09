@@ -90,4 +90,17 @@
     <string name="medtronic_history_type">Тип:</string>
     <string name="clicked_refresh" comment="26 characters max for translation">Нажато обновление</string>
     <string name="scheduled_status_refresh" comment="26 characters max for translation">Запланированное обновление статуса</string>
+    <string name="medlink_smb_pending_title">Выполняется SMB</string>
+    <string name="medlink_smb_pending_message">Выполняется SMB %1$.2f ЕД. Продолжить ручной болюс %2$.2f ЕД? Ниже можно уменьшить дозу. OK введёт его вместе с SMB (или сразу после него), Отмена отменит ручной болюс.</string>
+    <string name="medlink_smb_pending_cancelled">Ручной болюс отменён: выполняется SMB</string>
+    <string name="medlink_smb_pending_amount_hint">Ручной болюс (ЕД)</string>
+    <string name="medlink_smb_pending_amount_invalid">Введите дозу от %1$.2f до %2$.2f ЕД</string>
+    <string name="medlink_pump_block_locked">Помпа заблокирована: команды запуска, остановки или болюса подтверждены MedLink, но состояние помпы не изменилось. Проверьте, нет ли сообщения на экране помпы, и сбросьте его. AAPS продолжает попытки; оповещение исчезнет, когда команда сработает.</string>
+    <string name="medlink_pump_block_locked_title">Помпа заблокирована</string>
+    <string name="medlink_bolus_phase_connecting">Подключение к помпе…</string>
+    <string name="medlink_bolus_phase_reading_status">Чтение состояния болюса с помпы…</string>
+    <string name="medlink_bolus_phase_sending">Отправка команды болюса…</string>
+    <string name="medlink_bolus_phase_sending_try">Отправка команды болюса (попытка %1$d из %2$d)…</string>
+    <string name="medlink_bolus_phase_confirmed">Команда болюса подтверждена, ожидание запуска помпой…</string>
+    <string name="medlink_bolus_phase_waiting_other">Помпа вводит другой болюс, ожидание его завершения…</string>
 </resources>
