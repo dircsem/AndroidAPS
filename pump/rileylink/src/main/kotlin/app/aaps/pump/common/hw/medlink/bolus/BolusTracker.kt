@@ -100,11 +100,18 @@ class BolusRequest(
     internal var notStartedSeenAt: Long? = null
     internal var awaitingUser: Boolean = false
 
+    /**
+     * What the pump took, from the bolus answer ("pump is bolusing / last bolus: Xu"): with a bad link the pump
+     * may get less than was sent. Null until known. Never more than [requested].
+     */
+    var programmed: Double? = null
+        internal set
+
     /** `M` proved the bolus was not started and a re-send was decided: other boluses may join it (4i). */
     internal var resendAllowed: Boolean = false
 
     val expectedEndAt: Long
-        get() = sentAt + (requested * BolusTracker.MS_PER_UNIT).roundToLong() + BolusTracker.DELIVERY_MARGIN_MS
+        get() = sentAt + ((programmed ?: requested) * BolusTracker.MS_PER_UNIT).roundToLong() + BolusTracker.DELIVERY_MARGIN_MS
 
     override fun toString() =
         "BolusRequest(id=$id, origin=$origin, requested=$requested, state=$state, attempts=$attempts, applied=$appliedTotal)"
@@ -145,6 +152,9 @@ class BolusTracker(
 
         /** A manual bolus is followed with `M` this often while delivering (progress dialog); loop boluses only at the expected end. */
         const val PROGRESS_READ_MS = 15_000L
+
+        /** Below this a bolus may be over before "bolus verification": its own pump time shows in the bolus answer. */
+        const val SMALL_BOLUS = 0.3
         const val MAX_ATTEMPTS = 5
         const val MAX_STATUS_FAILURES = 5
 
@@ -253,6 +263,7 @@ class BolusTracker(
             r.tryCounted = false
             r.confirmedThisAttempt = false
             r.statusFailures = 0
+            r.programmed = null
             r.notStartedSeenAt = null
             r.awaitingUser = false
             r.resendAllowed = false
@@ -380,29 +391,37 @@ class BolusTracker(
         if (answer == null) return BolusAction.ReadStatusAt(now)
         val time = answer.lastBolusTime
         if (answer.bolusing || time == null) {
-            if (!answer.bolusing || abs(answer.lastBolusAmount - r.requested) > BolusStatusInterpreter.TOLERANCE) return BolusAction.ReadStatusAt(now)
+            // no time: the pump is delivering our bolus; the amount is what it took, maybe less than sent (bad link)
+            if (!answer.bolusing || answer.lastBolusAmount > r.requested + BolusStatusInterpreter.TOLERANCE) return BolusAction.ReadStatusAt(now)
+            if (answer.lastBolusAmount < r.requested - BolusStatusInterpreter.TOLERANCE)
+                log("BOLUS[${r.id}] pump took ${answer.lastBolusAmount} U of ${r.requested} U: following it, the rest is never re-sent")
+            r.programmed = answer.lastBolusAmount
             onPumpEffect?.invoke("bolus ${r.id} delivering")
             r.statusFailures = 0
             if (r.state != BolusState.DELIVERING) transition(r, BolusState.DELIVERING)?.let { return it }
             onProgress?.invoke(r, 0.0)
             return BolusAction.ReadStatusAt(nextDeliveringRead(r, 0.0, now))
         }
+        // a time: normally the previous bolus (not delivered); a small bolus may already be over and show its own time
+        if (r.requested >= SMALL_BOLUS && time > (r.baseline?.lastBolusTime ?: Long.MAX_VALUE))
+            log("BOLUS[${r.id}] bolus of ${r.requested} U already over at verification (pump time $time): unusual for its size")
         val snapshot = BolusStatusSnapshot(
             lastBolusAmount = answer.lastBolusAmount, lastBolusTime = time, squareBolusAmount = null, deliveredAmount = null,
             pumpBolusing = false, readAt = now, raw = answer.raw
         )
-        return handleStatus(snapshot, provenNotStarted = true)
+        return handleStatus(snapshot, provenNotStarted = true, pumpIdle = true)
     }
 
     @Synchronized
     fun onStatus(snapshot: BolusStatusSnapshot?): BolusAction = handleStatus(snapshot, provenNotStarted = false)
 
     private fun nextDeliveringRead(r: BolusRequest, delivered: Double, now: Long): Long {
-        val end = now + remainingMs(r.requested, delivered)
+        val end = now + remainingMs(r.programmed ?: r.requested, delivered)
         return if (r.origin == BolusOrigin.MANUAL) minOf(end, now + PROGRESS_READ_MS) else end
     }
 
-    private fun handleStatus(snapshot: BolusStatusSnapshot?, provenNotStarted: Boolean): BolusAction {
+    /** @param pumpIdle the pump said "normal state" with this answer: a new bolus below the request is over (partial). */
+    private fun handleStatus(snapshot: BolusStatusSnapshot?, provenNotStarted: Boolean, pumpIdle: Boolean = false): BolusAction {
         if (snapshot == null) consecutiveUnknownReads++ else {
             consecutiveUnknownReads = 0
             latestSnapshot = snapshot
@@ -411,7 +430,10 @@ class BolusTracker(
         if (r.state.isFinal || r.state == BolusState.QUEUED) return BolusAction.None
         r.lastSnapshot = snapshot ?: r.lastSnapshot
         val now = clock.now()
-        val outcome = BolusStatusInterpreter.interpret(snapshot, BolusCheck(r.requested, r.sentAt, r.baseline, r.expectedEndAt), now)
+        val interpreted = BolusStatusInterpreter.interpret(snapshot, BolusCheck(r.requested, r.sentAt, r.baseline, r.expectedEndAt), now)
+        val outcome = if (pumpIdle && interpreted.type == BolusOutcome.Type.DELIVERING && interpreted.pumpBolusTime != null)
+            interpreted.copy(type = BolusOutcome.Type.PARTIAL, reason = "pump idle: bolus over below the request")
+        else interpreted
         log("BOLUS[${r.id}] M outcome=${outcome.type} delivered=${outcome.deliveredAmount} requested=${r.requested} ${outcome.reason} raw=${snapshot?.raw}")
 
         if (outcome.type != BolusOutcome.Type.UNKNOWN) r.statusFailures = 0

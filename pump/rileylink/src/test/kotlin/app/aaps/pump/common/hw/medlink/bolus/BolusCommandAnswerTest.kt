@@ -34,6 +34,16 @@ class BolusCommandAnswerTest {
     }
 
     @Test
+    fun `success sample - 0_4 U being applied, no time (logs bolus_success)`() {
+        val text = "X\nX command confirmed \nCheck pump status \nPump normal state \nSet bolus \nBOLUS  0.4\nBOLUS command confirmed \n" +
+            "Bolus verification \nSend command for pump wakeup \nConfirmed pump wakeup \nCheck pump status \nPump is bolusing state \nLast bolus: 0.4u \nReady"
+        val a = BolusCommandAnswer.parse(text, now)!!
+        assertEquals(0.4, a.lastBolusAmount, 1e-9)
+        assertNull(a.lastBolusTime)
+        assertTrue(a.bolusing)
+    }
+
+    @Test
     fun `year 00 from the MedLink is moved to the year of the read`() {
         val a = BolusCommandAnswer.parse("pump normal state\nlast bolus: 0.5u 09-11-00 11:03\nready", now)!!
         assertEquals(t("09-11-26 11:03"), a.lastBolusTime)

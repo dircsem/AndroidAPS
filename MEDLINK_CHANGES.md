@@ -346,6 +346,13 @@ Logs: `logs/basal_problem.log` (SMB 0,4 U às 11:29) e `logs/failed_bolus_sample
 
 **No log, durante o teste de campo**: `BOLUS[id] bolus answer: last xU@t bolusing=...`, `not delivered: the bolus answer shows the previous bolus`, `bolus answer ...: decided by the tracker`, `bolus result success=... delivered=...` (uma vez por bolus).
 
+**Bolus com menos insulina (4m, complemento — `logs/bolus_success.log`)**
+- Com comunicação ruim a bomba pode receber menos do que foi enviado. Depois do "BOLUS command confirmed":
+  - **sem hora** (`Pump is bolusing state / Last bolus: 0.4u`): é o nosso bolus em entrega; o valor é o que a bomba recebeu. Se for menor que o pedido, ele é seguido como `DELIVERING` com esse valor (`BolusRequest.programmed`), o `M` é lido no fim desse valor e o registro é `PARTIAL`. O resto **nunca** é reenviado. Valor maior que o pedido → o `M` decide;
+  - **com hora**: normalmente o bolus anterior (não entregue). Bolus pequeno (< 0,3 U, `SMALL_BOLUS`) pode já ter terminado e mostrar a própria hora; o que decide é a hora comparada com o baseline. Hora nova e valor menor com a bomba em estado normal → `PARTIAL` na hora (antes esperava o fim previsto). Hora nova em bolus ≥ 0,3 U só gera um aviso no log.
+- A procura por "ready"/"last bolus" na resposta não diferencia maiúsculas.
+- Testes: `BolusTrackerTest` (+2: bomba recebeu menos; bolus pequeno parcial), `BolusCommandAnswerTest` (+1: `bolus_success.log`). rileylink 488/488, `:app:assembleFullDebug` OK.
+
 **Pendente**: confirmar no campo se o `M` mostra o valor entregue durante um bolus normal (`square bolus ... delivered`); senão o diálogo usa a estimativa pelo tempo.
 
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
@@ -375,7 +382,7 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-09, 4m): rileylink 485/485, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Última execução (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---

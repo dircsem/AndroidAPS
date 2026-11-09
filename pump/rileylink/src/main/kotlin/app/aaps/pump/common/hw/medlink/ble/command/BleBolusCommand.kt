@@ -66,7 +66,7 @@ class BleBolusCommand(
 
             else                                                                                                                          -> {
                 // the answer ends with "ready": the whole text (chunks joined) tells the outcome of the bolus
-                if ((lastCharacteristic + answer).contains("ready") && pumpResponse.contains("last bolus"))
+                if ((lastCharacteristic + answer).contains("ready", ignoreCase = true) && pumpResponse.toString().contains("last bolus", ignoreCase = true))
                     bleComm.onBolusAnswer(pumpResponse.toString() + answer)
                 super.characteristicChanged(answer, bleComm, lastCharacteristic)
             }

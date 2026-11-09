@@ -323,6 +323,32 @@ class BolusTrackerTest {
     }
 
     @Test
+    fun `pump took less than sent (bad link) - followed as delivering, recorded as partial, never re-sent`() {
+        val r = sendLoopBolus(0.5)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        val action = tracker.onBolusAnswer(answer(0.3, null, bolusing = true)) as ReadStatusAt
+        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(0.3, r.programmed!!, 1e-9)
+        // the next M is at the end of the 0.3 U the pump took, not of the 0.5 U sent
+        assertTrue(action.time <= r.sentAt + (0.3 * BolusTracker.MS_PER_UNIT).toLong() + BolusTracker.DELIVERY_MARGIN_MS + 20_000)
+        clock.advance(min)
+        assertEquals(Record(0.3, applied(0.3).lastBolusTime), tracker.onStatus(applied(0.3)))
+        assertEquals(BolusState.PARTIAL, r.state)
+        assertEquals(0, tracker.resendCount())
+    }
+
+    @Test
+    fun `small bolus already over with less than sent - partial at once from the bolus answer`() {
+        val r = sendLoopBolus(0.2)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        val pumpTime = applied(0.1).lastBolusTime
+        assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
+        assertEquals(BolusState.PARTIAL, r.state)
+    }
+
+    @Test
     fun `no bolus answer or another amount bolusing - M decides`() {
         sendLoopBolus(0.5)
         tracker.onConfirmed()
