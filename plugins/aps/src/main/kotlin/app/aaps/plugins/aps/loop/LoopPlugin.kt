@@ -804,7 +804,8 @@ class LoopPlugin @Inject constructor(
                             waiting
                         rxBus.send(EventLoopUpdateGui())
                         fabricPrivacy.logCustom("APSRequest")
-                        if (pump is PumpPluginBase) {
+                        // a TBR-only result has smb = 0: never queue a 0 U SMB (MedLink refused it as "Invalid input")
+                        if (pump is PumpPluginBase && resultAfterConstraints.isBolusRequested) {
                             aapsLogger.info(LTag.AUTOMATION, resultAfterConstraints.toString())
                             applySMBRequest(resultAfterConstraints, object : Callback() {
                                 override fun run() {
@@ -1157,6 +1158,10 @@ class LoopPlugin @Inject constructor(
                 pumpEnactResultProvider.get().comment(app.aaps.core.ui.R.string.pumpsuspended)
                     .enacted(false).success(false)
             )?.run()
+            return
+        }
+        if (request.smb <= 0.0) {
+            aapsLogger.debug(LTag.APS, "applySMBRequest: no SMB requested (smb=${request.smb})")
             return
         }
         aapsLogger.debug(LTag.APS, "applySMBRequest: $request")
