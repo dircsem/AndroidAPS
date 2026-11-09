@@ -34,7 +34,7 @@ object StopGate {
         if (origin == StopOrigin.USER) return StopDecision.Send
 
         val request = tracker.current
-        if (request?.alarmed == true && !request.state.isFinal || tracker.consecutiveUnknownReads >= BolusTracker.MAX_UNKNOWN)
+        if (request?.alarmed == true && !request.state.isFinal || tracker.consecutiveUnknownReads >= BolusTracker.MAX_UNREADABLE_FOR_STOP)
             return StopDecision.Alarm("bolus status unknown, automatic stop held")
 
         val snapshot = tracker.latestSnapshot

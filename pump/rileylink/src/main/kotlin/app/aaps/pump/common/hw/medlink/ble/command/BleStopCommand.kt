@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.pump.StopOrigin
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
 import app.aaps.pump.common.hw.medlink.bolus.PumpAnswerState
 import app.aaps.pump.common.hw.medlink.bolus.PumpStateAnswer
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.defs.MedLinkPumpRunningState
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 
@@ -35,7 +36,15 @@ class BleStopCommand(
             answer.contains("pump normal state")   -> {
                 bleComm.setLastPumpStatus(MedLinkPumpRunningState.Running)
                 bleComm.onPumpAnswerState(PumpAnswerState.RUNNING)
-                bleComm.completedCommand()
+                val current = bleComm.currentCommand
+                if (current != null && current.secondCommand() == MedLinkCommandType.StopPump && current.nextCommand() == MedLinkCommandType.NoCommand) {
+                    // STOP was written and confirmed and the pump still runs: retry, and count it as lock evidence
+                    aapsLogger.warn(LTag.PUMPBTCOMM, "STOP refused: pump still running")
+                    bleComm.onStopFailed("pump still running after STOP")
+                } else {
+                    // answer to A: the pump runs as expected, write STOP now
+                    bleComm.completedCommand()
+                }
             }
 
             PumpStateAnswer.isBolusing(answer)     -> {

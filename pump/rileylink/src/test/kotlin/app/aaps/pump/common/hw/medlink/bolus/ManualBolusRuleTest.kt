@@ -28,13 +28,6 @@ class ManualBolusRuleTest {
     }
 
     @Test
-    fun `manual bolus expires after the max wait`() {
-        val since = 1_000_000L
-        assertFalse(ManualBolusRule.expired(since, since + ManualBolusRule.MAX_WAIT_MS))
-        assertTrue(ManualBolusRule.expired(since, since + ManualBolusRule.MAX_WAIT_MS + 1))
-    }
-
-    @Test
     fun `edited amount may only be lowered and is rounded down to the pump step (T16)`() {
         assertEquals(1.5, ManualBolusRule.editedAmount(2.0, 1.5, 0.1)!!, 1e-9)
         assertEquals(1.5, ManualBolusRule.editedAmount(2.0, 1.57, 0.1)!!, 1e-9)

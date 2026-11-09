@@ -137,17 +137,43 @@ class BolusTrackerTest {
     }
 
     @Test
-    fun `after max resends still not started - alarm, no further resend`() {
+    fun `not started is resent until the fifth attempt, then alarm and no further resend`() {
         sendLoopBolus()
-        tracker.onConfirmed()
-        tracker.onStatus(notStarted())
-        assertEquals(Resend, tracker.onStatus(notStarted()))
-        tracker.onWritten()
+        repeat(BolusTracker.MAX_ATTEMPTS - 1) {
+            tracker.onConfirmed()
+            clock.advance(min)
+            tracker.onStatus(notStarted())
+            assertEquals(Resend, tracker.onStatus(notStarted()), "attempt ${it + 1}")
+            tracker.onWritten()
+        }
+        assertEquals(BolusTracker.MAX_ATTEMPTS, tracker.current!!.attempts)
         clock.advance(min)
         tracker.onStatus(notStarted())
         val action = tracker.onStatus(notStarted())
         assertInstanceOf(Alarm::class.java, action)
         assertEquals(BolusState.FAILED, tracker.current!!.state)
+        assertTrue(tracker.canSendNewBolus())
+    }
+
+    @Test
+    fun `every post is a try, also when the connection drops before the dose is written`() {
+        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        repeat(3) { tracker.onTry() }
+        assertEquals(3, tracker.current!!.attempts)
+        assertEquals(BolusTracker.MAX_ATTEMPTS - 3, tracker.triesLeft())
+        // the write of the fourth post does not count twice
+        tracker.onTry()
+        tracker.onBaseline(baseline)
+        tracker.onWritten()
+        assertEquals(4, tracker.current!!.attempts)
+        assertEquals(1, tracker.triesLeft())
+    }
+
+    @Test
+    fun `a written bolus is not tried again until M allows a resend`() {
+        sendLoopBolus()
+        tracker.onTry()
+        assertEquals(1, tracker.current!!.attempts)
     }
 
     @Test
@@ -172,15 +198,12 @@ class BolusTrackerTest {
     }
 
     @Test
-    fun `stale loop bolus is failed, not resent`() {
+    fun `an old loop bolus is resent - no time to live, only tries`() {
         sendLoopBolus()
         tracker.onConfirmed()
-        clock.advance(6 * min)
+        clock.advance(30 * min)
         tracker.onStatus(notStarted())
-        val action = tracker.onStatus(notStarted())
-        assertInstanceOf(Fail::class.java, action)
-        assertEquals(BolusState.FAILED, tracker.current!!.state)
-        assertTrue(tracker.canSendNewBolus())
+        assertEquals(Resend, tracker.onStatus(notStarted()))
     }
 
     @Test
@@ -251,17 +274,10 @@ class BolusTrackerTest {
     // ---- T8 alarm ---------------------------------------------------------------------------
 
     @Test
-    fun `unknown three times alarms once and keeps blocking`() {
+    fun `unknown M keeps reading and blocking until delivered`() {
         sendLoopBolus()
         tracker.onConfirmed()
-        val a1 = tracker.onStatus(null)
-        val a2 = tracker.onStatus(null)
-        val a3 = tracker.onStatus(null)
-        val a4 = tracker.onStatus(null)
-        assertInstanceOf(ReadStatusAt::class.java, a1)
-        assertInstanceOf(ReadStatusAt::class.java, a2)
-        assertInstanceOf(Alarm::class.java, a3)
-        assertInstanceOf(ReadStatusAt::class.java, a4, "alarm is raised only once")
+        repeat(BolusTracker.MAX_STATUS_FAILURES - 1) { assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(null)) }
         assertFalse(tracker.canSendNewBolus())
         // later delivered clears it and records once
         assertInstanceOf(Record::class.java, tracker.onStatus(applied(0.5)))
@@ -269,11 +285,59 @@ class BolusTrackerTest {
     }
 
     @Test
-    fun `unresolved for ten minutes alarms`() {
+    fun `M failing five times in a row fails the bolus with an alarm and releases the tracker`() {
+        val r = sendLoopBolus()
+        tracker.onConfirmed()
+        assertEquals(ReadStatusAt(clock.now()), tracker.onStatusFailed("M answered invalid command"))
+        tracker.onStatus(null)
+        tracker.onStatusFailed("no M answer")
+        tracker.onStatus(null)
+        val action = tracker.onStatusFailed("M answered invalid command")
+        assertInstanceOf(Alarm::class.java, action)
+        assertEquals(BolusState.FAILED, r.state)
+        assertTrue(tracker.canSendNewBolus())
+    }
+
+    @Test
+    fun `a readable M resets the M failure count`() {
+        val r = sendLoopBolus(1.0)
+        tracker.onConfirmed()
+        repeat(4) { tracker.onStatusFailed("invalid") }
+        tracker.onStatus(Fixtures.snapshot(1.0, applied(1.0).lastBolusTime, square = 1.0, delivered = 0.2))
+        assertEquals(0, r.statusFailures)
+        assertInstanceOf(ReadStatusAt::class.java, tracker.onStatusFailed("invalid"))
+    }
+
+    @Test
+    fun `M failures are not counted with nothing written`() {
+        tracker.onQueued("b1", BolusOrigin.LOOP, 0.5)
+        assertEquals(None, tracker.onStatusFailed("invalid"))
+    }
+
+    @Test
+    fun `confirmed bolus that M proves not delivered is lock evidence, delivered is an effect`() {
+        val noEffect = mutableListOf<String>()
+        val effect = mutableListOf<String>()
+        tracker.onConfirmedWithoutEffect = { noEffect += it }
+        tracker.onPumpEffect = { effect += it }
         sendLoopBolus()
         tracker.onConfirmed()
-        clock.advance(11 * min)
-        assertInstanceOf(Alarm::class.java, tracker.onStatus(null))
+        clock.advance(min)
+        tracker.onStatus(notStarted())
+        assertTrue(noEffect.isEmpty(), "one not-started M is not proof")
+        assertEquals(Resend, tracker.onStatus(notStarted()))
+        assertEquals(1, noEffect.size)
+        tracker.onWritten()
+        // not confirmed this time: a not-started bolus is a failed attempt, not lock evidence
+        clock.advance(min)
+        tracker.onStatus(notStarted())
+        tracker.onStatus(notStarted())
+        assertEquals(1, noEffect.size)
+        tracker.onWritten()
+        tracker.onConfirmed()
+        clock.advance(min)
+        tracker.onStatus(applied(0.5, minuteOffset = 3))
+        assertEquals(1, effect.size)
     }
 
     @Test

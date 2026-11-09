@@ -18,7 +18,7 @@ enum class BolusState {
     /** Connection dropped or `M` said "not started": waiting for a fresh `M`. */
     UNRESOLVED,
 
-    /** `M` could not tell. Keeps new boluses blocked (T8). */
+    /** `M` could not tell. Keeps new boluses blocked until `M` resolves it or fails [BolusTracker.MAX_STATUS_FAILURES] times. */
     UNKNOWN,
 
     DELIVERED, PARTIAL, FAILED;
@@ -71,8 +71,15 @@ class BolusRequest(
     var baseline: BolusStatusSnapshot? = null
         internal set
 
-    /** Number of times the bolus command was written to the pump. */
+    /**
+     * Number of times the bolus was tried: every time its executor is posted ([BolusTracker.onTry]), also when
+     * the connection drops before the dose is written, or every write when no try was counted ([BolusTracker.onWritten]).
+     */
     var attempts: Int = 0
+        internal set
+
+    /** `M` rounds in a row that did not resolve the bolus (invalid command, no answer, unreadable, ambiguous). */
+    var statusFailures: Int = 0
         internal set
     var appliedTotal: Double = 0.0
         internal set
@@ -82,6 +89,12 @@ class BolusRequest(
         internal set
     var alarmed: Boolean = false
         internal set
+
+    /** An attempt was counted by [BolusTracker.onTry] and not yet consumed by a write. */
+    internal var tryCounted: Boolean = false
+
+    /** The MedLink confirmed the current attempt: a "not started" `M` after it is a command without effect (lock). */
+    internal var confirmedThisAttempt: Boolean = false
 
     /** First "not started" answer seen, waiting for a fresh `M` to confirm it. */
     internal var notStartedSeenAt: Long? = null
@@ -103,16 +116,22 @@ class BolusRequest(
  * Safety rules (T7):
  *  - a pump confirmation never finishes a bolus; only `M` / `A` answers do
  *  - a bolus is re-sent only after two consecutive `M` answers show it was not started
- *  - at most [maxResend] re-sends, stale loop boluses are failed, manual boluses ask the user
+ *  - at most [maxAttempts] tries (a dropped connection counts too), manual boluses ask the user
+ *  - [MAX_STATUS_FAILURES] `M` rounds in a row without an answer that resolves the bolus fail it (alarm)
  *  - each pump bolus (keyed by its pump time) is recorded once; applied total never exceeds the request
  */
 class BolusTracker(
     private val clock: Clock,
     private val strict: Boolean = false,
-    private val maxResend: Int = 1,
-    private val staleLoopBolusMs: Long = 5 * MINUTE,
+    private val maxAttempts: Int = MAX_ATTEMPTS,
     private val log: (String) -> Unit
 ) {
+
+    /** The MedLink confirmed the bolus and `M` proved it was not delivered (pump lock evidence). */
+    var onConfirmedWithoutEffect: ((String) -> Unit)? = null
+
+    /** `M` shows the bolus being delivered or delivered: the pump accepts commands. */
+    var onPumpEffect: ((String) -> Unit)? = null
 
     companion object {
 
@@ -120,8 +139,11 @@ class BolusTracker(
         const val MS_PER_UNIT = 40_000L
         const val DELIVERY_MARGIN_MS = 15_000L
         const val UNKNOWN_RETRY_MS = 30_000L
-        const val MAX_UNKNOWN = 3
-        const val MAX_UNRESOLVED_MS = 10 * MINUTE
+        const val MAX_ATTEMPTS = 5
+        const val MAX_STATUS_FAILURES = 5
+
+        /** Unreadable `M` answers in a row that hold an automatic stop (StopGate). */
+        const val MAX_UNREADABLE_FOR_STOP = 3
 
         private val allowed: Map<BolusState, Set<BolusState>> = mapOf(
             BolusState.QUEUED to setOf(BolusState.SENT, BolusState.FAILED),
@@ -134,7 +156,8 @@ class BolusTracker(
                 BolusState.UNKNOWN
             ),
             BolusState.DELIVERING to setOf(
-                BolusState.UNRESOLVED, BolusState.DELIVERING, BolusState.DELIVERED, BolusState.PARTIAL, BolusState.UNKNOWN
+                BolusState.UNRESOLVED, BolusState.DELIVERING, BolusState.DELIVERED, BolusState.PARTIAL, BolusState.UNKNOWN,
+                BolusState.FAILED
             ),
             BolusState.UNRESOLVED to setOf(
                 BolusState.SENT, BolusState.UNRESOLVED, BolusState.DELIVERING, BolusState.DELIVERED, BolusState.PARTIAL,
@@ -196,14 +219,34 @@ class BolusTracker(
         log("BOLUS[${r.id}] baseline ${snapshot?.let { "${it.lastBolusAmount}U@${it.lastBolusTime}" } ?: "none"} raw=${snapshot?.raw}")
     }
 
+    /** Tries left for the tracked bolus (0 when there is none or it is final). */
+    @Synchronized
+    fun triesLeft(): Int = current?.takeIf { !it.state.isFinal }?.let { max(0, maxAttempts - it.attempts) } ?: 0
+
+    /**
+     * The tracked bolus executor is posted (first step): one more try, whether or not the dose gets written
+     * (the connection may drop before). Not counted for a written bolus that `M` did not allow to re-send.
+     */
+    @Synchronized
+    fun onTry() {
+        val r = current ?: return
+        if (r.state != BolusState.QUEUED && !(r.state == BolusState.UNRESOLVED && r.resendAllowed)) return
+        r.attempts++
+        r.tryCounted = true
+        log("BOLUS[${r.id}] try ${r.attempts}/$maxAttempts")
+    }
+
     @Synchronized
     fun onWritten(): BolusAction {
         val r = current ?: return BolusAction.None
-        if (r.state == BolusState.UNRESOLVED && r.attempts > maxResend) return illegal(r, BolusState.SENT)
+        if (r.state == BolusState.UNRESOLVED && (!r.resendAllowed || r.attempts > maxAttempts)) return illegal(r, BolusState.SENT)
         val bad = transition(r, BolusState.SENT) ?: run {
             r.sentAt = clock.now()
             lastSentAt = r.sentAt
-            r.attempts++
+            if (!r.tryCounted) r.attempts++
+            r.tryCounted = false
+            r.confirmedThisAttempt = false
+            r.statusFailures = 0
             r.notStartedSeenAt = null
             r.awaitingUser = false
             r.resendAllowed = false
@@ -278,7 +321,10 @@ class BolusTracker(
     fun onConfirmed(): BolusAction {
         val r = current ?: return BolusAction.None
         if (r.state == BolusState.CONFIRMED) return BolusAction.None
-        return transition(r, BolusState.CONFIRMED) ?: BolusAction.ReadStatusAt(r.expectedEndAt)
+        return transition(r, BolusState.CONFIRMED) ?: run {
+            r.confirmedThisAttempt = true
+            BolusAction.ReadStatusAt(r.expectedEndAt)
+        }
     }
 
     @Synchronized
@@ -326,6 +372,9 @@ class BolusTracker(
         val outcome = BolusStatusInterpreter.interpret(snapshot, BolusCheck(r.requested, r.sentAt, r.baseline, r.expectedEndAt), now)
         log("BOLUS[${r.id}] M outcome=${outcome.type} delivered=${outcome.deliveredAmount} requested=${r.requested} ${outcome.reason} raw=${snapshot?.raw}")
 
+        if (outcome.type != BolusOutcome.Type.UNKNOWN) r.statusFailures = 0
+        if (outcome.type == BolusOutcome.Type.DELIVERED || outcome.type == BolusOutcome.Type.PARTIAL || outcome.type == BolusOutcome.Type.DELIVERING)
+            onPumpEffect?.invoke("bolus ${r.id} ${outcome.type}")
         return when (outcome.type) {
             BolusOutcome.Type.DELIVERED   -> record(r, BolusState.DELIVERED, outcome.deliveredAmount, outcome.pumpBolusTime!!)
             BolusOutcome.Type.PARTIAL     -> record(r, BolusState.PARTIAL, outcome.deliveredAmount, outcome.pumpBolusTime!!)
@@ -336,8 +385,19 @@ class BolusTracker(
             }
 
             BolusOutcome.Type.NOT_STARTED -> notStarted(r, snapshot!!, now)
-            BolusOutcome.Type.UNKNOWN     -> unknown(r, now)
+            BolusOutcome.Type.UNKNOWN     -> unknown(r, now, outcome.reason)
         }
+    }
+
+    /**
+     * An `M` round for the bolus in flight ended without an answer: "invalid command", no answer before the
+     * connection dropped, etc. Counts toward [MAX_STATUS_FAILURES]; reads `M` again right away until then.
+     */
+    @Synchronized
+    fun onStatusFailed(reason: String): BolusAction {
+        val r = current ?: return BolusAction.None
+        if (r.state.isFinal || r.state == BolusState.QUEUED) return BolusAction.None
+        return statusFailed(r, reason) ?: BolusAction.ReadStatusAt(clock.now())
     }
 
     @Synchronized
@@ -394,6 +454,11 @@ class BolusTracker(
             return BolusAction.ReadStatusAt(now)
         }
         if (snapshot.readAt < firstSeen) return BolusAction.ReadStatusAt(now)
+        if (r.confirmedThisAttempt) {
+            // the MedLink confirmed it and the pump did not deliver it: pump lock evidence (or a one-off failure)
+            r.confirmedThisAttempt = false
+            onConfirmedWithoutEffect?.invoke("bolus ${r.requested} U confirmed, not delivered (attempt ${r.attempts})")
+        }
         return when {
             // without a baseline "not started" relies on the pump clock matching the phone clock: never re-send
             r.baseline == null                                                 -> {
@@ -401,9 +466,7 @@ class BolusTracker(
                 alarm(r, "bolus ${r.requested} U not seen in pump history and no baseline to compare - check the pump")
             }
 
-
-            r.origin == BolusOrigin.LOOP && now - r.createdAt > staleLoopBolusMs -> fail(r, "stale")
-            r.attempts > maxResend                                             -> {
+            r.attempts >= maxAttempts                                          -> {
                 transition(r, BolusState.FAILED)?.let { return it }
                 alarm(r, "bolus ${r.requested} U not delivered after ${r.attempts} attempts")
             }
@@ -422,13 +485,23 @@ class BolusTracker(
         }
     }
 
-    private fun unknown(r: BolusRequest, now: Long): BolusAction {
+    private fun unknown(r: BolusRequest, now: Long, reason: String): BolusAction {
         r.unknownCount++
         if (r.state != BolusState.UNKNOWN) transition(r, BolusState.UNKNOWN)?.let { return it }
-        if (!r.alarmed && (r.unknownCount >= MAX_UNKNOWN || now - r.sentAt > MAX_UNRESOLVED_MS)) {
-            return alarm(r, "bolus ${r.requested} U unconfirmed, last M: ${r.lastSnapshot?.let { "${it.lastBolusAmount}U delivered=${it.deliveredAmount}" } ?: "none"}")
-        }
-        return BolusAction.ReadStatusAt(now + UNKNOWN_RETRY_MS)
+        return statusFailed(r, reason.ifEmpty { "M unreadable" }) ?: BolusAction.ReadStatusAt(now + UNKNOWN_RETRY_MS)
+    }
+
+    /** @return the final action when the `M` failures reached [MAX_STATUS_FAILURES], null to read `M` again. */
+    private fun statusFailed(r: BolusRequest, reason: String): BolusAction? {
+        r.statusFailures++
+        log("BOLUS[${r.id}] M failure ${r.statusFailures}/$MAX_STATUS_FAILURES: $reason")
+        if (r.statusFailures < MAX_STATUS_FAILURES) return null
+        transition(r, BolusState.FAILED)?.let { return it }
+        return alarm(
+            r, "bolus ${r.requested} U could not be confirmed: M failed ${r.statusFailures} times ($reason), last M: " +
+                "${r.lastSnapshot?.let { "${it.lastBolusAmount}U delivered=${it.deliveredAmount}" } ?: "none"}. " +
+                "It may have been delivered and was not recorded: check the pump history before bolusing again."
+        )
     }
 
     private fun fail(r: BolusRequest, reason: String): BolusAction =

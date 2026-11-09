@@ -4,6 +4,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
 import app.aaps.pump.common.hw.medlink.service.MedLinkStatusParser
 
@@ -22,7 +23,11 @@ class BleBolusStatusCommand(
 
     override fun characteristicChanged(answer: String, bleComm: MedLinkBLE, lastCharacteristic: String) {
         val current = bleComm.currentCommand
-        if (answer.contains("time to powerdown 5") && current != null && !current.hasFinished() && current.isAwaitingAnswer()) {
+        if (answer.contains("invalid command") && current?.firstCommand() == MedLinkCommandType.BolusStatus) {
+            // counted as an M failure for the bolus in flight; two in a row reset the connection (MedLinkBLE)
+            pumpResponse = StringBuffer()
+            bleComm.onBolusStatusInvalid()
+        } else if (answer.contains("time to powerdown 5") && current != null && !current.hasFinished() && current.isAwaitingAnswer()) {
             // MedLink is ending the session and the M answer never came: read M again from the start
             // (M only reads, it never delivers). Posting it as-is would write an empty payload -> "invalid command".
             aapsLogger.info(LTag.PUMPBTCOMM, "M answer lost, reading M again")

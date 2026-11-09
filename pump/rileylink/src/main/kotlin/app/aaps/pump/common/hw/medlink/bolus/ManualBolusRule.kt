@@ -11,17 +11,13 @@ import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
  *    and runs right after it (see MedLinkBLE);
  *  - T16 (in the plugin): an SMB is still refused while a manual bolus is pending, it was computed
  *    without the manual bolus in IOB; a manual bolus with an SMB pending asks the user first;
- *  - a manual bolus waiting longer than [MAX_WAIT_MS] is dropped with an alarm: it must not be
- *    delivered long after the user asked for it.
+ *  - there is no time to live: a waiting bolus runs when the one in flight is resolved, which is bounded by
+ *    the tries of that bolus and its `M` failures (see BolusTracker).
  */
 object ManualBolusRule {
 
-    const val MAX_WAIT_MS = 5 * 60_000L
-
     /** Is a bolus of [newType] refused while boluses of [pendingTypes] are pending? */
     fun refuses(pendingTypes: Set<MedLinkCommandType>, newType: MedLinkCommandType): Boolean = newType in pendingTypes
-
-    fun expired(waitingSince: Long, now: Long): Boolean = now - waitingSince > MAX_WAIT_MS
 
     /** Amount the user may set in the T16 dialog: lower than or equal to the requested one (already within limits), on the pump step. */
     fun editedAmount(requested: Double, entered: Double?, step: Double): Double? {
