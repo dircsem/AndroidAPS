@@ -2344,6 +2344,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             }
         if (basalType == PumpTempBasalType.Percent) {
             operations.absoluteRate = totalAmount
+        } else {
+            // the single-bolus plan (constructor) left it at 0.0: temporaryBasal then reported a 0 % TBR and
+            // handlePumpStatus() stopped the running pump ("Stopping unstopped pump") after a TBR > 100 %
+            operations.absoluteRate = absoluteBasalValue
         }
         return operations
     }
@@ -4299,7 +4303,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     private fun handlePumpStatus() {
-        if (temporaryBasal?.rate == 0.0 && temporaryBasal?.duration!! > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow)) {
+        // a plan with microboluses is a TBR above the basal: never a reason to suspend
+        val zeroTbrPlan = tempBasalMicrobolusOperations.operations.none { it.operationType == TempBasalMicroBolusPair.OperationType.BOLUS }
+        if (zeroTbrPlan && temporaryBasal?.rate == 0.0 && temporaryBasal?.duration!! > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow)) {
             stopPump(object : Callback() {
                 override fun run() {
                     aapsLogger.info(LTag.PUMP, "Stopping unstopped pump")

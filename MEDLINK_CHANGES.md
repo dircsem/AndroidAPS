@@ -295,6 +295,25 @@ Log analisado: `logs/invalid_smb.log` (dois SMB recusados).
 
 **No log, durante o teste de campo**: `BOLUS[id] try N/5`, `BOLUS[id] M failure N/5: ...`, `M answered invalid command (N in a row)`, `resetting the MedLink connection`, `command without effect (...), N in a row`, `pump block none -> PUMP_LOCKED`, `pump accepts commands again`, `STOP refused: pump still running`, `STOP retry N`, `BOLUS ... dropped: not written after N tries`.
 
+## 4l. Bomba suspensa de novo depois de um TBR > 100 % (2026-11-09)
+
+Log: `logs/basal_problem.log`.
+
+**O que aconteceu**
+- 11:28:45: plano de TBR 0 % (SUSPEND/REACTIVATE), bomba suspensa.
+- 11:28:56: chega TBR 1,35 U/h (basal 1,2). START às 11:29:10; a bomba volta ao normal às 11:29:25. O plano novo tem um só microbolus de 0,1 U (11:43).
+- 11:29:39: SMB 0,4 U, confirmado pelo `M` às 11:30:36.
+- 11:30:38: depois das leituras de status, `stopPump - AUTOMATIC`; STOP escrito às 11:30:55, bomba suspensa às 11:31:09 ("Stopping unstopped pump"). O mesmo às 11:32:39 com o TBR seguinte.
+
+**Causa**: o STOP não vinha da fila de operações, e sim de `handlePumpStatus()` (roda a cada leitura de dados da bomba): ele suspende quando `temporaryBasal.rate == 0.0` e a bomba está rodando. O `temporaryBasal` do plugin vem do plano de microbolus, com `rate = 0.0` quando `absoluteRate == 0.0`. O plano de **um só bolus** (`TempBasalMicrobolusOperations(1, ...)`, TBR pouco acima da basal) não definia `absoluteRate`: ficava 0,0, então o TBR de 1,35 U/h aparecia como 0 % e qualquer leitura de status depois do SMB suspendia a bomba.
+
+**Correção** (`MedLinkMedtronicPumpPlugin`):
+- `buildFirstLevelTempBasalMicroBolusOperations`: `absoluteRate` = valor pedido em todo plano absoluto (antes só no plano com vários bolus).
+- `handlePumpStatus`: não suspende se o plano tem operações BOLUS (TBR acima da basal nunca é 0 %).
+- Os STOP/START das minhas mudanças (4k) não tinham relação com isso.
+
+**Testes**: medtronic 143/143, `:pump:medtronic:compileFullDebugKotlin` OK. Sem teste automático para `handlePumpStatus`.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
