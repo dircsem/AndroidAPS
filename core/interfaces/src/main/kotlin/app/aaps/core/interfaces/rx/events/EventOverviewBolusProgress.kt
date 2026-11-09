@@ -7,13 +7,16 @@ import kotlin.math.min
 
 /**
  * Custom status message and percent
+ *
+ * @param waiting the bolus has not started yet (connecting, sending...): the dialog shows a moving bar instead of the percent
  */
-class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: Int? = null) : Event() {
+class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: Int? = null, waiting: Boolean = false) : Event() {
 
     init {
         if (id == BolusProgressData.id || id == null) {
             BolusProgressData.status = status
             percent?.let { BolusProgressData.percent = it }
+            BolusProgressData.waiting = waiting
         }
     }
 

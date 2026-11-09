@@ -390,6 +390,19 @@ do "last bolus" (igual ao baseline → NOT_STARTED) e o tracker chamava aquilo d
 **Testes:** `BolusStatusInterpreterTest` (respostas do log), `BolusTrackerTest` (resposta do BOLUS → `M` na linha
 square → "last bolus" novo = registrado).
 
+## 4p. Diálogo de progresso: etapas antes da entrega com barra em movimento (2026-11-09)
+
+Antes de a bomba começar a entregar, o diálogo de um bolus manual mostra o que o bolus está esperando, com a barra
+horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (do `M`, ver 4o).
+
+- `BolusPhase`: CONNECTING, READING_STATUS (baseline `M`), SENDING (com "tentativa n de 5" a partir da 2ª),
+  CONFIRMED (MedLink confirmou, bomba ainda não começou), WAITING_OTHER_BOLUS.
+- `MedLinkBLE.reportBolusPhase` chama `BleBolusCommand.onPhase` em `connectGatt`, no `mayRun` (baseline / outro bolus),
+  no `beforePost` (cada tentativa) e na confirmação; não repete a mesma etapa e se cala quando o bolus está DELIVERING.
+- O plugin só liga `onPhase` para bolus manual e envia "Conectando à bomba…" logo que o bolus começa.
+- Core (isolado, outras bombas sem mudança): `EventOverviewBolusProgress(..., waiting = false)` e
+  `BolusProgressData.waiting`; o `BolusProgressDialog` só fica indeterminado quando `waiting` é true.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

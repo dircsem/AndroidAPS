@@ -1,5 +1,6 @@
 package app.aaps.pump.medtronic
 
+import app.aaps.pump.common.hw.medlink.bolus.BolusPhase
 import app.aaps.pump.common.hw.medlink.bolus.ManualBolusRule
 import app.aaps.pump.medtronic.dialog.MedLinkBolusConfirmActivity
 import android.annotation.SuppressLint
@@ -3687,6 +3688,22 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             if (manual) bleBolusCommand.onProgress = { delivered, requested ->
                 val fraction = if (requested > 0.0) (delivered / requested).coerceIn(0.0, 1.0) else 0.0
                 rxBus.send(EventOverviewBolusProgress(rh, bolus.insulin * fraction, id = detailedBolusInfo.id))
+            }
+            // 4p: until the pump delivers, tell the user what the bolus waits for (moving bar)
+            if (manual) {
+                bleBolusCommand.onPhase = { phase, attempt, maxAttempts ->
+                    val text = when (phase) {
+                        BolusPhase.CONNECTING          -> rh.gs(R.string.medlink_bolus_phase_connecting)
+                        BolusPhase.READING_STATUS      -> rh.gs(R.string.medlink_bolus_phase_reading_status)
+                        BolusPhase.SENDING             ->
+                            if (attempt > 1) rh.gs(R.string.medlink_bolus_phase_sending_try, attempt, maxAttempts)
+                            else rh.gs(R.string.medlink_bolus_phase_sending)
+                        BolusPhase.CONFIRMED           -> rh.gs(R.string.medlink_bolus_phase_confirmed)
+                        BolusPhase.WAITING_OTHER_BOLUS -> rh.gs(R.string.medlink_bolus_phase_waiting_other)
+                    }
+                    rxBus.send(EventOverviewBolusProgress(text, id = detailedBolusInfo.id, waiting = true))
+                }
+                rxBus.send(EventOverviewBolusProgress(rh.gs(R.string.medlink_bolus_phase_connecting), id = detailedBolusInfo.id, waiting = true))
             }
             val msg = BolusMedLinkMessage(
                 bolusCommand, bolus,

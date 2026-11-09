@@ -281,8 +281,10 @@ class MedLinkBLE //extends RileyLinkBLE
                 bolusCommandToBeChecked = currentCommand
                 // rule 1: a confirmation is not a delivered bolus, schedule the verify M
                 // only the amount write commits the dose; the X step is also "confirmed" while still QUEUED
-                if (commandConfirmed && currentCommand === trackedBolusExecutor && bolusTracker.current?.state == BolusState.SENT)
+                if (commandConfirmed && currentCommand === trackedBolusExecutor && bolusTracker.current?.state == BolusState.SENT) {
+                    reportBolusPhase(currentCommand, app.aaps.pump.common.hw.medlink.bolus.BolusPhase.CONFIRMED)
                     executeBolusAction(bolusTracker.onConfirmed())
+                }
             }
         }
         isCommandConfirmed = commandConfirmed
@@ -882,6 +884,7 @@ class MedLinkBLE //extends RileyLinkBLE
     @SuppressLint("MissingPermission")
     fun connectGatt() {
         lastGattConnection = System.currentTimeMillis()
+        reportBolusPhase(waitingBolusExecutor(), app.aaps.pump.common.hw.medlink.bolus.BolusPhase.CONNECTING)
         changeConnectionStatus(ConnectionStatus.CONNECTING)
         aapsLogger.info(LTag.PUMPBTCOMM, "Connecting gatt")
         if (medLinkDevice == null) {
@@ -1770,6 +1773,7 @@ class MedLinkBLE //extends RileyLinkBLE
                 val until = latest.readAt + ((programmed - (latest.deliveredAmount ?: 0.0)).coerceAtLeast(0.0) * BolusTracker.MS_PER_UNIT).toLong() +
                     BolusTracker.DELIVERY_MARGIN_MS
                 aapsLogger.info(LTag.PUMPBTCOMM, "bolus waits: pump is delivering another bolus")
+                reportBolusPhase(executor, app.aaps.pump.common.hw.medlink.bolus.BolusPhase.WAITING_OTHER_BOLUS)
                 if (now < until) scheduleNextCommand(until - now) else requestBolusStatus(now)
                 return false
             }
@@ -1783,6 +1787,7 @@ class MedLinkBLE //extends RileyLinkBLE
                     if (!hasQueuedBolusStatus()) {
                         baselineRequests++
                         aapsLogger.info(LTag.PUMPBTCOMM, "bolus waits: reading baseline M first")
+                        reportBolusPhase(executor, app.aaps.pump.common.hw.medlink.bolus.BolusPhase.READING_STATUS)
                         requestBolusStatus(now)
                     }
                     return false
@@ -2590,6 +2595,31 @@ class MedLinkBLE //extends RileyLinkBLE
         handler.post { callback(shown, r.requested) }
     }
 
+    /** Last phase told to a bolus owner: the same phase is not repeated (the picker runs many times). */
+    private var lastBolusPhase: Triple<CommandExecutor<*>, app.aaps.pump.common.hw.medlink.bolus.BolusPhase, Int>? = null
+
+    /** The bolus that waits to be delivered: the tracked one before it delivers, else the first queued bolus. */
+    private fun waitingBolusExecutor(): CommandExecutor<*>? {
+        val tracked = trackedBolusExecutor
+        val state = bolusTracker.current?.state
+        if (tracked != null && state != null && !state.isFinal) return tracked.takeIf { state != BolusState.DELIVERING }
+        return bolusExecutionQueue.firstOrNull { isBolusExecutor(it) }
+    }
+
+    /** 4p: tell the bolus owner (progress dialog of a manual bolus) what it waits for. Nothing once the pump delivers it. */
+    private fun reportBolusPhase(executor: CommandExecutor<*>?, phase: app.aaps.pump.common.hw.medlink.bolus.BolusPhase) {
+        executor ?: return
+        val callback = bleBolusCommand(executor)?.onPhase ?: return
+        val r = bolusTracker.current
+        val tracked = executor === trackedBolusExecutor && r != null && !r.state.isFinal
+        if (tracked && r!!.state == BolusState.DELIVERING) return
+        val attempt = if (tracked && phase == app.aaps.pump.common.hw.medlink.bolus.BolusPhase.SENDING) r!!.attempts else 0
+        val key = Triple(executor, phase, attempt)
+        if (lastBolusPhase == key) return
+        lastBolusPhase = key
+        handler.post { callback(phase, attempt, BolusTracker.MAX_ATTEMPTS) }
+    }
+
     /** The result of the executor's own bolus (part 0); the owner ignores repeated calls. */
     private fun reportOwnResult(executor: CommandExecutor<*>?, success: Boolean, delivered: Double) {
         val cb = executor?.let { bleBolusCommand(it) }?.onQueueResult ?: return
@@ -2894,7 +2924,10 @@ class MedLinkBLE //extends RileyLinkBLE
             bolusTracker.onBaseline(bolusTracker.latestSnapshot?.takeIf { now - it.readAt <= BASELINE_MAX_AGE_MS })
         }
         // every post of the first step is a try, whether or not the dose gets written
-        if (executor === trackedBolusExecutor && executor.getCurrentCommand() == executor.firstCommand()) bolusTracker.onTry()
+        if (executor === trackedBolusExecutor && executor.getCurrentCommand() == executor.firstCommand()) {
+            bolusTracker.onTry()
+            reportBolusPhase(executor, app.aaps.pump.common.hw.medlink.bolus.BolusPhase.SENDING)
+        }
         // the dose is committed when the amount is written
         if (executor.getCurrentCommand() == MedLinkCommandType.BolusAmount) {
             // 4i: under the merge lock, so nothing joins the bolus once its amount is committed

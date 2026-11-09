@@ -21,6 +21,7 @@ object BolusProgressData {
         stopPressed = false
         status = ""
         percent = 0
+        waiting = false
     }
 
     /**
@@ -49,6 +50,12 @@ object BolusProgressData {
      */
     var status = ""
     var percent = 0
+
+    /**
+     * The bolus has not started yet (connecting, sending the command...): the dialog shows a moving bar.
+     * Only set by pumps that report these steps.
+     */
+    var waiting = false
 
     var bolusEnded = false
 

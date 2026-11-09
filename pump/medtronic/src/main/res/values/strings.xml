@@ -161,4 +161,10 @@
     <string name="medlink_smb_pending_amount_invalid">Enter an amount between %1$.2f and %2$.2f U</string>
     <string name="medlink_pump_block_locked">Pump locked: start, stop or bolus commands were confirmed by the MedLink but the pump did not change. Check the pump screen for a message and clear it. AAPS keeps trying; the alert clears when a command works.</string>
     <string name="medlink_pump_block_locked_title">Pump locked</string>
+    <string name="medlink_bolus_phase_connecting">Connecting to the pump…</string>
+    <string name="medlink_bolus_phase_reading_status">Reading the pump bolus status…</string>
+    <string name="medlink_bolus_phase_sending">Sending the bolus command…</string>
+    <string name="medlink_bolus_phase_sending_try">Sending the bolus command (try %1$d of %2$d)…</string>
+    <string name="medlink_bolus_phase_confirmed">Bolus command confirmed, waiting for the pump to start…</string>
+    <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
 </resources>

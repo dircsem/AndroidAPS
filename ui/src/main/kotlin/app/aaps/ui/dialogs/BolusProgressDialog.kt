@@ -76,7 +76,7 @@ class BolusProgressDialog : DaggerDialogFragment() {
         }
         binding.progressbar.max = 100
         binding.status.text = BolusProgressData.status
-        binding.progressbar.progress = BolusProgressData.percent
+        showProgress()
         BolusProgressData.stopPressed = false
     }
 
@@ -112,7 +112,7 @@ class BolusProgressDialog : DaggerDialogFragment() {
             .subscribe {
                 aapsLogger.debug(LTag.UI, "Status: ${BolusProgressData.status} Percent: ${BolusProgressData.percent}")
                 binding.status.text = BolusProgressData.status
-                binding.progressbar.progress = BolusProgressData.percent
+                showProgress()
                 if (BolusProgressData.percent == 100) {
                     binding.stop.visibility = View.INVISIBLE
                     scheduleDismiss()
@@ -153,6 +153,13 @@ class BolusProgressDialog : DaggerDialogFragment() {
         super.onDestroyView()
         disposable.clear()
         _binding = null
+    }
+
+    /** A moving bar while the bolus has not started ([BolusProgressData.waiting]), the percent once it delivers. */
+    private fun showProgress() {
+        val waiting = BolusProgressData.waiting && BolusProgressData.percent < 100
+        if (binding.progressbar.isIndeterminate != waiting) binding.progressbar.isIndeterminate = waiting
+        if (!waiting) binding.progressbar.progress = BolusProgressData.percent
     }
 
     private fun scheduleDismiss() {

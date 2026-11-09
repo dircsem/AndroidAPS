@@ -95,4 +95,10 @@
     <string name="medlink_smb_pending_amount_invalid">Informe um valor entre %1$.2f e %2$.2f U</string>
     <string name="medlink_pump_block_locked">Bomba bloqueada: comandos de start, stop ou bolus foram confirmados pela MedLink, mas a bomba não mudou. Veja se há uma mensagem na tela da bomba e limpe-a. O AAPS continua tentando; o alerta some quando um comando funcionar.</string>
     <string name="medlink_pump_block_locked_title">Bomba bloqueada</string>
+    <string name="medlink_bolus_phase_connecting">Conectando à bomba…</string>
+    <string name="medlink_bolus_phase_reading_status">Lendo o estado de bolus da bomba…</string>
+    <string name="medlink_bolus_phase_sending">Enviando o comando de bolus…</string>
+    <string name="medlink_bolus_phase_sending_try">Enviando o comando de bolus (tentativa %1$d de %2$d)…</string>
+    <string name="medlink_bolus_phase_confirmed">Comando de bolus confirmado, aguardando a bomba iniciar…</string>
+    <string name="medlink_bolus_phase_waiting_other">A bomba está aplicando outro bolus, aguardando terminar…</string>
 </resources>

@@ -32,6 +32,9 @@ class BleBolusCommand(
     /** While the pump delivers this bolus: (delivered so far, total requested). Used by the progress dialog. */
     var onProgress: ((delivered: Double, requested: Double) -> Unit)? = null
 
+    /** 4p: before the pump delivers: what the bolus waits for (try = 1-based try for SENDING, else 0). */
+    var onPhase: ((phase: app.aaps.pump.common.hw.medlink.bolus.BolusPhase, attempt: Int, maxAttempts: Int) -> Unit)? = null
+
     /** T16: manual bolus only: the user confirmed it while an SMB was pending, so the SMB may be merged into it. */
     var smbConsent: Boolean = false
 
