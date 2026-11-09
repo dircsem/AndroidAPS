@@ -804,6 +804,8 @@ class LoopPlugin @Inject constructor(
                             waiting
                         rxBus.send(EventLoopUpdateGui())
                         fabricPrivacy.logCustom("APSRequest")
+                        // MedLink: the SMB goes only here, before the slow TBR (never again in the TBR callback)
+                        val smbBeforeTbrOnly = pump is MedLinkPumpPluginBase
                         // a TBR-only result has smb = 0: never queue a 0 U SMB (MedLink refused it as "Invalid input")
                         if (pump is PumpPluginBase && resultAfterConstraints.isBolusRequested) {
                             aapsLogger.info(LTag.AUTOMATION, resultAfterConstraints.toString())
@@ -814,10 +816,14 @@ class LoopPlugin @Inject constructor(
                                         lastRun.smbSetByPump = result
                                         lastRun.lastSMBRequest = lastRun.lastAPSRun
                                         lastRun.lastSMBEnact = dateUtil.now()
+                                    } else if (smbBeforeTbrOnly) {
+                                        // a failed SMB is an SMB result, not a TBR one
+                                        lastRun.smbSetByPump = result
                                     } else {
                                         lastRun.tbrSetByPump = result
                                         lastRun.lastTBRRequest = lastRun.lastAPSRun
                                     }
+                                    if (smbBeforeTbrOnly) rxBus.send(EventLoopUpdateGui())
                                 }
                             })
                         }
@@ -833,7 +839,10 @@ class LoopPlugin @Inject constructor(
                                     // executing TBR may take some time thus give more time to SMB
                                     resultAfterConstraints.deliverAt = lastRun.lastTBREnact
                                     rxBus.send(EventLoopUpdateGui())
-                                    if (resultAfterConstraints.isBolusRequested)
+                                    if (smbBeforeTbrOnly) {
+                                        aapsLogger.debug(LTag.APS, "SMB already queued before the TBR (MedLink)")
+                                        scheduleBuildAndStoreDeviceStatus("applyTBRRequest")
+                                    } else if (resultAfterConstraints.isBolusRequested)
                                         applySMBRequest(
                                             resultAfterConstraints,
                                             object : Callback() {

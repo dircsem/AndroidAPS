@@ -262,7 +262,12 @@ Log analisado: `logs/invalid_smb.log` (dois SMB recusados).
 - Não era arredondamento: o AIMI bloqueou o SMB (`REFRACTORY_BLOCK`, `Limits: 1,42 → 0,00 U`), então `units=0.0` estava certo.
 - O `LoopPlugin` chama `applySMBRequest` antes do TBR para `PumpPluginBase` **sem** checar `isBolusRequested`: todo resultado só de TBR enfileirava um SMB de 0 U.
 - Correção: o caminho só roda com `isBolusRequested`, e `applySMBRequest` volta sem fazer nada com `smb <= 0`.
-- Ainda não mexido: para `PumpPluginBase`, o callback do TBR chama `applySMBRequest` de novo; o segundo SMB é recusado ("mesmo tipo pendente", 4i).
+- SMB duplicado (corrigido só para MedLink; as outras bombas não mudam):
+  - O `LoopPlugin` envia o SMB antes do TBR para toda `PumpPluginBase` e o callback do TBR chamava `applySMBRequest` de novo.
+  - No MedLink o primeiro SMB só é registrado depois do `M`, então o segundo passava pelo intervalo do SMB e era recusado pelo driver ("mesmo tipo pendente", 4i). A recusa caía no `invoke("tempBasalFallback")`: uma rodada extra do loop a cada TBR+SMB.
+  - Agora, com `pump is MedLinkPumpPluginBase` (`smbBeforeTbrOnly`), o callback do TBR não reenvia o SMB.
+  - A falha do SMB enviado antes do TBR vai para `lastRun.smbSetByPump`, não mais para `tbrSetByPump` (só MedLink).
+  - Testes do `:plugins:aps` não compilam por erros anteriores (`LoopPluginTest`, testes AIMI); verificado só com `:plugins:aps:compileFullDebugKotlin`.
 
 **SMB 2 — "command refused: pump blocked (UNREACHABLE)"**
 - A bomba respondia: o `M` era lido normalmente. O bloqueio vinha de um microbolus de TBR (0,1 U) em `UNKNOWN` ("cannot tell last bolus from the sent one"): o tracker alarmou e o 4j tratava isso como bomba inacessível, recusando SMB e TBR.
