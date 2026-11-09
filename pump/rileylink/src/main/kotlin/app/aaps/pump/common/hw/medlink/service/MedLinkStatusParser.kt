@@ -163,6 +163,8 @@ class MedLinkStatusParser {
             Pattern.compile("last bolus:\\s*(\\d{1,2}\\.\\d{1,3})u\\s*(\\d{2}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2})")
         private val squareBolusSnapshotPattern =
             Pattern.compile("square bolus:\\s*(\\d+\\.\\d+)u\\s*delivered:\\s*(\\d+\\.\\d+)")
+        private val squareTimeSnapshotPattern =
+            Pattern.compile("square bolus time:\\s*(\\d+)h:(\\d+)m\\s*/\\s*(\\d+)h:(\\d+)m")
 
         /**
          * Strict parse of an `M` answer. The answer may come as BLE chunks that split or join lines,
@@ -178,6 +180,11 @@ class MedLinkStatusParser {
                 .parse(last.group(2), ParsePosition(0)) ?: return null
             val square = squareBolusSnapshotPattern.matcher(text)
             val hasSquare = square.find()
+            val squareTime = squareTimeSnapshotPattern.matcher(text)
+            val squareMinutes = if (squareTime.find()) maxOf(
+                squareTime.group(1).toInt() * 60 + squareTime.group(2).toInt(),
+                squareTime.group(3).toInt() * 60 + squareTime.group(4).toInt()
+            ) else null
             return BolusStatusSnapshot(
                 lastBolusAmount = last.group(1).toDouble(),
                 // the MedLink sometimes sends year 00 for the same bolus: never trust a clearly wrong year
@@ -186,7 +193,8 @@ class MedLinkStatusParser {
                 deliveredAmount = if (hasSquare) square.group(2).toDouble() else null,
                 pumpBolusing = text.contains("bolusing"),
                 readAt = readAt,
-                raw = text
+                raw = text,
+                squareMinutes = squareMinutes
             )
         }
 

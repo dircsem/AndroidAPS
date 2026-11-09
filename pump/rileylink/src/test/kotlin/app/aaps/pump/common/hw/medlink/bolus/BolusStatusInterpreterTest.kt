@@ -136,4 +136,42 @@ class BolusStatusInterpreterTest {
         assertEquals(Type.PARTIAL, o.type)
         assertEquals(0.4, o.deliveredAmount, 0.0001)
     }
+
+    // 4o (logs/bolus_error_message.log): a normal 0.7 U bolus while it runs is on the square line, the last bolus is the old one
+    private fun m(text: String, readAt: Long) = MedLinkStatusParser.parseBolusSnapshot(text.lines(), readAt)!!
+
+    private val logBaseline = m("last bolus: 1.5u 10-06-21 17:35\nsquare bolus: 0.0u delivered: 0.000u\nsquare bolus time: 0h:00m / 0h:00m", sentAt - 5_000)
+    private val logRunning = "last bolus: 1.5u 10-06-21 17:35\nsquare bolus: 0.7u delivered: 0.200u\nsquare bolus time: 0h:00m / 0h:00m"
+
+    @Test
+    fun `sent normal bolus running on the square line is delivering, not not-started`() {
+        val o = BolusStatusInterpreter.interpret(m(logRunning, sentAt + 26_000), check(0.7, logBaseline), sentAt + 26_000)
+        assertEquals(Type.DELIVERING, o.type)
+        assertEquals(0.2, o.deliveredAmount, 0.0001)
+    }
+
+    @Test
+    fun `square line read before the send is not the sent bolus`() {
+        val s = m(logRunning, sentAt - 1_000)
+        assertEquals(false, BolusStatusInterpreter.isSentBolusOnSquareLine(s, check(0.7, logBaseline)))
+    }
+
+    @Test
+    fun `sent bolus done on the square line but last bolus not updated is unknown, never not-started`() {
+        val s = m("last bolus: 1.5u 10-06-21 17:35\nsquare bolus: 0.7u delivered: 0.700u\nsquare bolus time: 0h:00m / 0h:00m", sentAt + 40_000)
+        assertEquals(Type.UNKNOWN, BolusStatusInterpreter.interpret(s, check(0.7, logBaseline), sentAt + 40_000).type)
+    }
+
+    @Test
+    fun `square line bigger than requested is another bolus (the tracker waits for it)`() {
+        val s = m("last bolus: 1.5u 10-06-21 17:35\nsquare bolus: 2.0u delivered: 0.200u\nsquare bolus time: 0h:00m / 0h:00m", sentAt + 20_000)
+        assertEquals(Type.NOT_STARTED, BolusStatusInterpreter.interpret(s, check(0.7, logBaseline), sentAt + 20_000).type)
+    }
+
+    @Test
+    fun `a real square wave (duration above 0) is not the sent normal bolus`() {
+        val s = m("last bolus: 1.5u 10-06-21 17:35\nsquare bolus: 0.7u delivered: 0.200u\nsquare bolus time: 0h:10m / 0h:30m", sentAt + 20_000)
+        assertEquals(30, s.squareMinutes)
+        assertEquals(Type.NOT_STARTED, BolusStatusInterpreter.interpret(s, check(0.7, logBaseline), sentAt + 20_000).type)
+    }
 }

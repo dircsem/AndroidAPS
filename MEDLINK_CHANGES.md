@@ -368,6 +368,28 @@ inundando a thread do BLE e a memória.
 **Correção:** `MedLinkBLE.scheduleNextCommand` mantém um único `Runnable` pendente; um pedido para mais tarde que o já
 agendado é ignorado, um pedido mais cedo reagenda.
 
+## 4o. Bolus normal em andamento aparece na linha "square bolus" do `M` (2026-11-09)
+
+**Sintoma (`logs/bolus_error_message.log`):** bolus manual de 0,7 U; o diálogo de progresso funcionava até o primeiro
+`M`, que gerava o alarme "pump is delivering a bolus ... square/dual wave that was not sent by AAPS" e o bolus virava
+NOT_STARTED, mesmo sendo entregue.
+
+**Causa:** durante um bolus normal o `M` mostra o bolus anterior em "last bolus" e o bolus em andamento na linha square:
+`square bolus: 0.7u delivered: 0.200u` com `square bolus time: 0h:00m / 0h:00m`. O interpretador só olhava a idade
+do "last bolus" (igual ao baseline → NOT_STARTED) e o tracker chamava aquilo de "outro bolus".
+
+**Correção:**
+- `MedLinkStatusParser` lê a duração da linha "square bolus time" (`BolusStatusSnapshot.squareMinutes`); duração 0
+  (ou sem a linha) é um bolus normal na linha square (`normalBolusOnSquareLine`).
+- `BolusStatusInterpreter.isSentBolusOnSquareLine`: bolus normal na linha square, lido depois do envio, não maior que
+  o pedido e que o baseline não mostrava = o bolus enviado. Em andamento → DELIVERING com o `delivered` da linha
+  (progresso real); terminado na linha square mas "last bolus" ainda antigo → UNKNOWN (lê de novo, nunca reenvia).
+- `BolusTracker.isOtherBolusInProgress` não acusa mais o bolus enviado (sem o alarme).
+- Square maior que o pedido ou com duração > 0 continua sendo outro bolus (espera ele terminar).
+
+**Testes:** `BolusStatusInterpreterTest` (respostas do log), `BolusTrackerTest` (resposta do BOLUS → `M` na linha
+square → "last bolus" novo = registrado).
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

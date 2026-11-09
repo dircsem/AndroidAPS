@@ -50,11 +50,18 @@ object BolusStatusInterpreter {
     fun interpret(snapshot: BolusStatusSnapshot?, check: BolusCheck, now: Long): BolusOutcome {
         if (snapshot == null) return BolusOutcome(BolusOutcome.Type.UNKNOWN, reason = "no M answer")
 
-        when (val age = age(snapshot, check)) {
+        val age = age(snapshot, check)
+        if (age != Age.NEW && isSentBolusOnSquareLine(snapshot, check)) {
+            // 4o: the "last bolus" line is still the previous bolus, the sent one runs on the square line
+            if (snapshot.inProgress)
+                return BolusOutcome(BolusOutcome.Type.DELIVERING, snapshot.deliveredAmount ?: 0.0, null, "sent bolus running on the square line")
+            // over on the square line, "last bolus" not updated yet: never call it not started (no re-send)
+            return BolusOutcome(BolusOutcome.Type.UNKNOWN, reason = "sent bolus ended on the square line, last bolus not updated yet")
+        }
+        when (age) {
             Age.OLD       -> return BolusOutcome(BolusOutcome.Type.NOT_STARTED, reason = "last bolus is not newer than baseline")
             Age.AMBIGUOUS -> return BolusOutcome(BolusOutcome.Type.UNKNOWN, reason = "cannot tell last bolus from the sent one")
             Age.NEW       -> Unit
-            else          -> error("unexpected $age")
         }
 
         if (snapshot.inProgress) {
@@ -79,6 +86,15 @@ object BolusStatusInterpreter {
                 BolusOutcome(BolusOutcome.Type.PARTIAL, amount, snapshot.lastBolusTime)
         }
     }
+
+    /**
+     * A normal bolus on the square line, read after the bolus was sent, not bigger than the request, that the baseline
+     * did not show: the sent bolus (the pump shows a running normal bolus there until it becomes the "last bolus").
+     * A bigger one is another bolus: the tracker waits for it to end.
+     */
+    fun isSentBolusOnSquareLine(snapshot: BolusStatusSnapshot, check: BolusCheck): Boolean =
+        snapshot.normalBolusOnSquareLine && snapshot.readAt >= check.sentAt && snapshot.squareBolusAmount!! <= check.requested + TOLERANCE &&
+            check.baseline?.let { it.normalBolusOnSquareLine && it.inProgress } != true
 
     private enum class Age { OLD, AMBIGUOUS, NEW }
 

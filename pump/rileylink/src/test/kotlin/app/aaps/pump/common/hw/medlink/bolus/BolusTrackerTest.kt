@@ -592,4 +592,25 @@ class BolusTrackerTest {
         assertEquals(None, tracker.onStatus(applied(0.5)))
         assertEquals(applied(0.5), tracker.latestSnapshot)
     }
+
+    // ---- 4o: logs/bolus_error_message.log ----------------------------------------------------
+
+    @Test
+    fun `manual bolus running on the square line stays delivering with progress, not another bolus`() {
+        val r = sendLoopBolus(0.7, BolusOrigin.MANUAL)
+        val progress = mutableListOf<Double>()
+        tracker.onProgress = { _, d -> progress += d }
+        clock.advance(25_000)
+        assertInstanceOf(ReadStatusAt::class.java, tracker.onBolusAnswer(answer(0.7, null, bolusing = true)))
+        assertEquals(BolusState.DELIVERING, r.state)
+        clock.advance(1_000)
+        val running = baseline.copy(squareBolusAmount = 0.7, deliveredAmount = 0.2, squareMinutes = 0, readAt = clock.now())
+        assertFalse(tracker.isOtherBolusInProgress(running))
+        assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(running))
+        assertEquals(BolusState.DELIVERING, r.state)
+        assertEquals(0.2, progress.last(), 0.0001)
+        clock.advance(30_000)
+        assertEquals(Record(0.7, Fixtures.pumpTime("10-06-21 17:45")), tracker.onStatus(applied(0.7)))
+        assertEquals(BolusState.DELIVERED, r.state)
+    }
 }

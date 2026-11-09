@@ -329,6 +329,7 @@ class BolusTracker(
         if (!snapshot.inProgress) return false
         val r = current ?: return true
         if (r.state.isFinal || r.state == BolusState.QUEUED) return true
+        if (BolusStatusInterpreter.isSentBolusOnSquareLine(snapshot, BolusCheck(r.requested, r.sentAt, r.baseline, r.expectedEndAt))) return false
         val baseline = r.baseline
         return if (baseline != null) snapshot.lastBolusTime <= baseline.lastBolusTime
         else snapshot.lastBolusTime < r.sentAt - 2 * MINUTE
