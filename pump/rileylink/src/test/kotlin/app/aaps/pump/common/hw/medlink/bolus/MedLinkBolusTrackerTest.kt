@@ -320,6 +320,43 @@ class MedLinkBolusTrackerTest {
         val pumpTime = applied(0.1).lastBolusTime
         assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
         assertEquals(MedLinkBolusState.DELIVERED, r.state)
+        // 4s: nothing left to verify, MedLinkBLE drops the fallback M scheduled at the expected end
+        assertFalse(tracker.hasUnresolved())
+        assertEquals(None, tracker.onStatusFailed("late M"))
+    }
+
+    @Test
+    fun `late M after the bolus answer recorded the bolus - not recorded twice (4s)`() {
+        val r = sendLoopBolus(0.1)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        val pumpTime = applied(0.1).lastBolusTime
+        assertEquals(Record(0.1, pumpTime), tracker.onBolusAnswer(answer(0.1, pumpTime, bolusing = false)))
+        // the fallback M scheduled at the expected end was already queued and is answered anyway
+        clock.advance(2_000)
+        assertEquals(None, tracker.onStatus(applied(0.1)))
+        assertEquals(MedLinkBolusState.DELIVERED, r.state)
+        assertEquals(0.1, r.appliedTotal, 1e-9)
+    }
+
+    @Test
+    fun `bolus answer still delivering keeps the bolus to verify - the end M is kept (4s)`() {
+        sendLoopBolus(0.4)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        tracker.onBolusAnswer(answer(0.4, null, bolusing = true))
+        assertTrue(tracker.hasUnresolved())
+    }
+
+    @Test
+    fun `written and confirmed bolus is to verify until resolved (4s)`() {
+        tracker.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.1)
+        assertFalse(tracker.hasUnresolved(), "queued, not written: no M for it")
+        tracker.onBaseline(baseline)
+        tracker.onWritten()
+        assertTrue(tracker.hasUnresolved())
+        tracker.onConfirmed()
+        assertTrue(tracker.hasUnresolved())
     }
 
     @Test

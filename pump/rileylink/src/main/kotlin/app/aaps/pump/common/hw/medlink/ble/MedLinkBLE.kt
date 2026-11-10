@@ -651,9 +651,6 @@ class MedLinkBLE //extends RileyLinkBLE
                         return
                     }
                     isCommandConfirmed = false
-                    if (System.currentTimeMillis() - lastExecutedCommand < 2000) {
-                        SystemClock.sleep(2200 - (System.currentTimeMillis() - lastExecutedCommand))
-                    }
                     lastExecutedCommand = System.currentTimeMillis()
                     if (bluetoothConnectionGatt != null && bluetoothConnectionGatt!!.getService(
                             serviceUUID
@@ -1719,6 +1716,7 @@ class MedLinkBLE //extends RileyLinkBLE
      * Side effects are idempotent: an `M` is queued at most once and delayed re-checks are coalesced.
      */
     private fun mayRun(executor: CommandExecutor<*>, now: Long): Boolean {
+        if (dropUnneededTrackerRead(executor)) return false
         if (stopOrigin(executor) == MedLinkStopOrigin.AUTOMATIC && executor.getCurrentCommand() != MedLinkCommandType.StopPump) {
             if (now < stopHeldUntil) return false
             return when (val decision = MedLinkStopGate.decide(MedLinkStopOrigin.AUTOMATIC, bolusTracker, lastStatus, lastStatusSet, now)) {
@@ -1987,7 +1985,9 @@ class MedLinkBLE //extends RileyLinkBLE
                     if (currentCommand != null) {
                         aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
                         beforePost(currentCommand!!)
-                        bleHandler.post(currentCommand!!)
+                        val executor = currentCommand!!
+                        val seq = ++postSeq
+                        bleHandler.post { runPost(executor, seq) }
                     }
                 } else if (isConnected) {
                     aapsLogger.info(LTag.PUMPBTCOMM, "empty execution queue")
@@ -2727,7 +2727,7 @@ class MedLinkBLE //extends RileyLinkBLE
             if (unanswered) executeBolusAction(bolusTracker.onStatusFailed("no M answer in ${BLOCK_STATUS_RETRY_MS / 1000} s"))
             if (bolusTracker.hasUnresolved()) {
                 aapsLogger.info(LTag.PUMPBTCOMM, "bolus unresolved: reading M again for ${bolusTracker.current}")
-                requestBolusStatus(now)
+                requestBolusStatus(now, forTracker = true)
             }
         }
         if (!bolusTracker.canSendNewBolus() || bolusExecutionQueue.any { isBolusExecutor(it) }) scheduleBolusWatchdog()
@@ -2760,7 +2760,7 @@ class MedLinkBLE //extends RileyLinkBLE
     private fun executeBolusActionNow(action: MedLinkBolusAction) {
         when (action) {
             MedLinkBolusAction.None          -> Unit
-            is MedLinkBolusAction.ReadStatusAt -> requestBolusStatus(action.time)
+            is MedLinkBolusAction.ReadStatusAt -> requestBolusStatus(action.time, forTracker = true)
             MedLinkBolusAction.Resend        -> resendHeldBolus()
             is MedLinkBolusAction.Record     -> {
                 aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS record ${action.amount}U at pump time ${action.pumpTime}")
@@ -2855,16 +2855,41 @@ class MedLinkBLE //extends RileyLinkBLE
     private fun hasQueuedBolusStatus(): Boolean =
         orderedQueues.any { q -> q.any { it !== currentCommand && it.firstCommand() == MedLinkCommandType.BolusStatus } }
 
+    /** Only the tracker asks for a later read (ReadStatusAt): the timer is a tracker read. */
+    private val pendingStatusRead = Runnable {
+        pendingStatusAt = Long.MAX_VALUE
+        requestBolusStatus(System.currentTimeMillis(), forTracker = true)
+    }
+
+    /**
+     * 4s: `M` reads asked by the tracker for the bolus in flight. They are dropped when no bolus is left to verify:
+     * the bolus answer often resolves a small bolus by itself ("last bolus" with its own time), so the fallback `M`
+     * at the expected end is not needed. Baseline, automatic stop and "other bolus" reads are not in this set.
+     */
+    private val trackerStatusReads: MutableSet<CommandExecutor<*>> = java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
+
+    /** @return true when [executor] is a tracker `M` that is no longer needed (it was removed from the queues). */
+    private fun dropUnneededTrackerRead(executor: CommandExecutor<*>): Boolean {
+        if (executor === currentCommand || synchronized(trackerStatusReads) { !trackerStatusReads.contains(executor) } || bolusTracker.hasUnresolved()) return false
+        synchronized(trackerStatusReads) { trackerStatusReads.remove(executor) }
+        orderedQueues.forEach { q -> q.removeIf { it === executor } }
+        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS M not needed: no bolus left to verify (${bolusTracker.current?.state}), dropping it")
+        return true
+    }
+
     /** Queue an `M` at the head of the priority queue at [time] (coalesced, no sleeping). */
-    private fun requestBolusStatus(time: Long) {
+    private fun requestBolusStatus(time: Long, forTracker: Boolean = false) {
         val now = System.currentTimeMillis()
         if (time > now) {
             if (time >= pendingStatusAt && pendingStatusAt > now) return
             pendingStatusAt = time
-            handler.postDelayed({
-                                    if (pendingStatusAt <= System.currentTimeMillis()) pendingStatusAt = Long.MAX_VALUE
-                                    requestBolusStatus(System.currentTimeMillis())
-                                }, time - now)
+            // one timer: an earlier read replaces the later one instead of adding a second M (4r)
+            handler.removeCallbacks(pendingStatusRead)
+            handler.postDelayed(pendingStatusRead, time - now)
+            return
+        }
+        if (forTracker && !bolusTracker.hasUnresolved()) {
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS M not needed: no bolus left to verify")
             return
         }
         if (hasQueuedBolusStatus()) return
@@ -2878,10 +2903,35 @@ class MedLinkBLE //extends RileyLinkBLE
         val executor = synchronized(commandQueueBusy ?: this) {
             buildCommandExecutor(UUID.fromString(GattAttributes.GATT_UUID), UUID.fromString(GattAttributes.SERVICE_UUID), commands)
         }
+        // reads that already ran (answered, invalid, dropped) are no longer in a queue
+        synchronized(trackerStatusReads) {
+            trackerStatusReads.retainAll { r -> orderedQueues.any { q -> q.any { it === r } } }
+            if (forTracker) trackerStatusReads.add(executor)
+        }
         priorityExecutionCommandQueue.addFirst(executor)
-        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS M queued")
+        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS M queued${if (forTracker) " (tracker)" else ""}")
         // may be called from inside the command picker: never re-enter nextCommand() synchronously
         handler.post { if (connectionStatus == ConnectionStatus.CLOSED) medLinkConnect() else nextCommand() }
+    }
+
+    /** Sequence of the latest post to the BLE thread; a newer post makes the older ones stale (4r). */
+    @Volatile private var postSeq = 0L
+
+    /**
+     * 4r: runs a posted executor on the BLE thread. The 2.2 s spacing between writes runs first; then the executor
+     * is written only if this is still the latest post and it is still [currentCommand]. A post queued behind
+     * another one used to write after its executor was removed or replaced, and the answer was handed to the
+     * wrong command (an `A` answer taken as `M` "invalid command", an `M` answer taken as the bolus answer).
+     */
+    private fun runPost(executor: CommandExecutor<*>, seq: Long) {
+        val sinceLast = System.currentTimeMillis() - lastExecutedCommand
+        if (sinceLast < 2000) SystemClock.sleep(2200 - sinceLast)
+        if (MedLinkPostGuard.isStale(seq, postSeq, executor, currentCommand)) {
+            // the command queue belongs to the current command: leave commandQueueBusy alone
+            aapsLogger.info(LTag.PUMPBTCOMM, "stale post of ${executor.firstCommand()} (post $seq, latest $postSeq, current ${currentCommand?.firstCommand()}): not writing")
+            return
+        }
+        executor.run()
     }
 
     private val scheduledNextCommand = Runnable {

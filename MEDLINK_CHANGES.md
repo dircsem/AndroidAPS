@@ -403,6 +403,41 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 - Core (isolado, outras bombas sem mudança): `EventOverviewBolusProgress(..., waiting = false)` e
   `BolusProgressData.waiting`; o `BolusProgressDialog` só fica indeterminado quando `waiting` é true.
 
+## 4r. Comandos postados velhos escreviam depois de trocados; `M` repetido (2026-11-09)
+
+**Sintoma (`logs/inginiyr_m_command.log`):** `M` enviado sem parar por ~40 min. O trecho do log não chega ao fim da sequência, mas mostra a causa:
+- 21:42:27.513 o `M` de baseline (M#1) vira o comando atual e é postado na thread BLE, atrás de um post do `A` do START ainda esperando o espaçamento de 2,2 s.
+- 21:42:29.349 o post velho escreve `A`; a resposta é atribuída ao M#1 ("M answered invalid command"), que é removido, e um M#2 é postado.
+- 21:42:31.548 o post do M#1 (removido) escreve `M`; a resposta vai para o M#2, o baseline é lido e o bolus TBR de 0,1 U é postado.
+- 21:42:33.748 o post do M#2 escreve outro `M`; a resposta (`ready`) é tratada como resposta do BOLUS e o bolus é descartado (`removed (forced)`), e às 21:42:35.94 o post do bolus ainda escreve `X`.
+- Cada resposta atribuída ao comando errado gera outro `M` (baseline, "invalid", leitura de novo), então a sequência se mantém sozinha.
+- 21:46:55: dois `M` em 42 ms; o timer de leitura atrasada não era cancelado quando uma leitura mais cedo era pedida.
+
+**Causa:** `nextCommand` postava o executor direto no `bleHandler`; o `run()` esperava o espaçamento e escrevia mesmo que o executor já tivesse sido removido ou trocado (por `onBolusStatusInvalid`, `completedCommand`, etc.). `requestBolusStatus` postava um timer novo a cada pedido mais cedo sem tirar o anterior.
+
+**Correção:**
+- `MedLinkBLE.runPost`: cada post tem um número (`postSeq`). O espaçamento de 2,2 s roda antes; depois o executor só escreve se o post ainda é o último e o executor ainda é o `currentCommand` (`MedLinkPostGuard.isStale`). Um post velho só registra `stale post of X ...: not writing` e não mexe em `commandQueueBusy`.
+- `requestBolusStatus`: um só `Runnable` atrasado (`pendingStatusRead`); um pedido mais cedo substitui o anterior.
+
+**Testes:** `ble/MedLinkPostGuardTest` (4, sequência do log). rileylink 498/498.
+
+**No log do teste de campo:** `stale post of ...: not writing` deve aparecer de vez em quando; não deve mais haver `M answered invalid command` logo depois de um `writing <A`, nem bolus `removed (forced)` logo depois de um `writing <M`.
+
+## 4s. `M` depois de um bolus que a resposta do BOLUS já resolveu (2026-11-10)
+
+**Sintoma (`logs/inginiyr_m_command.log`):** TBR de 0,1 U: 21:41:46.017 `BOLUS M queued`; 21:41:47.424 a resposta do BOLUS (`last bolus: 0.1u ... 21:41`, com hora, bomba parada) registra o bolus como DELIVERED; 21:41:47.452 o `M` é escrito mesmo assim. Num bolus pequeno a resposta do BOLUS já traz o bolus com a hora (ver `logs/bolus_success.log` e 4m), então esse `M` não serve para nada e ocupa o MedLink.
+
+**Causa:** ao escrever/confirmar o bolus o tracker agenda um `M` no fim previsto (`ReadStatusAt(expectedEndAt)`) como reserva. O timer e o `M` na fila não olhavam se o bolus ainda precisava ser verificado.
+
+**Correção (`MedLinkBLE`):**
+- Os `M` pedidos pelo tracker (`ReadStatusAt`, timer, watchdog) ficam marcados (`trackerStatusReads`).
+- O timer não enfileira o `M` se não há bolus a verificar (`bolusTracker.hasUnresolved()` falso).
+- Um `M` do tracker que já estava na fila é removido no seletor (`mayRun`) quando o bolus foi resolvido: `BOLUS M not needed: no bolus left to verify`.
+- Os `M` de baseline, do stop automático e de "outro bolus em andamento" não são marcados e continuam iguais.
+- Continua havendo `M` quando a resposta do BOLUS diz `Pump is bolusing state` sem hora (bolus maior, ainda entregando): é o `M` do fim que dá a hora do registro.
+
+**Testes:** `MedLinkBolusTrackerTest` (bolus entregue pela resposta: nada a verificar). O fluxo no `MedLinkBLE` não tem teste automático (T10).
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -428,6 +463,7 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `bolus/MedLinkBolusCommandAnswerTest`, `bolus/MedLinkPumpClockTest` | resposta do BOLUS (falha, em entrega, ano 00), normalização do ano (4m) |
 | `ble/NoSleepOnBolusPathTest` | sem sleep nos caminhos de bolus/stop |
 | `ble/CommandExecutorPostTest` | bug do `M` → "invalid command" |
+| `ble/MedLinkPostGuardTest` | post velho na thread BLE não escreve (4r) |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
 Última execução (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
