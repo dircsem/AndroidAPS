@@ -105,4 +105,39 @@ class MedLinkLoopBolusMergeTest {
         assertEquals(pumpTime, MedLinkLoopBolusMerge.partTime(pumpTime, 0))
         assertEquals(pumpTime + 1_000L, MedLinkLoopBolusMerge.partTime(pumpTime, 1))
     }
+
+    // 4t (logs/tbr_manual_bolus.llog): manual 4.0 + TBR 0.1 sent as 4.1; the manual is the executor's own part (first)
+
+    @Test
+    fun `manual and tbr delivered in full - each part gets its own amount (4t)`() {
+        assertEquals(listOf(4.0, 0.1), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1), 4.1))
+    }
+
+    @Test
+    fun `manual tbr and smb delivered in full - three parts (4t)`() {
+        assertEquals(4.3, MedLinkLoopBolusMerge.total(listOf(4.0, 0.1, 0.2)))
+        assertEquals(listOf(4.0, 0.1, 0.2), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1, 0.2), 4.3))
+    }
+
+    @Test
+    fun `partial manual merge - the manual part is filled first, the loop part gets the rest (4t)`() {
+        // the TBR part gets 0: its plan sees it as not delivered and sends it again (right, nothing reached the pump)
+        assertEquals(listOf(3.0, 0.0), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1), 3.0))
+        assertEquals(listOf(4.0, 0.05), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1), 4.05))
+    }
+
+    @Test
+    fun `nothing delivered - every part gets zero`() {
+        assertEquals(listOf(0.0, 0.0, 0.0), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1, 0.2), 0.0))
+        assertEquals(listOf(0.0, 0.0), MedLinkLoopBolusMerge.split(listOf(4.0, 0.1), -1.0))
+    }
+
+    @Test
+    fun `parts get distinct pump temporary ids, the first keeps the pump bolus id (4t)`() {
+        // the pump history shows one 4.1 U bolus at the pump time: it must match the first part and not a new record
+        val pumpTime = MedLinkBolusFixtures.pumpTime("10-11-26 08:23")
+        val ids = (0..2).map { app.aaps.core.utils.DateTimeUtil.toATechDate(MedLinkLoopBolusMerge.partTime(pumpTime, it)) }
+        assertEquals(app.aaps.core.utils.DateTimeUtil.toATechDate(pumpTime), ids[0])
+        assertEquals(3, ids.toSet().size)
+    }
 }

@@ -438,6 +438,24 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 
 **Testes:** `MedLinkBolusTrackerTest` (bolus entregue pela resposta: nada a verificar). O fluxo no `MedLinkBLE` não tem teste automático (T10).
 
+## 4t. Bolus juntados registrados como um só (2026-11-10)
+
+**Sintoma (`logs/tbr_manual_bolus.llog`):** 08:22:34 `BOLUS manual merged: NORMAL 4.0U, TBR 0.1U -> 4.1U`. Às 08:26:35 o `M` confirma 4,1 U e o registro é **um** bolus NORMAL de 4,1 U (sem `BOLUS part ...`). Só o manual recebe resultado; a parte TBR nunca recebe, o plano de TBR acha que os 0,1 U não foram entregues e envia outro TBR de 0,1 U logo depois (08:26:35, entregue às 08:26:57): 0,1 U a mais.
+
+**Causa:** as partes juntadas ficavam num `HashMap` com o executor como chave. `CommandExecutor.hashCode()` usa `commandPosition`, `functionPosition` e `nrRetries`, que mudam enquanto o bolus é escrito; na hora do registro a busca não achava as partes e `recordParts` registrava tudo como o bolus do próprio executor. Vale para todas as junções: TBR + SMB (T14), junção ao bolus rastreado (4i) e manual + TBR/SMB (T16).
+
+**Correção:** `mergedBolusParts` (e o `trackerStatusReads` da 4s) usam identidade (`IdentityHashMap`). Cada parte volta a ser registrada com o seu tipo e a sua hora (manual na hora da bomba, TBR/SMB 1 s depois) e recebe o seu resultado.
+
+**Histórico da bomba:** a bomba mostra um bolus só (4,1 U às 08:23:00). O `temporaryId` é a hora com segundos, então a parte manual fica com 08:23:00 e a TBR com 08:23:01; o 4,1 U do histórico encontra o registro de 08:23:00 e não é inserido nem altera nada (`InsertBolusWithTempIdTransaction` só insere). O IOB fica 4,0 + 0,1.
+
+**Testes:** `ble/CommandExecutorIdentityKeyTest` (o hash muda durante a escrita; o mapa por identidade mantém as partes). rileylink 500/500.
+
+**No log do teste de campo:** depois de `BOLUS manual merged` / `BOLUS merged`, deve haver um `BOLUS part ...` por parte, e nenhum TBR reenviado logo depois.
+
+**Vazamento de memória (`logs/memmory_leak.log`, 08:26:58, mesma sessão):** o LeakCanary acusou o `InsulinDialog` retido por `MedLinkBLE.mergedBolusParts` (HashMap) → `BleBolusCommand.onQueueResult` → `MedLinkCommandBolus.callback` → `InsulinDialog`, 23 s depois do registro do bolus (08:26:35). Como a busca no HashMap falhava, a entrada nunca era removida (`recordParts`/`failMergedParts` usam `remove`) e cada bolus juntado deixava o callback e o diálogo presos para sempre. Com o `IdentityHashMap` a entrada sai quando o bolus é registrado ou falha. Durante a entrega de um bolus longo o LeakCanary ainda pode acusar o diálogo retido: o callback fica vivo até o resultado, e é liberado depois.
+
+**Teste de campo (2026-11-10):** TBR + bolus manual e TBR + SMB confirmados pelo usuário: registrados separados e sem TBR reenviado. Manual + SMB ainda sem teste de campo (mesma correção).
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

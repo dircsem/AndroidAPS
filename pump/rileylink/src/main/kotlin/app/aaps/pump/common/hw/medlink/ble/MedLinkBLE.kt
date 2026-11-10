@@ -134,7 +134,9 @@ class MedLinkBLE //extends RileyLinkBLE
     private val bolusMergeLock = Any()
 
     /** T14: loop boluses folded into a queued loop bolus, in queue order; the first is the executor's own. */
-    private val mergedBolusParts = HashMap<CommandExecutor<*>, MutableList<BleBolusCommand>>()
+    // identity: CommandExecutor.hashCode() changes while the executor is written (commandPosition, retries), so a
+    // HashMap lost the parts and a merged bolus was recorded as one bolus of the executor's type (4t)
+    private val mergedBolusParts = java.util.IdentityHashMap<CommandExecutor<*>, MutableList<BleBolusCommand>>()
 
     private var baselineRequestedFor: CommandExecutor<*>? = null
     private var baselineRequests = 0
