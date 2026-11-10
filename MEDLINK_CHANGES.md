@@ -512,6 +512,20 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 
 **Testes:** `MedLinkBatteryAgeTest` (5). medtronic 152/152. As telas não têm teste automático.
 
+## 4y. Suspensão bloqueada pela bateria do MedLink ou do telefone, aviso vermelho na barra de status (2026-11-10)
+
+**Antes:** o `stopPump` recusava a suspensão com a bateria do telefone ou da **bomba** a 5% ou menos (fixo) e abria um alarme ("bomba não pode ser suspensa"). A bateria do MedLink não contava. A "previsão" do telefone (`batteryDelta`) tinha o sinal invertido (positiva carregando) e o `lastBatteryLevel` nunca era atualizado.
+
+**Agora** (`data/MedLinkSuspendBatteryRule`):
+- Conta a bateria do **MedLink** e a do **telefone**; qualquer uma no mínimo configurado ou abaixo impede a suspensão (bateria da bomba não conta). Nível do telefone 0 = ainda não lido, não bloqueia.
+- Configuração nova: `Bateria mínima para suspensão (%)`, padrão 5 (1 a 50).
+- Em vez do alarme, notificação **vermelha** na barra de status (`Notification.MEDLINK_SUSPEND_LOW_BATTERY`, nível URGENT, botão DISPENSAR), no mesmo mecanismo da mensagem de identificação não definida (que é verde, INFO): `Suspensão não enviada: bateria do MedLink em 4% (mínimo 5%)...`. Depois de dispensada, só volta quando o nível ou a bateria mudam; some sozinha quando as baterias ficam acima do mínimo.
+- `handleBatteryData`: com a bomba parada e uma das baterias baixa, a bomba é religada (`clearTempBasal`), com a mesma regra.
+- A suspensão pedida pelo usuário continua bloqueada, como antes.
+- A previsão com `batteryDelta` saiu da regra (estava invertida).
+
+**Testes:** `MedLinkSuspendBatteryRuleTest` (5). medtronic 157/157 (neste commit). A notificação não tem teste automático.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

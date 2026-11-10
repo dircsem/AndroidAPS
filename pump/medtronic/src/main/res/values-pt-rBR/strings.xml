@@ -103,4 +103,9 @@
     <string name="medlink_bolus_phase_waiting_other">A bomba está aplicando outro bolus, aguardando terminar…</string>
     <string name="medlink_profile_differs_from_pump">O perfil basal da bomba é diferente do perfil do AAPS:\n%1$s\nO MedLink não consegue alterar o perfil na bomba: altere também na bomba.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: bomba %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_battery_device_medlink">MedLink</string>
+    <string name="medlink_battery_device_phone">telefone</string>
+    <string name="medlink_suspend_low_battery">Suspensão não enviada: bateria do %1$s em %2$d%% (mínimo %3$d%%). Carregue para permitir basais temporárias abaixo de 100%%.</string>
+    <string name="medlink_min_battery_for_suspend" formatted="false">Bateria mínima para suspensão (%)</string>
+    <string name="medlink_min_battery_for_suspend_summary" formatted="false">Sem suspensão (basal temporária abaixo de 100%) quando a bateria do MedLink ou do telefone está neste valor ou abaixo. Uma mensagem vermelha aparece na barra de status.</string>
 </resources>

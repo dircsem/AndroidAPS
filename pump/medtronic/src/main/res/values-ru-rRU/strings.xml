@@ -105,4 +105,9 @@
     <string name="medlink_bolus_phase_waiting_other">Помпа вводит другой болюс, ожидание его завершения…</string>
     <string name="medlink_profile_differs_from_pump">Базальный профиль в помпе отличается от профиля AAPS:\n%1$s\nMedLink не может изменить профиль в помпе: измените его и в помпе.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: помпа %3$.2f ЕД/ч, AAPS %4$.2f ЕД/ч</string>
+    <string name="medlink_battery_device_medlink">MedLink</string>
+    <string name="medlink_battery_device_phone">телефона</string>
+    <string name="medlink_suspend_low_battery">Остановка не отправлена: батарея %1$s %2$d%% (минимум %3$d%%). Зарядите, чтобы разрешить временные базалы ниже 100%%.</string>
+    <string name="medlink_min_battery_for_suspend" formatted="false">Минимальный заряд для остановки (%)</string>
+    <string name="medlink_min_battery_for_suspend_summary" formatted="false">Нет остановки (временный базал ниже 100%), когда заряд MedLink или телефона на этом уровне или ниже. В строке состояния появляется красное сообщение.</string>
 </resources>

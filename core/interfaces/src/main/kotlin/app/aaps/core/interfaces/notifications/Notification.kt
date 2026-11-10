@@ -146,6 +146,7 @@ open class Notification {
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
         const val HYPO_RISK_ALARM = 95
+        const val MEDLINK_SUSPEND_LOW_BATTERY = 96
 
         const val USER_MESSAGE = 1000
 

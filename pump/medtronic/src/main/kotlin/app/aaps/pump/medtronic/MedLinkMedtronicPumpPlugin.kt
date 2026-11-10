@@ -151,6 +151,7 @@ import app.aaps.pump.medtronic.driver.MedLinkMedtronicPumpStatus
 import app.aaps.pump.medtronic.events.EventMedtronicPumpValuesChanged
 import app.aaps.pump.medtronic.keys.MedtronicBooleanPreferenceKey
 import app.aaps.pump.medtronic.keys.MedtronicIntPreferenceKey
+import app.aaps.pump.medtronic.keys.MedLinkMedtronicIntPreferenceKey
 import app.aaps.pump.medtronic.keys.MedtronicLongNonKey
 import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
 import app.aaps.pump.medtronic.service.MedLinkMedtronicService
@@ -240,6 +241,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         MedLinkStringPreferenceKey::class.java,
         MedtronicBooleanPreferenceKey::class.java,
         MedtronicIntPreferenceKey::class.java,
+        MedLinkMedtronicIntPreferenceKey::class.java,
         MedtronicLongNonKey::class.java,
         MedtronicStringPreferenceKey::class.java,
 
@@ -276,7 +278,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var hasSecondAlert: Boolean = false
     var lastCalibration: ZonedDateTime? = null
 
-    private val minimumBatteryLevel = 5
 
 
     // private override var dateUtil: DateUtil? = null
@@ -339,22 +340,47 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }, MedLinkStopOrigin.USER)
     }
 
+    /** 4y: last low battery shown, so a dismissed message is not shown again until the battery changes or recovers. */
+    private var lowBatteryShown: app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Low? = null
+
+    /** 4y: true (and the red status bar message) when the MedLink or the phone battery is at or below the minimum. */
+    private fun suspendBlockedByLowBattery(): Boolean {
+        val minimum = preferences.get(MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend)
+        val low = app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.low(
+            phoneLevel = receiverStatusStore.batteryLevel.takeIf { it > 0 }, // 0 = not read yet
+            medLinkLevel = medLinkPumpStatus.medLinkBatteryRemaining,
+            minimum = minimum
+        )
+        if (low == null) {
+            if (lowBatteryShown != null) rxBus.send(EventDismissNotification(Notification.MEDLINK_SUSPEND_LOW_BATTERY))
+            lowBatteryShown = null
+            return false
+        }
+        aapsLogger.warn(LTag.PUMP, "MedLink: suspension blocked, ${low.device} battery ${low.level}% (minimum $minimum%)")
+        if (low != lowBatteryShown) {
+            lowBatteryShown = low
+            val device = rh.gs(
+                if (low.device == app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Device.MEDLINK) R.string.medlink_battery_device_medlink
+                else R.string.medlink_battery_device_phone
+            )
+            uiInteraction.addNotificationWithAction(
+                id = Notification.MEDLINK_SUSPEND_LOW_BATTERY,
+                text = rh.gs(R.string.medlink_suspend_low_battery, device, low.level, minimum),
+                level = Notification.URGENT,
+                buttonText = app.aaps.core.ui.R.string.dismiss,
+                action = Runnable { },
+                validityCheck = null
+            )
+        }
+        return true
+    }
+
     private fun stopPump(callback: Callback, origin: MedLinkStopOrigin = MedLinkStopOrigin.AUTOMATIC) {
         aapsLogger.info(LTag.PUMP, "MedtronicPumpPlugin::stopPump - $origin")
         aapsLogger.info(LTag.PUMP, "batteryDelta $batteryDelta")
-        val currentLevel = receiverStatusStore.batteryLevel
-        if (currentLevel - batteryDelta * 5 <= minimumBatteryLevel || currentLevel <= minimumBatteryLevel || medLinkPumpStatus.batteryRemaining != null &&
-            medLinkPumpStatus.batteryRemaining != 0 &&
-            medLinkPumpStatus.batteryRemaining!! <= minimumBatteryLevel
-        ) {
-            Thread {
-                SystemClock.sleep(2000)
-                uiInteraction.runAlarm(
-                    rh.gs(R.string.medlink_medtronic_cmd_stop_could_not_be_delivered),
-                    rh.gs(R.string.medtronic_warning),
-                    app.aaps.core.ui.R.raw.boluserror
-                )
-            }.start()
+        // 4y: no suspension with the MedLink or the phone battery low (nobody would start the pump again);
+        // a red status bar message instead of an alarm dialog
+        if (suspendBlockedByLowBattery()) {
             // val i = Intent(context, ErrorHelperActivity::class.java)
             // i.putExtra("soundid", R.raw.boluserror)
             // i.putExtra(
@@ -4409,11 +4435,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (lastBatteryLevel == 0) {
             lastBatteryLevel = currentLevel
         }
-        if (((currentLevel - batteryDelta) * 5 <= minimumBatteryLevel ||
-                    medLinkPumpStatus.batteryRemaining != null &&
-                    medLinkPumpStatus.batteryRemaining!! <= minimumBatteryLevel) &&
-            (currentPumpStatus.isSuspended())
-        ) {
+        if (suspendBlockedByLowBattery() && currentPumpStatus.isSuspended()) {
+            // 4y: MedLink or phone battery low while suspended: start the pump before one of them dies
             clearTempBasal()
 
         }
@@ -4836,6 +4859,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     booleanKey = MedtronicBooleanPreferenceKey.SetNeutralTemp,
                     title = R.string.set_neutral_temps_title,
                     summary = R.string.set_neutral_temps_summary
+                )
+            )
+            addPreference(
+                AdaptiveIntPreference(
+                    ctx = context,
+                    intKey = MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend,
+                    title = R.string.medlink_min_battery_for_suspend,
+                    summary = R.string.medlink_min_battery_for_suspend_summary
                 )
             )
         }

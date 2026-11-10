@@ -103,4 +103,9 @@
     <string name="medlink_bolus_phase_waiting_other">Pompa podaje inny bolus, oczekiwanie na jego zakończenie…</string>
     <string name="medlink_profile_differs_from_pump">Profil bazy w pompie różni się od profilu AAPS:\n%1$s\nMedLink nie może zmienić profilu w pompie: zmień go również w pompie.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: pompa %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_battery_device_medlink">MedLink</string>
+    <string name="medlink_battery_device_phone">telefonu</string>
+    <string name="medlink_suspend_low_battery">Wstrzymanie nie wysłane: bateria %1$s %2$d%% (minimum %3$d%%). Naładuj, aby umożliwić bazy tymczasowe poniżej 100%%.</string>
+    <string name="medlink_min_battery_for_suspend" formatted="false">Minimalna bateria do wstrzymania (%)</string>
+    <string name="medlink_min_battery_for_suspend_summary" formatted="false">Brak wstrzymania (baza tymczasowa poniżej 100%), gdy bateria MedLink lub telefonu jest na tym poziomie lub niżej. Czerwony komunikat pojawia się na pasku stanu.</string>
 </resources>

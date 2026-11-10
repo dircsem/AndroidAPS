@@ -169,4 +169,9 @@
     <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
     <string name="medlink_profile_differs_from_pump">The basal profile on the pump is different from the AAPS profile:\n%1$s\nMedLink cannot change the profile on the pump: change it on the pump too.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: pump %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_battery_device_medlink">MedLink</string>
+    <string name="medlink_battery_device_phone">phone</string>
+    <string name="medlink_suspend_low_battery">Suspension not sent: %1$s battery %2$d%% (minimum %3$d%%). Charge it to allow temp basals below 100%%.</string>
+    <string name="medlink_min_battery_for_suspend" formatted="false">Minimum battery for suspension (%)</string>
+    <string name="medlink_min_battery_for_suspend_summary" formatted="false">No suspension (temp basal below 100%) when the MedLink or the phone battery is at or below this value. A red message shows it in the status bar.</string>
 </resources>
