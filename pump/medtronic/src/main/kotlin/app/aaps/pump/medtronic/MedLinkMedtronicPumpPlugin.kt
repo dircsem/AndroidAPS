@@ -275,7 +275,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var hasFirstAlert: Boolean = false
     private var hasSecondAlert: Boolean = false
     var lastCalibration: ZonedDateTime? = null
+
     private val minimumBatteryLevel = 5
+
 
     // private override var dateUtil: DateUtil? = null
     override val reservoirLevel: Double
@@ -1708,17 +1710,39 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             "isThisProfileSet: basalInitalized=" + medLinkPumpStatus.basalProfileStatus
         )
         if (!isInitialized) return true
+        // 4v: MedLink cannot write the basal profile to the Veo, so the profile is set in AAPS only and the user has
+        // to change it on the pump too. The pump profile is compared only to warn the user; answering "not set" made
+        // the queue ask again forever and the profile switch never became effective in AAPS.
+        val pumpByHour = medLinkPumpStatus.basalsByHour
+        // pump profile not read (or changed and not read again): nothing to compare
+        if (medLinkPumpStatus.basalProfileStatus === BasalProfileStatus.ProfileOK && pumpByHour != null) {
+            val aapsByHour = (0 until 24).map { pumpDescription.pumpType.determineCorrectBasalSize(profile.getBasalTimeFromMidnight(it * 3600)) }
+            updatePumpProfileMismatch(app.aaps.pump.medtronic.data.MedLinkProfileDiff.differences(pumpByHour, aapsByHour))
+        }
+        return true
+    }
 
-        //        if (medtronicPumpStatus.basalProfileStatus == BasalProfileStatus.NotInitialized) {
-        //            // this shouldn't happen, but if there was problem we try again
-        //            getPumpProfile();
-        //            return isProfileSame(profile);
-        //        } else
-        return if (medLinkPumpStatus.basalProfileStatus === BasalProfileStatus.ProfileChanged) {
-            false
-        } else medLinkPumpStatus.basalProfileStatus !== BasalProfileStatus.ProfileOK || isProfileSame(
-            profile
-        )
+    private val MAX_PROFILE_DIFF_LINES = 8
+
+    /** Last differences shown, so the notification is not re-added on every check (KeepAlive asks every 5 min). */
+    private var pumpProfileMismatch: List<app.aaps.pump.medtronic.data.MedLinkProfileDiff.Range>? = null
+
+    private fun updatePumpProfileMismatch(differences: List<app.aaps.pump.medtronic.data.MedLinkProfileDiff.Range>) {
+        if (pumpProfileMismatch == differences) return
+        pumpProfileMismatch = differences
+        if (differences.isEmpty()) {
+            rxBus.send(EventDismissNotification(Notification.FAILED_UPDATE_PROFILE))
+            return
+        }
+        val lines = differences.take(MAX_PROFILE_DIFF_LINES).joinToString("\n") {
+            rh.gs(
+                R.string.medlink_profile_diff_line,
+                app.aaps.pump.medtronic.data.MedLinkProfileDiff.hour(it.fromHour), app.aaps.pump.medtronic.data.MedLinkProfileDiff.hour(it.toHour),
+                it.pump, it.aaps
+            )
+        } + if (differences.size > MAX_PROFILE_DIFF_LINES) "\n…" else ""
+        aapsLogger.warn(LTag.PUMP, "MedLink: the basal profile on the pump is different from the AAPS profile: $differences")
+        uiInteraction.addNotification(Notification.FAILED_UPDATE_PROFILE, rh.gs(R.string.medlink_profile_differs_from_pump, lines), Notification.NORMAL)
     }
 
     private fun isProfileSame(profile: Profile): Boolean {

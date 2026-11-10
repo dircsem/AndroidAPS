@@ -402,25 +402,24 @@ class MedLinkMedtronicFragment : DaggerFragment() {
 
         // battery
         if (medLinkMedtronicPumpPlugin.isBatteryAge()) {
-
-            val batteryLevel = (medLinkMedtronicPumpPlugin.batteryLevel ?: 75) / 25
+            // battery by age: 100 % at the battery change, 0 % at the critical battery age; yellow at 25 %, red at 0 %
+            val change = persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)
+            val percent = change?.let {
+                app.aaps.pump.medtronic.data.MedLinkBatteryAge.percentLeft(System.currentTimeMillis() - it.timestamp, preferences.get(IntKey.OverviewBageCritical))
+            }
+            val iconLevel = percent?.let { app.aaps.pump.medtronic.data.MedLinkBatteryAge.iconLevel(it) } ?: ((medLinkMedtronicPumpPlugin.batteryLevel ?: 75) / 25)
             binding.medtronicPumpstateBattery.text = buildString {
                 append("{fa-battery-")
-                append(batteryLevel)
+                append(iconLevel)
                 append("} ")
                 append(medLinkMedtronicPumpPlugin.getBatteryAge())
                 append(" Wz")
             }
-            persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE).let {
-                if(it!=null) {
-                    warnColors.setColorByAge(
-                        binding.medtronicPumpstateBattery,
-                        it,
-                        preferences.get(IntKey.OverviewBageWarning),
-                        preferences.get(IntKey.OverviewBageCritical)
-                    )
-                }
-            }
+            if (percent != null)
+                warnColors.setColorInverse(
+                    binding.medtronicPumpstateBattery, percent.toDouble(),
+                    app.aaps.pump.medtronic.data.MedLinkBatteryAge.WARN_PERCENT, app.aaps.pump.medtronic.data.MedLinkBatteryAge.URGENT_PERCENT
+                )
         } else
             if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining == 0 || medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0) {
                 binding.medtronicPumpstateBattery.text = "{fa-battery-0}"

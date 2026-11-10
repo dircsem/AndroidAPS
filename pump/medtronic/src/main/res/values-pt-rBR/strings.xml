@@ -101,4 +101,6 @@
     <string name="medlink_bolus_phase_sending_try">Enviando o comando de bolus (tentativa %1$d de %2$d)…</string>
     <string name="medlink_bolus_phase_confirmed">Comando de bolus confirmado, aguardando a bomba iniciar…</string>
     <string name="medlink_bolus_phase_waiting_other">A bomba está aplicando outro bolus, aguardando terminar…</string>
+    <string name="medlink_profile_differs_from_pump">O perfil basal da bomba é diferente do perfil do AAPS:\n%1$s\nO MedLink não consegue alterar o perfil na bomba: altere também na bomba.</string>
+    <string name="medlink_profile_diff_line">%1$s–%2$s: bomba %3$.2f U/h, AAPS %4$.2f U/h</string>
 </resources>

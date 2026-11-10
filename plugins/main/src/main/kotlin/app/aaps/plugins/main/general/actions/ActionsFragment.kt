@@ -288,14 +288,33 @@ class ActionsFragment : DaggerFragment() {
             cannulaOrPatch.setCompoundDrawablesWithIntrinsicBounds(imageResource, 0, 0, 0)
             batteryLayout.visibility = (!isPatchPump || pump.pumpDescription.useHardwareLink).toVisibility()
 
+            // MedLink battery: its own row (it was written into the sensor level label, and only when the BG source
+            // reported a sensor battery, so it was empty with xDrip/Libre)
+            val medLink = pump as? MedLinkPumpPluginBase
+            listOf(medlinkDbLevel, medlinkBatteryLevelLabel, medlinkBatteryLevel).forEach { it.visibility = (medLink != null).toVisibility() }
+            if (medLink != null) {
+                val level = medLink.medLinkPumpStatus.medLinkBatteryRemaining
+                medlinkBatteryLevelLabel.text = rh.gs(R.string.level_label)
+                medlinkBatteryLevel.text = level?.let { "$it%" } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                medlinkBatteryLevel.setTextColor(
+                    rh.gac(
+                        medlinkBatteryLevel.context, when {
+                            level == null -> app.aaps.core.ui.R.attr.defaultTextColor
+                            level <= 10   -> app.aaps.core.ui.R.attr.urgentColor
+                            level <= 25   -> app.aaps.core.ui.R.attr.warnColor
+                            else          -> app.aaps.core.ui.R.attr.defaultTextColor
+                        }
+                    )
+                )
+            }
+
             if (!config.AAPSCLIENT) {
                 statusLightHandler.updateStatusLights(
                     cannulaAge, cannulaUsage, insulinAge,
                     reservoirLevel, sensorAge, sensorLevel,
                     pbAge, pbLevel
                 )
-                sensorLevelLabel.text = if (activeBgSource.sensorBatteryLevel == -1) "" else if(pump is MedLinkPumpPluginBase) pump.medLinkPumpStatus.medLinkBatteryRemaining.toString() else
-                    rh.gs(R.string.level_label)
+                sensorLevelLabel.text = if (activeBgSource.sensorBatteryLevel == -1) "" else rh.gs(R.string.level_label)
             } else {
                 statusLightHandler.updateStatusLights(cannulaAge, cannulaUsage, insulinAge, null, sensorAge, null, pbAge, null)
                 sensorLevelLabel.text = ""

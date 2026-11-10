@@ -167,4 +167,6 @@
     <string name="medlink_bolus_phase_sending_try">Sending the bolus command (try %1$d of %2$d)…</string>
     <string name="medlink_bolus_phase_confirmed">Bolus command confirmed, waiting for the pump to start…</string>
     <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
+    <string name="medlink_profile_differs_from_pump">The basal profile on the pump is different from the AAPS profile:\n%1$s\nMedLink cannot change the profile on the pump: change it on the pump too.</string>
+    <string name="medlink_profile_diff_line">%1$s–%2$s: pump %3$.2f U/h, AAPS %4$.2f U/h</string>
 </resources>

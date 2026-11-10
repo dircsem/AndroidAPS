@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -45,6 +46,19 @@ class QueueWorker internal constructor(
 
     private var connectLogged = false
 
+    companion object {
+
+        /**
+         * MedLink: the connection timeout counts from the last moment the pump was connected, not from the start of
+         * the work. The work keeps running for a long time (status reads every few seconds) and the MedLink
+         * reconnects between commands: a short "not connected" while it reconnects was taken as a 120 s timeout,
+         * the queue was cleared and every queued command failed with "connection timed out" (profile switch alarm).
+         * Other pumps keep the original behaviour.
+         */
+        fun connectionStartFor(previous: Long, now: Long, medLink: Boolean, connected: Boolean): Long =
+            if (medLink && connected) now else previous
+    }
+
     override suspend fun doWorkAndLog(): Result {
         queue.waitingForDisconnect = false
         val wakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager?)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, rh.gs(config.appName) + ":" + this::class.simpleName)
@@ -56,8 +70,9 @@ class QueueWorker internal constructor(
         try {
             while (true) {
                 if (isStopped) return Result.failure()
-                val secondsElapsed = (System.currentTimeMillis() - connectionStartTime) / 1000
                 val pump = activePlugin.activePump
+                connectionStartTime = connectionStartFor(connectionStartTime, System.currentTimeMillis(), pump is MedLinkPumpPluginBase, pump.isConnected())
+                val secondsElapsed = (System.currentTimeMillis() - connectionStartTime) / 1000
                 //  Manifest.permission.BLUETOOTH_CONNECT
                 if (config.PUMPDRIVERS && pump !is VirtualPump)
                     if (androidPermission.permissionNotGranted(context, "android.permission.BLUETOOTH_CONNECT") || androidPermission.permissionNotGranted(context, "android.permission.BLUETOOTH_SCAN")) {

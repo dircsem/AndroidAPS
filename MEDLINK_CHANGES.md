@@ -403,6 +403,22 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 - Core (isolado, outras bombas sem mudança): `EventOverviewBolusProgress(..., waiting = false)` e
   `BolusProgressData.waiting`; o `BolusProgressDialog` só fica indeterminado quando `waiting` é true.
 
+## 4q. Regra do SMB: intervalo desde o último SMB ou bolus manual (2026-11-09, corrigida em 2026-11-10)
+
+**Regra do usuário:** o `MedLinkCommandSMBBolus` só entrega o SMB quando o intervalo do SMB (`ApsMaxSmbFrequency`) já passou desde o **último SMB ou bolus manual** (`getLastNonTBRBolusTime`). TBR e microbolus de TBR não contam.
+
+**Erros anteriores:**
+- 2026-11-09: tratei o `deliverAt` como a hora do pedido e mudei a segunda checagem para `deliverAt + intervalo > agora`. Resultado (`logs/smbbolus_fail.log` 14:45:39): SMB com `deliverAt` 14:41:41 cancelado como "too old".
+- A checagem original da segunda condição (`deliverAt + intervalo < agora`) também não era a regra: o loop preenche o `deliverAt` com a última TBR enviada (`lastRun.lastTBREnact`), então ela fazia a TBR contar no intervalo.
+
+**Agora** (`MedLinkCommandSMBBolus.decide`):
+- último SMB/manual há menos que o intervalo → recusa (`SMB requested but still in N min interval (last SMB/manual bolus ...)`);
+- pedido sem `deliverAt` (0) → cancela (`SMB bolus canceled: request without deliverAt`), como antes;
+- senão → entrega. Uma TBR recente não bloqueia o SMB.
+- Se a bomba ativa não é MedLink, o callback recebe falha (antes ficava sem resposta).
+
+**Testes:** `implementation/.../queue/commands/MedLinkCommandSMBBolusTest` (5, com os dois logs: TBR recente não bloqueia).
+
 ## 4r. Comandos postados velhos escreviam depois de trocados; `M` repetido (2026-11-09)
 
 **Sintoma (`logs/inginiyr_m_command.log`):** `M` enviado sem parar por ~40 min. O trecho do log não chega ao fim da sequência, mas mostra a causa:
@@ -456,6 +472,46 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 
 **Teste de campo (2026-11-10):** TBR + bolus manual e TBR + SMB confirmados pelo usuário: registrados separados e sem TBR reenviado. Manual + SMB ainda sem teste de campo (mesma correção).
 
+## 4u. "Falha ao atualizar o perfil" com a bomba conectada (2026-11-10)
+
+**Sintoma:** às vezes aparece o alarme de falha ao atualizar o perfil basal, mas o app está conectado e muda o estado da bomba. Nos logs (`tbr_manual_bolus.llog` 08:22:35, `samplelog.log` 15:37:03, `inginiyr_m_command.log` 21:44:07): `QueueWorker: timed out` / `no connection possible` enquanto o MedLink reconecta (`DISCOVERING`, `OK+CONN`).
+
+**Causa:** o `QueueWorker` marca o início da conexão uma vez, quando o trabalho começa. Com o MedLink o trabalho fica rodando muito tempo (`waiting for disconnect`, leituras de status a cada 5 s) e o MedLink reconecta entre comandos. No instante em que `isConnected()` fica falso durante a reconexão, o tempo desde o início já passou de 119 s: o worker trata como falha de conexão, chama `queue.clear()` e todo comando na fila recebe `success=false` "connection timed out". Um `SET PROFILE` na fila nesse momento gera o alarme `failed_update_basal_profile` (`CommandQueueImplementation`, ao trocar o perfil). TBR e SMB na fila também são cancelados.
+
+**Correção:** `QueueWorker.connectionStartFor`: para MedLink, o tempo limite conta a partir do último momento em que a bomba estava conectada. Outras bombas sem mudança.
+
+**Testes:** `implementation/.../queue/QueueWorkerConnectionTimeTest` (4). `QueueWorkerTest` continua passando.
+
+**No log do teste de campo:** `QueueWorker ... timed out` só deve aparecer depois de 2 min seguidos sem conexão.
+
+**Relacionado:** a troca de perfil sem resposta (perfil da bomba diferente) foi tratada na 4v.
+
+## 4v. Troca de perfil aceita no AAPS; aviso quando o perfil da bomba é diferente (2026-11-10)
+
+**Contexto:** o MedLink não consegue gravar o perfil basal na Veo (o `setNewBasalProfile` continua desligado; investigação futura). O perfil tem que ser trocado nos dois lugares: no AAPS e na bomba.
+
+**Antes:** com o perfil da bomba diferente, o `MedLinkCommandSetProfile` não respondia nada. O `EffectiveProfileSwitch` nunca era criado (a troca ficava sem efeito no AAPS, sem aviso; `tbr_manual_bolus.llog` 08:24:38) e o `KeepAliveWorker` pedia a troca de novo a cada 5 min. O único aviso era um toast ao ler o perfil da bomba.
+
+**Agora:**
+- `MedLinkCommandSetProfile`: responde `success=true`, `enacted=false`; o AAPS cria o perfil efetivo e passa a usá-lo nos cálculos.
+- `MedLinkMedtronicPumpPlugin.isThisProfileSet`: sempre "definido" (a bomba não pode ser gravada), então a fila e o KeepAlive não repetem a troca. Com o perfil da bomba lido (`ProfileOK`) compara a basal da bomba com o perfil do AAPS e mostra a notificação `medlink_profile_differs_from_pump` (`Notification.FAILED_UPDATE_PROFILE`, normal) quando são diferentes; tira a notificação quando ficam iguais. Só muda a notificação quando o estado muda.
+- A notificação lista o que está diferente, por faixa de horário (`data/MedLinkProfileDiff`, horas seguidas com os mesmos valores viram uma faixa): `08:00–10:00: bomba 1,30 U/h, AAPS 1,35 U/h`; no máximo 8 linhas. Compara as 24 horas com a basal do AAPS arredondada ao passo da bomba. Muda a notificação quando as diferenças mudam.
+- Textos em en, pt-BR, pl, ru.
+- O `baseBasalRate` continua vindo da basal da bomba: o plano de TBR/microbolus usa a basal que a bomba entrega de fato.
+
+**Testes:** `MedLinkProfileDiffTest` (4: igual, faixa, faixas separadas, rótulos). Fila + plugin sem teste automático (injeção). medtronic 147/147, implementation sem falhas novas.
+
+**Diálogo de bolus:** com o MedLink o comando de bolus só entrega o bolus ao driver; a fila do AAPS fica vazia e o `QueueWorker` manda "aguardando desconexão" a cada segundo, que apagava as etapas do bolus (4p) no diálogo. O `BolusProgressDialog` ignora os status de fila parada (`WAITING_FOR_DISCONNECTION`, `DISCONNECTING`, `DISCONNECTED`). Outras bombas rodam o bolus dentro do comando, então esses status não chegam durante o bolus delas.
+
+**No teste de campo:** trocar o perfil no AAPS para um diferente da bomba → sem alarme de falha, perfil novo ativo no AAPS, notificação "O perfil basal da bomba é diferente..." ; ajustar a bomba → a notificação some (até 5 min, pelo KeepAlive). No log: `MedLink: basal profile not written to the pump, accepted in AAPS only` uma vez por troca, e não a cada 5 min.
+
+## 4w. Bateria do MedLink na aba Ações; bateria da bomba por tempo na aba Medtronic (2026-11-10)
+
+- **Aba Ações:** a bateria do MedLink era escrita no rótulo da bateria do sensor, e só quando a fonte de glicose informava bateria do sensor (vazio com xDrip/Libre). Agora usa a linha própria do layout (`medlink_db_level`, `medlink_battery_level_label`, `medlink_battery_level`): `Nível: 38%`, amarelo a 25%, vermelho a 10% (mesmos limites da aba Medtronic), "n/d" sem leitura; a linha só aparece com bomba MedLink. O rótulo do sensor voltou ao original.
+- **Aba Medtronic, bateria por idade:** o ícone é calculado pelo tempo desde a última troca de bateria (`TE PUMP_BATTERY_CHANGE`): 100% na troca, 0% na idade crítica da bateria das luzes de status (`OverviewBageCritical`, padrão 240 h). Amarelo a 25%, vermelho a 0%; o ícone mostra pelo menos uma barra enquanto houver carga (`data/MedLinkBatteryAge`). Sem evento de troca, continua o ícone antigo.
+
+**Testes:** `MedLinkBatteryAgeTest` (5). medtronic 152/152. As telas não têm teste automático.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.
@@ -500,7 +556,7 @@ Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `READ
 - ~~Confirmar a resposta de um START recusado~~: os logs não têm nenhum caso (seção 4c); a causa real era outra.
 - ~~`BleStopCommand` procurava `pump bolusing state`~~ corrigido em 2026-11-08: novo `bolus/MedLinkPumpStateAnswer.isBolusing()` (texto real `pump is bolusing st`, cobre o pedaço BLE `pump is bolusing sta`), usado por `BleStopCommand` e `BleStartCommand`. Antes, a resposta "bolusing" do `A` não era reconhecida (caía no tratamento genérico) e a proteção do stop automático dependia só da leitura do `M` feita antes (MedLinkStopGate). Agora o `A` também retém o stop (T1). Testes e fixture `a_bolusing.txt` usam o texto real.
 - Um BOLUS de microbolus que falha volta a `isCommandIssued = false`, mas o refresh pode já tê-lo removido (microbolus perdido: entrega a menos, não a mais).
-- `MedLinkCommandSMBBolus`: a condição do `deliverAtTheLatest` está invertida (`+ 3 min < now` entrega só pedidos vencidos; upstream é `+ 1 min > now`). Não corrigido ainda.
+- `MedLinkCommandSMBBolus`: regra do intervalo do SMB revista em 2026-11-10 (seção 4q): conta só o último SMB ou bolus manual.
 - T16: teste de campo do diálogo com o app em segundo plano (bolus pelo relógio/NS). A abertura da activity depende da mesma permissão usada pelos alarmes.
 - T14: teste de campo da junção TBR + SMB (conferir no log `BOLUS merged` e as duas entradas no banco/NS).
 - 4k: descobrir por que o `M` deu `UNKNOWN` para o microbolus de 0,1 U em `logs/invalid_smb.log` (precisa do log de antes do envio, com o baseline). A bomba mostra o ano como `00` (`09-11-00`).

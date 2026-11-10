@@ -96,6 +96,10 @@ class BolusProgressDialog : DaggerDialogFragment() {
 
         disposable += rxBus
             .toObservable(EventPumpStatusChanged::class.java)
+            // the queue being idle is not the bolus status: with MedLink the bolus command only hands the bolus to the
+            // driver, the queue empties and "waiting for disconnection" (every second) hid the bolus steps. Other pumps
+            // run the bolus inside the command, so these never arrive while their bolus runs.
+            .filter { it.status !in QUEUE_IDLE_STATUSES }
             .observeOn(aapsSchedulers.main)
             .subscribe { binding.status.text = it.getStatus(requireContext()) }
         disposable += rxBus
@@ -178,5 +182,14 @@ class BolusProgressDialog : DaggerDialogFragment() {
                 }
             }
         }.start()
+    }
+
+    companion object {
+
+        private val QUEUE_IDLE_STATUSES = setOf(
+            EventPumpStatusChanged.Status.WAITING_FOR_DISCONNECTION,
+            EventPumpStatusChanged.Status.DISCONNECTING,
+            EventPumpStatusChanged.Status.DISCONNECTED
+        )
     }
 }

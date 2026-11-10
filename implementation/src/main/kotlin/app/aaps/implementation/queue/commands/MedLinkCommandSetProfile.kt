@@ -60,6 +60,13 @@ class MedLinkCommandSetProfile(
 
             return
         }
+        // 4v: MedLink cannot write the basal profile to the Veo (setNewBasalProfile stays off): the profile is accepted
+        // in AAPS only, so the profile switch becomes effective (EffectiveProfileSwitch). The pump plugin warns when the
+        // pump basal profile differs; the user changes it on the pump. Before, no result was sent at all.
+        aapsLogger.info(LTag.PUMPQUEUE, "MedLink: basal profile not written to the pump, accepted in AAPS only. profile: $profile")
+        callback?.result(
+            pumpEnactResultProvider.get().success(true).enacted(false)
+        )?.run()
         // val r = activePlugin.activePump.setNewBasalProfile(profile)
         // aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted} profile: $profile")
         // callback?.result(r)?.run()
