@@ -13,6 +13,15 @@ class TempBasalMicrobolusOperations {
 
     private var shouldBeSuspended = false
     var durationInMinutes = 0
+        set(value) {
+            field = value
+            // 4ad: end of the plan, for the plan percentage of the Medtronic tab
+            endsAt = if (value > 0) System.currentTimeMillis() + value * 60_000L else 0L
+        }
+
+    /** 4ad: when the plan ends (0 = no plan). Set together with [durationInMinutes]. */
+    var endsAt = 0L
+        private set
     var absoluteRate = 0.0
 
     //    private static final Logger LOG = LoggerFactory.getLogger(L.PUMPCOMM);
@@ -101,8 +110,12 @@ class TempBasalMicrobolusOperations {
             }
         }
     }
-    fun reactivateTime(): LocalDateTime {
-        val operation = operations.first
+    /**
+     * Release time of the first op when it is a REACTIVATE, epoch 0 for another op, null with no ops.
+     * 4ae: was `operations.first`, which threw NoSuchElementException on an empty plan (logs/looplock.log).
+     */
+    fun reactivateTime(): LocalDateTime? {
+        val operation = operations.peekFirst() ?: return null
         return if (operation.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE) {
             operation.releaseTime
         } else

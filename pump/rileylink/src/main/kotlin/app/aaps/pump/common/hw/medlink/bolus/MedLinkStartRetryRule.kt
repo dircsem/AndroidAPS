@@ -20,9 +20,12 @@ object MedLinkStartRetryRule {
         }
     }
 
-    /** @param failures failed START attempts in a row, counting this one (1-based). */
-    fun onFailed(failures: Int): Decision =
-        if (failures >= MAX_FAILURES) Decision.GiveUp
+    /**
+     * @param failures failed START attempts in a row, counting this one (1-based)
+     * @param maxFailures 4aa: the "command attempts" setting
+     */
+    fun onFailed(failures: Int, maxFailures: Int = MAX_FAILURES): Decision =
+        if (failures >= maxFailures.coerceAtLeast(1)) Decision.GiveUp
         else Decision.Retry(DELAYS_MS[(failures - 1).coerceIn(0, DELAYS_MS.size - 1)], alarm = failures >= 2)
 
     /** A scheduled retry is dropped when a newer start/stop was sent or the pump already answered Running. */

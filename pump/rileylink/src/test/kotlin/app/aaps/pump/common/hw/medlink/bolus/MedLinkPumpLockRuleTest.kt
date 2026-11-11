@@ -17,4 +17,12 @@ class MedLinkPumpLockRuleTest {
         assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(MedLinkPumpLockRule.LOCK_AFTER))
         assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(5))
     }
+
+    @Test
+    fun `the configured command attempts decide when the pump is reported (4aa)`() {
+        assertNull(MedLinkPumpLockRule.decide(4, lockAfter = 5))
+        assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(5, lockAfter = 5))
+        assertEquals(MedLinkPumpBlock.PUMP_LOCKED, MedLinkPumpLockRule.decide(1, lockAfter = 1))
+        assertNull(MedLinkPumpLockRule.decide(0, lockAfter = 0), "a setting below 1 counts as 1")
+    }
 }

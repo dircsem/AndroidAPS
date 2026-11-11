@@ -152,6 +152,9 @@ import app.aaps.pump.medtronic.events.EventMedtronicPumpValuesChanged
 import app.aaps.pump.medtronic.keys.MedtronicBooleanPreferenceKey
 import app.aaps.pump.medtronic.keys.MedtronicIntPreferenceKey
 import app.aaps.pump.medtronic.keys.MedLinkMedtronicIntPreferenceKey
+import app.aaps.pump.medtronic.keys.MedLinkMedtronicDoublePreferenceKey
+import app.aaps.pump.medtronic.data.MedLinkPostBolusMinBasal
+import app.aaps.pump.medtronic.data.MedLinkSuspendStartRule
 import app.aaps.pump.medtronic.keys.MedtronicLongNonKey
 import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
 import app.aaps.pump.medtronic.service.MedLinkMedtronicService
@@ -242,6 +245,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         MedtronicBooleanPreferenceKey::class.java,
         MedtronicIntPreferenceKey::class.java,
         MedLinkMedtronicIntPreferenceKey::class.java,
+        MedLinkMedtronicDoublePreferenceKey::class.java,
         MedtronicLongNonKey::class.java,
         MedtronicStringPreferenceKey::class.java,
 
@@ -278,7 +282,68 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var hasSecondAlert: Boolean = false
     var lastCalibration: ZonedDateTime? = null
 
+    // 4x: post-bolus minimum basal and the start (suspended/active) of temp basals below 100%
+    @Inject lateinit var persistenceLayer: app.aaps.core.interfaces.db.PersistenceLayer
+    @Inject lateinit var glucoseStatusProvider: dagger.Lazy<app.aaps.core.interfaces.iob.GlucoseStatusProvider>
 
+    /** 4y: last low battery shown, so a dismissed message is not shown again until the battery changes or recovers. */
+    private var lowBatteryShown: app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Low? = null
+
+    /** 4y: true (and the red status bar message) when the MedLink or the phone battery is at or below the minimum. */
+    private fun suspendBlockedByLowBattery(): Boolean {
+        val minimum = preferences.get(MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend)
+        val low = app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.low(
+            phoneLevel = receiverStatusStore.batteryLevel.takeIf { it > 0 }, // 0 = not read yet
+            medLinkLevel = medLinkPumpStatus.medLinkBatteryRemaining,
+            minimum = minimum
+        )
+        if (low == null) {
+            if (lowBatteryShown != null) rxBus.send(EventDismissNotification(Notification.MEDLINK_SUSPEND_LOW_BATTERY))
+            lowBatteryShown = null
+            return false
+        }
+        aapsLogger.warn(LTag.PUMP, "MedLink: suspension blocked, ${low.device} battery ${low.level}% (minimum $minimum%)")
+        if (low != lowBatteryShown) {
+            lowBatteryShown = low
+            val device = rh.gs(
+                if (low.device == app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Device.MEDLINK) R.string.medlink_battery_device_medlink
+                else R.string.medlink_battery_device_phone
+            )
+            uiInteraction.addNotificationWithAction(
+                id = Notification.MEDLINK_SUSPEND_LOW_BATTERY,
+                text = rh.gs(R.string.medlink_suspend_low_battery, device, low.level, minimum),
+                level = Notification.URGENT,
+                buttonText = app.aaps.core.ui.R.string.dismiss,
+                action = Runnable { },
+                validityCheck = null
+            )
+        }
+        return true
+    }
+
+    /** 4x: a temp basal below the configured minimum after a manual bolus (BG rising, at or above target) is raised. */
+    private fun postBolusMinBasal(requestedRate: Double, profile: Profile): Double {
+        val minPercent = preferences.get(MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent)
+        if (minPercent <= 0) return requestedRate
+        val glucose = glucoseStatusProvider.get().glucoseStatusData
+        val decision = MedLinkPostBolusMinBasal.decide(
+            requestedRate = requestedRate,
+            baseRate = baseBasalRate.takeIf { it > 0.0 } ?: profile.getBasal(),
+            settings = MedLinkPostBolusMinBasal.Settings(
+                minPercent = minPercent,
+                windowMinutes = preferences.get(MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes),
+                minDelta = preferences.get(MedLinkMedtronicDoublePreferenceKey.MinBasalAfterBolusDelta)
+            ),
+            lastManualBolusAt = persistenceLayer.getNewestBolusOfType(app.aaps.core.data.model.BS.Type.NORMAL)?.timestamp,
+            now = System.currentTimeMillis(),
+            delta = glucose?.delta,
+            bg = glucose?.glucose,
+            targetMgdl = profile.getTargetMgdl()
+        )
+        if (decision.rate != requestedRate) aapsLogger.info(LTag.PUMP, "MedLink post-bolus minimum basal: $requestedRate -> ${decision.rate} U/h (${decision.reason})")
+        else aapsLogger.debug(LTag.PUMP, "MedLink post-bolus minimum basal not applied: ${decision.reason}")
+        return decision.rate
+    }
 
     // private override var dateUtil: DateUtil? = null
     override val reservoirLevel: Double
@@ -338,41 +403,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         stopPump(callback ?: object : Callback() {
             override fun run() {}
         }, MedLinkStopOrigin.USER)
-    }
-
-    /** 4y: last low battery shown, so a dismissed message is not shown again until the battery changes or recovers. */
-    private var lowBatteryShown: app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Low? = null
-
-    /** 4y: true (and the red status bar message) when the MedLink or the phone battery is at or below the minimum. */
-    private fun suspendBlockedByLowBattery(): Boolean {
-        val minimum = preferences.get(MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend)
-        val low = app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.low(
-            phoneLevel = receiverStatusStore.batteryLevel.takeIf { it > 0 }, // 0 = not read yet
-            medLinkLevel = medLinkPumpStatus.medLinkBatteryRemaining,
-            minimum = minimum
-        )
-        if (low == null) {
-            if (lowBatteryShown != null) rxBus.send(EventDismissNotification(Notification.MEDLINK_SUSPEND_LOW_BATTERY))
-            lowBatteryShown = null
-            return false
-        }
-        aapsLogger.warn(LTag.PUMP, "MedLink: suspension blocked, ${low.device} battery ${low.level}% (minimum $minimum%)")
-        if (low != lowBatteryShown) {
-            lowBatteryShown = low
-            val device = rh.gs(
-                if (low.device == app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule.Device.MEDLINK) R.string.medlink_battery_device_medlink
-                else R.string.medlink_battery_device_phone
-            )
-            uiInteraction.addNotificationWithAction(
-                id = Notification.MEDLINK_SUSPEND_LOW_BATTERY,
-                text = rh.gs(R.string.medlink_suspend_low_battery, device, low.level, minimum),
-                level = Notification.URGENT,
-                buttonText = app.aaps.core.ui.R.string.dismiss,
-                action = Runnable { },
-                validityCheck = null
-            )
-        }
-        return true
     }
 
     private fun stopPump(callback: Callback, origin: MedLinkStopOrigin = MedLinkStopOrigin.AUTOMATIC) {
@@ -1521,6 +1551,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun setSuspended() {
         this.medLinkPumpStatus.pumpRunningState = PumpRunningState.Suspended
+        medLinkPumpStatus.recordRunningState()
     }
 
     private fun readBolusHistory() {
@@ -1873,9 +1904,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     // if enforceNew===true current temp basal is canceled and new TBR set (duration is prolonged),
     // if false and the same rate is requested enacted=false and success=true is returned and TBR is not changed
     override fun setTempBasalAbsolute(
-        absoluteRate: Double, durationInMinutes: Int, profile: Profile,
+        requestedRate: Double, durationInMinutes: Int, profile: Profile,
         enforceNew: Boolean, callback: Function1<PumpEnactResult, *>,
     ) {
+        val absoluteRate = postBolusMinBasal(requestedRate, profile)
         val result: PumpEnactResult
         medLinkPumpStatus.tempBasalAmount = absoluteRate
         val forceStop = System.currentTimeMillis() - lastSMBBolus < 80000
@@ -1925,13 +1957,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     0, durationInMinutes, profile, callback,
                     absoluteRate,
                     PumpTempBasalType.Absolute
-                )!!
+                ) ?: buildPumpEnactResult().success(true).enacted(false) // 4ae: was !!, null before the first start
                 if(tempBasalMicrobolusOperations.operations.isEmpty()){
                     clearTempBasal()
                 }
+                // 4ae: the new plan can be empty (too few suspended minutes, cleared above): nothing to extend
                 if (shouldExtend) {
                     val currentReactivate = tempBasalMicrobolusOperations.reactivateTime()
-                    if (currentReactivate.isAfter(previousReactivate)) {
+                    if (currentReactivate != null && previousReactivate != null && currentReactivate.isAfter(previousReactivate)) {
                         val duration = Period.fieldDifference(currentReactivate, previousReactivate)
                         extendBasalTreatment(duration.minutes, callback)
                     }
@@ -2102,6 +2135,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         totalSuspendedMinutes: Int,  //                                                                                  Integer suspensions,
         durationInMinutes: Int,
         callback: Function1<*, *>,
+        now: Long = System.currentTimeMillis(),
     ): LinkedBlockingDeque<TempBasalMicroBolusPair> {
         var mod = 0
         var mergeOperations = 0
@@ -2170,7 +2204,15 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             //            operationDuration -= mod;
             //        }
         }
-        val nextStartStop = NextStartStop()
+        // 4x: the start follows the clock (cycles of one suspension + one active interval): during the active part of the
+        // cycle the plan runs the minutes left of it before its first suspension
+        val activeMinutesLeft = MedLinkSuspendStartRule.activeMinutesLeft(now, operationDuration, operationInterval)
+        aapsLogger.info(
+            LTag.PUMP,
+            "MedLink temp basal plan: suspend $operationDuration min / active $operationInterval min, " +
+                if (activeMinutesLeft > 0) "starts active for $activeMinutesLeft min" else "starts suspended"
+        )
+        val nextStartStop = NextStartStop(activeMinutesLeft)
         var startStopDateTime = nextStartStop.getNextStartStop(operationDuration, operationInterval)
         var totalSuspended = 0
         val operations = LinkedBlockingDeque<TempBasalMicroBolusPair>()
@@ -2281,6 +2323,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val operations = buildSuspensionScheduler(
                 totalSuspendedMinutes, durationInMinutes, callback
             )
+            // 4x: the plan starts active when its first suspension is later (see MedLinkSuspendStartRule)
+            val startActive = operations.firstOrNull()?.let {
+                it.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && it.releaseTime.isAfter(LocalDateTime.now().plusSeconds(30))
+            } == true
             tempBasalMicrobolusOperations.updateOperations(
                 operations.size, 0.0,
                 operations,
@@ -2303,7 +2349,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     })
                 } else if (it.operations.isNotEmpty() &&
                     it.operations.first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
-                    currentPumpStatus.isSuspended() && percent > 0
+                    currentPumpStatus.isSuspended() && (percent > 0 || startActive)
                 ) {
                     aapsLogger.info(LTag.EVENTS, "temp basal starting pump")
 
@@ -2837,9 +2883,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 //    }
 
     override fun setTempBasalPercent(
-        percent: Int, durationInMinutes: Int,
+        requestedPercent: Int, durationInMinutes: Int,
         profile: Profile, enforceNew: Boolean, func: Function1<PumpEnactResult, *>,
     ): PumpEnactResult {
+        val percent = if (requestedPercent < 100) {
+            val base = baseBasalRate.takeIf { it > 0.0 } ?: profile.getBasal()
+            val raised = postBolusMinBasal(base * requestedPercent / 100.0, profile)
+            maxOf(requestedPercent, kotlin.math.round(raised / base * 100.0).toInt())
+        } else requestedPercent
         if (temporaryBasal != null) {
 
             aapsLogger.info(LTag.PUMPBTCOMM, temporaryBasal.toString())
@@ -3820,15 +3871,15 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }
     }
 
-    private fun pumpBlockText(block: MedLinkPumpBlock): String = rh.gs(
-        when (block) {
-            MedLinkPumpBlock.PUMP_LOCKED -> R.string.medlink_pump_block_locked
-        }
-    )
+    private fun pumpBlockText(block: MedLinkPumpBlock): String = when (block) {
+        MedLinkPumpBlock.PUMP_LOCKED -> rh.gs(R.string.medlink_pump_block_locked, preferences.get(MedLinkMedtronicIntPreferenceKey.CommandAttempts))
+    }
 
     /** BUGs_TASKS T1/T4/T7/T8: lets MedLinkBLE read M, record resolved boluses and alert the user. */
     private fun installBolusSafetyHooks() {
         val ble = medLinkMedtronicService?.medLinkBLE ?: return
+        // 4aa: one setting for bolus tries, START/STOP retries and the "alarm on the pump screen" message
+        ble.commandAttemptsProvider = { preferences.get(MedLinkMedtronicIntPreferenceKey.CommandAttempts) }
         ble.pumpBlockHandler = { block ->
             aapsLogger.warn(LTag.PUMP, "MedLink pump block: ${block ?: "cleared"}")
             if (block == null) rxBus.send(EventDismissNotification(Notification.PUMP_UNREACHABLE))
@@ -4461,6 +4512,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun setPumpRunningState(value: PumpRunningState) {
         this.medLinkPumpStatus.pumpRunningState = value
+        medLinkPumpStatus.recordRunningState()
     }
 
     override val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
@@ -4520,6 +4572,23 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             }
         }
         return result
+    }
+
+    /**
+     * 4ad: basal percentages of the Medtronic tab: pump now, remaining plan, delivered since the start of the clock hour.
+     * [tbrBoluses] are the TBR microboluses (time, amount) since [hourStart].
+     */
+    fun basalPercents(now: Long, hourStart: Long, tbrBoluses: List<Pair<Long, Double>>): Triple<Int?, Int?, Int?> {
+        val base = baseBasalRate
+        val state = medLinkPumpStatus.pumpRunningState
+        val plan = tempBasalMicrobolusOperations.let { p ->
+            app.aaps.pump.medtronic.data.MedLinkBasalPercent.plan(
+                now, p.endsAt, base, state.isSuspended(),
+                p.operations.map { app.aaps.pump.medtronic.data.MedLinkBasalPercent.Op(it.releaseTime.toDate().time, it.operationType, it.dose) }
+            )
+        }
+        val hour = app.aaps.pump.medtronic.data.MedLinkBasalPercent.delivered(hourStart, now, base, medLinkPumpStatus.runningTimeline.snapshot(), tbrBoluses)
+        return Triple(app.aaps.pump.medtronic.data.MedLinkBasalPercent.pump(state), plan, hour)
     }
 
     override fun isBatteryAge(): Boolean {
@@ -4864,10 +4933,46 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             addPreference(
                 AdaptiveIntPreference(
                     ctx = context,
+                    intKey = MedLinkMedtronicIntPreferenceKey.CommandAttempts,
+                    title = R.string.medlink_command_attempts,
+                    summary = R.string.medlink_command_attempts_summary,
+                    dialogMessage = R.string.medlink_command_attempts_dialog
+                )
+            )
+            addPreference(
+                AdaptiveIntPreference(
+                    ctx = context,
                     intKey = MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend,
                     title = R.string.medlink_min_battery_for_suspend,
-                    summary = R.string.medlink_min_battery_for_suspend_summary
+                    summary = R.string.medlink_min_battery_for_suspend_summary,
+                    dialogMessage = R.string.medlink_min_battery_for_suspend_dialog
                 )
+            )
+            addPreference(
+                AdaptiveIntPreference(
+                    ctx = context,
+                    intKey = MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
+                    title = R.string.medlink_min_basal_after_bolus_percent,
+                    summary = R.string.medlink_min_basal_after_bolus_percent_summary,
+                    dialogMessage = R.string.medlink_min_basal_after_bolus_percent_dialog
+                )
+            )
+            addPreference(
+                AdaptiveIntPreference(
+                    ctx = context,
+                    intKey = MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,
+                    title = R.string.medlink_min_basal_after_bolus_minutes,
+                    summary = R.string.medlink_min_basal_after_bolus_minutes_summary,
+                    dialogMessage = R.string.medlink_min_basal_after_bolus_minutes_dialog
+                )
+            )
+            addPreference(
+                app.aaps.core.validators.preferences.AdaptiveDoublePreference(
+                    ctx = context,
+                    doubleKey = MedLinkMedtronicDoublePreferenceKey.MinBasalAfterBolusDelta,
+                    title = R.string.medlink_min_basal_after_bolus_delta,
+                    dialogMessage = R.string.medlink_min_basal_after_bolus_delta_dialog
+                ).apply { summary = rh.gs(R.string.medlink_min_basal_after_bolus_delta_summary) }
             )
         }
     }

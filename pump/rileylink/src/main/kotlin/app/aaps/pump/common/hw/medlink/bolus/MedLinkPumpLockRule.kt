@@ -23,6 +23,7 @@ object MedLinkPumpLockRule {
 
     const val LOCK_AFTER = 2
 
-    fun decide(confirmedWithoutEffect: Int): MedLinkPumpBlock? =
-        if (confirmedWithoutEffect >= LOCK_AFTER) MedLinkPumpBlock.PUMP_LOCKED else null
+    /** @param lockAfter 4aa: the "command attempts" setting (MedLinkBLE passes it; [LOCK_AFTER] is the old fixed value) */
+    fun decide(confirmedWithoutEffect: Int, lockAfter: Int = LOCK_AFTER): MedLinkPumpBlock? =
+        if (confirmedWithoutEffect >= lockAfter.coerceAtLeast(1)) MedLinkPumpBlock.PUMP_LOCKED else null
 }

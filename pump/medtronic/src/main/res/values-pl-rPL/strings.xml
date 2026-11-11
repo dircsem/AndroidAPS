@@ -93,7 +93,7 @@
     <string name="medlink_smb_pending_cancelled">Bolus ręczny anulowany: SMB w toku</string>
     <string name="medlink_smb_pending_amount_hint">Bolus ręczny (j.)</string>
     <string name="medlink_smb_pending_amount_invalid">Podaj dawkę od %1$.2f do %2$.2f j.</string>
-    <string name="medlink_pump_block_locked">Pompa zablokowana: polecenia start, stop lub bolusa zostały potwierdzone przez MedLink, ale stan pompy się nie zmienił. Sprawdź, czy na ekranie pompy jest komunikat, i usuń go. AAPS ponawia próby; alert zniknie, gdy polecenie zadziała.</string>
+    <string name="medlink_pump_block_locked">Pompa nie odpowiada: %1$d kolejnych poleceń start, stop lub bolusa zostało potwierdzonych przez MedLink, ale pompa ich nie wykonała. Na ekranie pompy jest prawdopodobnie alarm: sprawdź pompę i usuń go. AAPS ponawia próby; alert zniknie, gdy polecenie zadziała.</string>
     <string name="medlink_pump_block_locked_title">Pompa zablokowana</string>
     <string name="medlink_bolus_phase_connecting">Łączenie z pompą…</string>
     <string name="medlink_bolus_phase_reading_status">Odczyt stanu bolusa z pompy…</string>
@@ -103,9 +103,23 @@
     <string name="medlink_bolus_phase_waiting_other">Pompa podaje inny bolus, oczekiwanie na jego zakończenie…</string>
     <string name="medlink_profile_differs_from_pump">Profil bazy w pompie różni się od profilu AAPS:\n%1$s\nMedLink nie może zmienić profilu w pompie: zmień go również w pompie.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: pompa %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_min_basal_after_bolus_percent" formatted="false">Minimalna baza po bolusie (%)</string>
+    <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">Po bolusie ręcznym, gdy glikemia jest na celu lub wyżej i rośnie, bazy tymczasowe poniżej tego % bazy pompy są do niego podnoszone (także 0%). 0 = wyłączone.</string>
+    <string name="medlink_min_basal_after_bolus_minutes">Minimalna baza po bolusie: czas (min)</string>
+    <string name="medlink_min_basal_after_bolus_delta">Minimalna baza po bolusie: minimalna delta 5 min (mg/dL)</string>
     <string name="medlink_battery_device_medlink">MedLink</string>
     <string name="medlink_battery_device_phone">telefonu</string>
     <string name="medlink_suspend_low_battery">Wstrzymanie nie wysłane: bateria %1$s %2$d%% (minimum %3$d%%). Naładuj, aby umożliwić bazy tymczasowe poniżej 100%%.</string>
+    <string name="medlink_basal_percents">Pompa %1$s · plan %2$s · ta godzina %3$s</string>
     <string name="medlink_min_battery_for_suspend" formatted="false">Minimalna bateria do wstrzymania (%)</string>
     <string name="medlink_min_battery_for_suspend_summary" formatted="false">Brak wstrzymania (baza tymczasowa poniżej 100%), gdy bateria MedLink lub telefonu jest na tym poziomie lub niżej. Czerwony komunikat pojawia się na pasku stanu.</string>
+    <string name="medlink_command_attempts">Liczba prób polecenia</string>
+    <string name="medlink_command_attempts_summary">Ile razy polecenie jest powtarzane: połączenie z MedLink, wysłanie polecenia do MedLink oraz bolus, start lub stop, którego pompa nie wykonuje. Po tylu kolejnych aplikacja informuje, że na ekranie pompy jest prawdopodobnie alarm.</string>
+    <string name="medlink_command_attempts_dialog">Czasami MedLink potwierdza bolus, start lub stop, ale pompa go nie wykonuje, zwykle dlatego, że na ekranie pompy jest otwarty alarm lub komunikat.\n\nTa liczba dotyczy:\n• prób połączenia z MedLink;\n• powtórzeń polecenia wysłanego do MedLink (polecenie, które osiągnie tyle prób, jest porzucane);\n• prób bolusa (każda próba jest sprawdzana w historii pompy przed ponownym wysłaniem, więc bolus nigdy nie jest podwojony);\n• ponownych prób startu i stopu;\n• liczby takich poleceń z rzędu, po której pojawia się ostrzeżenie "na ekranie pompy jest prawdopodobnie alarm".\n\nDomyślnie 5. Mniejsze wartości ostrzegają wcześniej, ale wcześniej rezygnują.</string>
+    <string name="medlink_min_battery_for_suspend_dialog" formatted="false">Bazy tymczasowe poniżej 100% są realizowane przez wstrzymanie pompy. Jeśli MedLink lub telefon rozładuje się, gdy pompa jest wstrzymana, nikt jej nie uruchomi i baza nie jest podawana.\n\nGdy którakolwiek bateria jest na tym poziomie lub niżej, wstrzymania nie są wysyłane, wstrzymana pompa jest uruchamiana ponownie, a czerwony komunikat na pasku stanu mówi, która bateria jest słaba (można go odrzucić).\n\nDomyślnie 5%.</string>
+    <string name="medlink_min_basal_after_bolus_percent_dialog" formatted="false">Zaraz po bolusie ręcznym pętla często prosi o niską lub zerową bazę tymczasową, mimo że glikemia wciąż rośnie.\n\nPo ustawieniu, w czasie po bolusie ręcznym (ustawienie niżej), gdy glikemia jest na celu profilu lub wyżej, a delta z ostatnich 5 min jest większa niż minimalna delta (ustawienie niżej), każda baza tymczasowa poniżej tego procentu bazy pompy jest do niego podnoszona, także 0%.\n\nPrzykład: baza pompy 1,0 U/h, wartość 50: baza tymczasowa 0% lub 30% staje się 0,5 U/h.\n\nSMB i mikrobolusy bazy tymczasowej nie rozpoczynają tego czasu. 0 = wyłączone.</string>
+    <string name="medlink_min_basal_after_bolus_minutes_summary">Jak długo po bolusie ręcznym stosowana jest minimalna baza. Domyślnie 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_minutes_dialog">Czas po ostatnim bolusie ręcznym, w którym może być stosowana minimalna baza po bolusie. Po tym czasie bazy tymczasowe pętli są używane bez zmian.\n\nDomyślnie 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_delta_summary">Minimalna baza po bolusie jest stosowana tylko, gdy zmiana glikemii w ostatnich 5 min jest większa niż ta wartość (mg/dL).</string>
+    <string name="medlink_min_basal_after_bolus_delta_dialog">Zmiana glikemii w ostatnich 5 minutach (delta, w mg/dL, także gdy aplikacja pokazuje mmol/L), która liczy się jako wzrost. Minimalna baza po bolusie jest stosowana tylko, gdy delta jest większa niż ta wartość.\n\nPrzykłady: 0 = każdy wzrost; 2 = więcej niż 2 mg/dL w 5 min.\n\nDomyślnie 0.</string>
 </resources>

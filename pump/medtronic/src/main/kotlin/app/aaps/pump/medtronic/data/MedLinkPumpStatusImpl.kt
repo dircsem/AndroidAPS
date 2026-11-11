@@ -109,16 +109,24 @@ open class MedLinkPumpStatusImpl(val preferences: Preferences, pumpType: PumpTyp
 
     var currentReadingStatus = BGReadingStatus.FAILED
     override var lastBGTimestamp: Long = 0
+    /** 4ad: pump running state changes, for the "this hour" basal percentage of the Medtronic tab */
+    val runningTimeline = app.aaps.pump.medtronic.data.MedLinkBasalPercent.Timeline()
+
+    fun recordRunningState() = runningTimeline.record(System.currentTimeMillis(), pumpRunningState)
+
     override fun setPumpRunning() {
         pumpRunningState = PumpRunningState.Running
+        recordRunningState()
     }
 
     override fun setPumpSuspended() {
         pumpRunningState = PumpRunningState.Suspended
+        recordRunningState()
     }
 
     override fun setPumpUnknow() {
         this.pumpRunningState = PumpRunningState.Unknow
+        recordRunningState()
     }
 
     override var latestBG = 0.0

@@ -39,4 +39,16 @@ class MedLinkBatteryAgeTest {
         assertEquals(100, MedLinkBatteryAge.percentLeft(-hour, life))
         assertEquals(0, MedLinkBatteryAge.percentLeft(hour, 0))
     }
+
+    @Test
+    fun `icon follows the color - red is empty, yellow is a quarter`() {
+        for (percent in 0..100) {
+            val icon = MedLinkBatteryAge.iconLevel(percent)
+            when {
+                percent <= MedLinkBatteryAge.URGENT_PERCENT -> assertEquals(0, icon, "red at $percent %")
+                percent <= MedLinkBatteryAge.WARN_PERCENT   -> assertEquals(1, icon, "yellow at $percent %")
+                else                                        -> assert(icon >= 2) { "default color at $percent % shows $icon" }
+            }
+        }
+    }
 }

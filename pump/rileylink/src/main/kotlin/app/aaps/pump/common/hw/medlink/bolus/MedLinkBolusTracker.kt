@@ -130,7 +130,8 @@ class MedLinkBolusRequest(
 class MedLinkBolusTracker(
     private val clock: MedLinkClock,
     private val strict: Boolean = false,
-    private val maxAttempts: Int = MAX_ATTEMPTS,
+    /** 4aa: tries per bolus; the pump plugin passes the "command attempts" setting. */
+    private val maxAttemptsProvider: () -> Int = { MAX_ATTEMPTS },
     private val log: (String) -> Unit
 ) {
 
@@ -235,9 +236,11 @@ class MedLinkBolusTracker(
         log("BOLUS[${r.id}] baseline ${snapshot?.let { "${it.lastBolusAmount}U@${it.lastBolusTime}" } ?: "none"} raw=${snapshot?.raw}")
     }
 
+    private fun maxAttempts(): Int = maxAttemptsProvider().coerceAtLeast(1)
+
     /** Tries left for the tracked bolus (0 when there is none or it is final). */
     @Synchronized
-    fun triesLeft(): Int = current?.takeIf { !it.state.isFinal }?.let { max(0, maxAttempts - it.attempts) } ?: 0
+    fun triesLeft(): Int = current?.takeIf { !it.state.isFinal }?.let { max(0, maxAttempts() - it.attempts) } ?: 0
 
     /**
      * The tracked bolus executor is posted (first step): one more try, whether or not the dose gets written
@@ -249,13 +252,13 @@ class MedLinkBolusTracker(
         if (r.state != MedLinkBolusState.QUEUED && !(r.state == MedLinkBolusState.UNRESOLVED && r.resendAllowed)) return
         r.attempts++
         r.tryCounted = true
-        log("BOLUS[${r.id}] try ${r.attempts}/$maxAttempts")
+        log("BOLUS[${r.id}] try ${r.attempts}/${maxAttempts()}")
     }
 
     @Synchronized
     fun onWritten(): MedLinkBolusAction {
         val r = current ?: return MedLinkBolusAction.None
-        if (r.state == MedLinkBolusState.UNRESOLVED && (!r.resendAllowed || r.attempts > maxAttempts)) return illegal(r, MedLinkBolusState.SENT)
+        if (r.state == MedLinkBolusState.UNRESOLVED && (!r.resendAllowed || r.attempts > maxAttempts())) return illegal(r, MedLinkBolusState.SENT)
         val bad = transition(r, MedLinkBolusState.SENT) ?: run {
             r.sentAt = clock.now()
             lastSentAt = r.sentAt
@@ -287,6 +290,21 @@ class MedLinkBolusTracker(
         }
         if (!r.state.isFinal && r.state != MedLinkBolusState.UNRESOLVED) transition(r, MedLinkBolusState.UNRESOLVED)
         return false
+    }
+
+    /** 4z: `M` allowed a re-send and the bolus was not written again yet. Writing it clears this (no double send). */
+    @Synchronized
+    fun resendPending(): Boolean = current?.let { it.state == MedLinkBolusState.UNRESOLVED && it.resendAllowed } == true
+
+    /**
+     * 4z: `M` proved the bolus was not started and asked for a re-send, but there is no command to send: fail it so
+     * the result reaches the loop and new boluses are allowed (it stayed UNRESOLVED and every `M` asked again).
+     */
+    @Synchronized
+    fun onResendImpossible(reason: String): MedLinkBolusAction {
+        val r = current ?: return MedLinkBolusAction.None
+        if (r.state.isFinal) return MedLinkBolusAction.None
+        return fail(r, reason)
     }
 
     /**
@@ -538,7 +556,7 @@ class MedLinkBolusTracker(
                 alarm(r, "bolus ${r.requested} U not seen in pump history and no baseline to compare - check the pump")
             }
 
-            r.attempts >= maxAttempts                                          -> {
+            r.attempts >= maxAttempts()                                          -> {
                 transition(r, MedLinkBolusState.FAILED)?.let { return it }
                 alarm(r, "bolus ${r.requested} U not delivered after ${r.attempts} attempts")
             }

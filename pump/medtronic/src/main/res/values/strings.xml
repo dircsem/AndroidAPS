@@ -159,7 +159,7 @@
     <string name="medlink_smb_pending_cancelled">Manual bolus cancelled: SMB in progress</string>
     <string name="medlink_smb_pending_amount_hint">Manual bolus (U)</string>
     <string name="medlink_smb_pending_amount_invalid">Enter an amount between %1$.2f and %2$.2f U</string>
-    <string name="medlink_pump_block_locked">Pump locked: start, stop or bolus commands were confirmed by the MedLink but the pump did not change. Check the pump screen for a message and clear it. AAPS keeps trying; the alert clears when a command works.</string>
+    <string name="medlink_pump_block_locked">Pump not responding: %1$d start, stop or bolus commands in a row were confirmed by the MedLink but the pump did not apply them. The pump probably shows an alarm on its screen: check the pump and clear it. AAPS keeps trying; the alert clears when a command works.</string>
     <string name="medlink_pump_block_locked_title">Pump locked</string>
     <string name="medlink_bolus_phase_connecting">Connecting to the pump…</string>
     <string name="medlink_bolus_phase_reading_status">Reading the pump bolus status…</string>
@@ -169,9 +169,23 @@
     <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
     <string name="medlink_profile_differs_from_pump">The basal profile on the pump is different from the AAPS profile:\n%1$s\nMedLink cannot change the profile on the pump: change it on the pump too.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: pump %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_min_basal_after_bolus_percent" formatted="false">Minimum basal after bolus (%)</string>
+    <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">After a manual bolus, while BG is at or above target and rising, temp basals below this % of the pump basal are raised to it (also 0%). 0 = off.</string>
+    <string name="medlink_min_basal_after_bolus_minutes">Minimum basal after bolus: duration (min)</string>
+    <string name="medlink_min_basal_after_bolus_delta">Minimum basal after bolus: minimum 5 min delta (mg/dL)</string>
     <string name="medlink_battery_device_medlink">MedLink</string>
     <string name="medlink_battery_device_phone">phone</string>
     <string name="medlink_suspend_low_battery">Suspension not sent: %1$s battery %2$d%% (minimum %3$d%%). Charge it to allow temp basals below 100%%.</string>
+    <string name="medlink_basal_percents">Pump %1$s · plan %2$s · this hour %3$s</string>
     <string name="medlink_min_battery_for_suspend" formatted="false">Minimum battery for suspension (%)</string>
     <string name="medlink_min_battery_for_suspend_summary" formatted="false">No suspension (temp basal below 100%) when the MedLink or the phone battery is at or below this value. A red message shows it in the status bar.</string>
+    <string name="medlink_command_attempts">Command attempts</string>
+    <string name="medlink_command_attempts_summary">How many times a command is repeated: the connection to the MedLink, the MedLink write of a command, and a bolus, start or stop that the pump does not apply. After this many in a row, the app warns that the pump probably has an alarm on its screen.</string>
+    <string name="medlink_command_attempts_dialog">Sometimes the MedLink confirms a bolus, start or stop but the pump does not apply it, usually because an alarm or message is open on the pump screen.\n\nThis number is used for:\n• tries to connect to the MedLink;\n• repetitions of a command sent to the MedLink (a command that reaches this many tries is given up);\n• bolus tries (each try is checked with the pump history before sending again, so a bolus is never doubled);\n• start and stop retries;\n• how many such commands in a row show the warning "the pump probably shows an alarm on its screen".\n\nDefault 5. Lower values warn sooner but give up sooner.</string>
+    <string name="medlink_min_battery_for_suspend_dialog" formatted="false">Temp basals below 100% are made by suspending the pump. If the MedLink or the phone runs out of battery while the pump is suspended, nobody starts it again and no basal is delivered.\n\nWhen either battery is at or below this value, suspensions are not sent, a suspended pump is started again, and a red message in the status bar says which battery is low (it can be dismissed).\n\nDefault 5%.</string>
+    <string name="medlink_min_basal_after_bolus_percent_dialog" formatted="false">Right after a manual bolus the loop often asks for a low or zero temp basal although BG is still going up.\n\nWith this set, during the time after a manual bolus (setting below), when BG is at or above the profile target and the last 5 min delta is above the minimum delta (setting below), any temp basal below this percentage of the pump basal is raised to it, including 0%.\n\nExample: pump basal 1.0 U/h, value 50: a 0% or 30% temp basal becomes 0.5 U/h.\n\nSMB and temp basal microboluses do not start this time. 0 = off.</string>
+    <string name="medlink_min_basal_after_bolus_minutes_summary">How long after a manual bolus the minimum basal is applied. Default 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_minutes_dialog">Time after the last manual bolus during which the minimum basal after bolus can be applied. After this time the loop temp basals are used as they are.\n\nDefault 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_delta_summary">The minimum basal after bolus is applied only when the BG change in the last 5 min is above this value (mg/dL).</string>
+    <string name="medlink_min_basal_after_bolus_delta_dialog">BG change in the last 5 minutes (delta, in mg/dL, also when the app shows mmol/L) that counts as rising. The minimum basal after bolus is applied only when the delta is above this value.\n\nExamples: 0 = any rise; 2 = more than 2 mg/dL in 5 min.\n\nDefault 0.</string>
 </resources>

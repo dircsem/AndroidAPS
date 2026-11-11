@@ -47,4 +47,11 @@ class MedLinkStartRetryRuleTest {
     fun `retry goes on when nothing changed since the failure`() {
         assertTrue(MedLinkStartRetryRule.shouldStillRetry(failedAt = 1_000, lastStartStopSent = 500, pumpRunningConfirmed = false))
     }
+
+    @Test
+    fun `gives up after the configured command attempts (4aa)`() {
+        assertTrue(MedLinkStartRetryRule.onFailed(2, maxFailures = 3) is MedLinkStartRetryRule.Decision.Retry)
+        assertEquals(MedLinkStartRetryRule.Decision.GiveUp, MedLinkStartRetryRule.onFailed(3, maxFailures = 3))
+        assertTrue(MedLinkStartRetryRule.onFailed(7, maxFailures = 8) is MedLinkStartRetryRule.Decision.Retry)
+    }
 }

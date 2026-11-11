@@ -66,4 +66,14 @@ class TempBasalMicrobolusOperationsTest {
         assertFalse(ops.complete(a))
         assertEquals(1, ops.operations.size)
     }
+
+    /** 4ae (logs/looplock.log 23:16): the plan was cleared and reactivateTime() threw, locking the queue. */
+    @Test
+    fun `reactivate time of an empty or cleared plan is null, not an exception`() {
+        assertEquals(null, plan().reactivateTime())
+        val ops = plan(op(OperationType.REACTIVATE, 10))
+        assertEquals(t0.plusMinutes(10), ops.reactivateTime())
+        ops.clearOperations()
+        assertEquals(null, ops.reactivateTime())
+    }
 }

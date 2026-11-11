@@ -137,6 +137,40 @@ class MedLinkBolusTrackerTest {
     }
 
     @Test
+    fun `resend with no command to send fails the bolus and allows new boluses (4z)`() {
+        // logs/smb_bolus_not_executed.log: "BOLUS resend requested but no held command" and the SMB stayed unresolved
+        val r = sendLoopBolus(0.4)
+        tracker.onConfirmed()
+        clock.advance(min)
+        tracker.onStatus(notStarted())
+        clock.advance(5_000)
+        assertEquals(Resend, tracker.onStatus(notStarted()))
+        assertTrue(tracker.resendPending())
+        assertInstanceOf(Fail::class.java, tracker.onResendImpossible("no bolus command to re-send"))
+        assertFalse(tracker.resendPending())
+        assertEquals(MedLinkBolusState.FAILED, r.state)
+        assertTrue(tracker.canSendNewBolus())
+        assertFalse(tracker.hasUnresolved())
+        // a later M does nothing for it
+        assertEquals(None, tracker.onStatus(notStarted()))
+        assertEquals(None, tracker.onResendImpossible("again"))
+    }
+
+    @Test
+    fun `resend is pending only until the bolus is written again - no double send (4z)`() {
+        sendLoopBolus(0.4)
+        tracker.onConfirmed()
+        clock.advance(min)
+        tracker.onStatus(notStarted())
+        clock.advance(5_000)
+        assertFalse(tracker.resendPending(), "first not-started only asks for a fresh M")
+        assertEquals(Resend, tracker.onStatus(notStarted()))
+        assertTrue(tracker.resendPending())
+        tracker.onWritten()
+        assertFalse(tracker.resendPending(), "written again: a second resend must not send it once more")
+    }
+
+    @Test
     fun `not started is resent until the fifth attempt, then alarm and no further resend`() {
         sendLoopBolus()
         repeat(MedLinkBolusTracker.MAX_ATTEMPTS - 1) {
@@ -153,6 +187,30 @@ class MedLinkBolusTrackerTest {
         assertInstanceOf(Alarm::class.java, action)
         assertEquals(MedLinkBolusState.FAILED, tracker.current!!.state)
         assertTrue(tracker.canSendNewBolus())
+    }
+
+    @Test
+    fun `tries follow the configured command attempts (4aa)`() {
+        var attempts = 3
+        val t = MedLinkBolusTracker(clock, strict = true, maxAttemptsProvider = { attempts }) { log.add(it) }
+        t.onQueued("b1", MedLinkBolusOrigin.LOOP, 0.5)
+        t.onBaseline(baseline)
+        t.onWritten()
+        repeat(2) {
+            t.onConfirmed()
+            clock.advance(min)
+            t.onStatus(notStarted())
+            assertEquals(Resend, t.onStatus(notStarted()), "attempt ${it + 1}")
+            t.onWritten()
+        }
+        assertEquals(0, t.triesLeft())
+        clock.advance(min)
+        t.onStatus(notStarted())
+        assertInstanceOf(Alarm::class.java, t.onStatus(notStarted()))
+        // the setting is read each time
+        attempts = 6
+        t.onQueued("b2", MedLinkBolusOrigin.LOOP, 0.5)
+        assertEquals(6, t.triesLeft())
     }
 
     @Test

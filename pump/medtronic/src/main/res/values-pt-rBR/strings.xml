@@ -93,7 +93,7 @@
     <string name="medlink_smb_pending_cancelled">Bolus manual cancelado: SMB em andamento</string>
     <string name="medlink_smb_pending_amount_hint">Bolus manual (U)</string>
     <string name="medlink_smb_pending_amount_invalid">Informe um valor entre %1$.2f e %2$.2f U</string>
-    <string name="medlink_pump_block_locked">Bomba bloqueada: comandos de start, stop ou bolus foram confirmados pela MedLink, mas a bomba não mudou. Veja se há uma mensagem na tela da bomba e limpe-a. O AAPS continua tentando; o alerta some quando um comando funcionar.</string>
+    <string name="medlink_pump_block_locked">Bomba não responde: %1$d comandos seguidos de start, stop ou bolus foram confirmados pela MedLink, mas a bomba não os aplicou. A bomba provavelmente mostra um alarme na tela: confira a bomba e limpe-o. O AAPS continua tentando; o alerta some quando um comando funcionar.</string>
     <string name="medlink_pump_block_locked_title">Bomba bloqueada</string>
     <string name="medlink_bolus_phase_connecting">Conectando à bomba…</string>
     <string name="medlink_bolus_phase_reading_status">Lendo o estado de bolus da bomba…</string>
@@ -103,9 +103,23 @@
     <string name="medlink_bolus_phase_waiting_other">A bomba está aplicando outro bolus, aguardando terminar…</string>
     <string name="medlink_profile_differs_from_pump">O perfil basal da bomba é diferente do perfil do AAPS:\n%1$s\nO MedLink não consegue alterar o perfil na bomba: altere também na bomba.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: bomba %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_min_basal_after_bolus_percent" formatted="false">Basal mínima pós-bolus (%)</string>
+    <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">Depois de um bolus manual, com a glicemia no alvo ou acima e subindo, basais temporárias abaixo desta % da basal da bomba sobem para ela (inclusive 0%). 0 = desligado.</string>
+    <string name="medlink_min_basal_after_bolus_minutes">Basal mínima pós-bolus: duração (min)</string>
+    <string name="medlink_min_basal_after_bolus_delta">Basal mínima pós-bolus: delta mínimo de 5 min (mg/dL)</string>
     <string name="medlink_battery_device_medlink">MedLink</string>
     <string name="medlink_battery_device_phone">telefone</string>
     <string name="medlink_suspend_low_battery">Suspensão não enviada: bateria do %1$s em %2$d%% (mínimo %3$d%%). Carregue para permitir basais temporárias abaixo de 100%%.</string>
+    <string name="medlink_basal_percents">Bomba %1$s · plano %2$s · nesta hora %3$s</string>
     <string name="medlink_min_battery_for_suspend" formatted="false">Bateria mínima para suspensão (%)</string>
     <string name="medlink_min_battery_for_suspend_summary" formatted="false">Sem suspensão (basal temporária abaixo de 100%) quando a bateria do MedLink ou do telefone está neste valor ou abaixo. Uma mensagem vermelha aparece na barra de status.</string>
+    <string name="medlink_command_attempts">Tentativas de comando</string>
+    <string name="medlink_command_attempts_summary">Quantas vezes um comando é repetido: a conexão com o MedLink, o envio de um comando para o MedLink, e um bolus, start ou stop que a bomba não aplica. Depois dessa quantidade seguida, o app avisa que a bomba provavelmente tem um alarme na tela.</string>
+    <string name="medlink_command_attempts_dialog">Às vezes o MedLink confirma um bolus, start ou stop mas a bomba não aplica, normalmente porque há um alarme ou mensagem aberto na tela da bomba.\n\nEste número vale para:\n• tentativas de conexão com o MedLink;\n• repetições de um comando enviado ao MedLink (um comando que chega a essa quantidade de tentativas é abandonado);\n• tentativas de bolus (cada tentativa é conferida com o histórico da bomba antes de reenviar, então um bolus nunca é dobrado);\n• novas tentativas de start e de stop;\n• quantos desses comandos seguidos mostram o aviso "a bomba provavelmente mostra um alarme na tela".\n\nPadrão 5. Valores menores avisam antes, mas desistem antes.</string>
+    <string name="medlink_min_battery_for_suspend_dialog" formatted="false">Basais temporárias abaixo de 100% são feitas suspendendo a bomba. Se o MedLink ou o telefone ficar sem bateria com a bomba suspensa, ninguém a liga de novo e nenhuma basal é entregue.\n\nCom qualquer uma das baterias neste valor ou abaixo, suspensões não são enviadas, uma bomba suspensa é ligada de novo e uma mensagem vermelha na barra de status diz qual bateria está baixa (pode ser dispensada).\n\nPadrão 5%.</string>
+    <string name="medlink_min_basal_after_bolus_percent_dialog" formatted="false">Logo depois de um bolus manual o loop muitas vezes pede uma basal temporária baixa ou zero, embora a glicemia ainda esteja subindo.\n\nCom este valor, durante o tempo depois de um bolus manual (configuração abaixo), com a glicemia no alvo do perfil ou acima e o delta dos últimos 5 min maior que o delta mínimo (configuração abaixo), qualquer basal temporária abaixo desta porcentagem da basal da bomba sobe para ela, inclusive 0%.\n\nExemplo: basal da bomba 1,0 U/h, valor 50: uma basal temporária de 0% ou 30% vira 0,5 U/h.\n\nSMB e microbolus de basal temporária não iniciam este tempo. 0 = desligado.</string>
+    <string name="medlink_min_basal_after_bolus_minutes_summary">Por quanto tempo depois de um bolus manual a basal mínima é aplicada. Padrão 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_minutes_dialog">Tempo depois do último bolus manual em que a basal mínima pós-bolus pode ser aplicada. Depois desse tempo as basais temporárias do loop são usadas como vierem.\n\nPadrão 180 min (3 h).</string>
+    <string name="medlink_min_basal_after_bolus_delta_summary">A basal mínima pós-bolus só é aplicada quando a variação da glicemia nos últimos 5 min é maior que este valor (mg/dL).</string>
+    <string name="medlink_min_basal_after_bolus_delta_dialog">Variação da glicemia nos últimos 5 minutos (delta, em mg/dL, mesmo quando o app mostra mmol/L) que conta como subindo. A basal mínima pós-bolus só é aplicada quando o delta é maior que este valor.\n\nExemplos: 0 = qualquer subida; 2 = mais de 2 mg/dL em 5 min.\n\nPadrão 0.</string>
 </resources>

@@ -20,6 +20,15 @@ enum class MedLinkMedtronicIntPreferenceKey(
     override val exportable: Boolean = true
 ) : IntPreferenceKey {
 
+    /** 4x: minimum basal (% of the pump basal) after a manual bolus while BG rises; 0 = off. */
+    MinBasalAfterBolusPercent("medlink_min_basal_after_bolus_percent", 0, min = 0, max = 100),
+    /** 4x: how long after a manual bolus the minimum basal applies. */
+    MinBasalAfterBolusMinutes("medlink_min_basal_after_bolus_minutes", 180, min = 15, max = 720),
     /** 4y: no suspension when the MedLink or the phone battery is at or below this %. */
     MinBatteryForSuspend("medlink_min_battery_for_suspend", 5, min = 1, max = 50),
+    /**
+     * 4aa: tries of a bolus, START or STOP that the MedLink confirms but the pump does not apply; the same number of
+     * such commands in a row shows the "alarm on the pump screen" message.
+     */
+    CommandAttempts("medlink_command_attempts", 5, min = 1, max = 10),
 }

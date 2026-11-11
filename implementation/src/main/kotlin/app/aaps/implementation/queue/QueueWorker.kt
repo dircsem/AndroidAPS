@@ -155,8 +155,15 @@ class QueueWorker internal constructor(
                             aapsLogger.debug(LTag.PUMPQUEUE, "performing " + it.log())
                             rxBus.send(EventQueueChanged())
                             rxBus.send(EventPumpStatusChanged(it.status()))
-                            it.execute()
-                            queue.resetPerforming()
+                            // 4ae: an exception in execute() used to end the work with the command still "performing":
+                            // the queue never emptied again and every loop run stopped at "pump busy" (logs/looplock.log)
+                            try {
+                                it.execute()
+                            } catch (e: Exception) {
+                                aapsLogger.error(LTag.PUMPQUEUE, "command ${it.log()} failed", e)
+                            } finally {
+                                queue.resetPerforming()
+                            }
                             rxBus.send(EventQueueChanged())
                             lastCommandTime = System.currentTimeMillis()
                             SystemClock.sleep(100)

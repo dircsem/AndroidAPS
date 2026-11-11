@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -396,23 +397,34 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             append(medLinkMedtronicPumpPlugin.baseBasalRate)
         })
 
-        binding.medtronicTempbasal.text =
-            medLinkMedtronicPumpPlugin.medLinkPumpStatus.tempBasalAmount.toString()
+        // 4ad: pump, plan (remaining suspensions / microboluses) and delivered since the start of the hour, in %
+        val now = System.currentTimeMillis()
+        val hourStart = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault())
+            .truncatedTo(java.time.temporal.ChronoUnit.HOURS).toInstant().toEpochMilli()
+        val tbrBoluses = persistenceLayer.getBolusesFromTimeToTime(hourStart, now, true)
+            .filter { it.isValid && it.type == BS.Type.TBR }.map { it.timestamp to it.amount }
+        val (pumpPct, planPct, hourPct) = medLinkMedtronicPumpPlugin.basalPercents(now, hourStart, tbrBoluses)
+        fun pct(v: Int?) = v?.let { "$it%" } ?: "--"
+        binding.medtronicTempbasal.text = rh.gs(R.string.medlink_basal_percents, pct(pumpPct), pct(planPct), pct(hourPct))
 
 
         // battery
         if (medLinkMedtronicPumpPlugin.isBatteryAge()) {
-            // battery by age: 100 % at the battery change, 0 % at the critical battery age; yellow at 25 %, red at 0 %
-            val change = persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)
-            val percent = change?.let {
-                app.aaps.pump.medtronic.data.MedLinkBatteryAge.percentLeft(System.currentTimeMillis() - it.timestamp, preferences.get(IntKey.OverviewBageCritical))
+            // battery by age: 100 % at the battery change, 0 % at the critical battery age.
+            // Text, icon and color use the same age: the plugin's battery change time, or the database when it has none.
+            // Red (0 %) shows the empty icon, yellow (up to 25 %) the quarter icon.
+            val now = System.currentTimeMillis()
+            val changedAt = medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryAge.takeIf { it > 0L }
+                ?: persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)?.timestamp
+            val percent = changedAt?.let {
+                app.aaps.pump.medtronic.data.MedLinkBatteryAge.percentLeft(now - it, preferences.get(IntKey.OverviewBageCritical))
             }
             val iconLevel = percent?.let { app.aaps.pump.medtronic.data.MedLinkBatteryAge.iconLevel(it) } ?: ((medLinkMedtronicPumpPlugin.batteryLevel ?: 75) / 25)
             binding.medtronicPumpstateBattery.text = buildString {
                 append("{fa-battery-")
                 append(iconLevel)
                 append("} ")
-                append(medLinkMedtronicPumpPlugin.getBatteryAge())
+                if (changedAt != null) append(deltaTimeAgo(changedAt))
                 append(" Wz")
             }
             if (percent != null)
@@ -420,16 +432,14 @@ class MedLinkMedtronicFragment : DaggerFragment() {
                     binding.medtronicPumpstateBattery, percent.toDouble(),
                     app.aaps.pump.medtronic.data.MedLinkBatteryAge.WARN_PERCENT, app.aaps.pump.medtronic.data.MedLinkBatteryAge.URGENT_PERCENT
                 )
-        } else
-            if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining == 0 || medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage == 0.0) {
-                binding.medtronicPumpstateBattery.text = "{fa-battery-0}"
-            } else {
-                (buildString {
-                    String.format(
-                        $$"%.2f V", medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage
-                    )
-                }).also { binding.medtronicPumpstateBattery.text = it }
-            }
+            else binding.medtronicPumpstateBattery.setTextColor(Color.WHITE)
+        } else {
+            binding.medtronicPumpstateBattery.setTextColor(Color.WHITE)
+            val voltage = medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryVoltage
+            binding.medtronicPumpstateBattery.text =
+                if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining == 0 || voltage == null || voltage == 0.0) "{fa-battery-0}"
+                else String.format(Locale.getDefault(), "%.2f V", voltage)
+        }
 //        warnColors.setColorInverse(
 //            binding.medtronicPumpstateBattery,
 //            medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryRemaining!!.toDouble(),
@@ -548,18 +558,10 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             } else if (medLinkMedtronicPumpPlugin.medLinkPumpStatus.isig != null) {
                 binding.medtronicIsig.text =
                     String.format("%.2fnA", medLinkMedtronicPumpPlugin.medLinkPumpStatus.isig)
-                warnColors.setColorInverse(
-                    binding.medtronicIsig,
-                    medLinkMedtronicPumpPlugin.medLinkPumpStatus.isig!!,
-                    8,
-                    7
-                )
-                warnColors.setColor(
-                    binding.medtronicIsig,
-                    medLinkMedtronicPumpPlugin.medLinkPumpStatus.isig!!,
-                    26.0,
-                    31.0
-                )
+                // low (<= 8 yellow, <= 7 red) or high (>= 26 yellow, >= 31 red): one call, the second one used to reset the first
+                val isig = medLinkMedtronicPumpPlugin.medLinkPumpStatus.isig!!
+                if (isig <= 8) warnColors.setColorInverse(binding.medtronicIsig, isig, 8, 7)
+                else warnColors.setColor(binding.medtronicIsig, isig, 26.0, 31.0)
             } else {
                 binding.medtronicIsig.text = ""
             }

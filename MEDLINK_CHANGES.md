@@ -512,6 +512,24 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 
 **Testes:** `MedLinkBatteryAgeTest` (5). medtronic 152/152. As telas não têm teste automático.
 
+## 4x. Basal mínima pós-bolus; planos abaixo de 100% alternam início parado/ativo (2026-11-10) — NÃO TESTADO EM CAMPO
+
+**Basal mínima pós-bolus** (`data/MedLinkPostBolusMinBasal`, aplicada no início de `setTempBasalAbsolute` e `setTempBasalPercent`):
+- Configurações novas no MedLink: `Basal mínima pós-bolus (%)` (0 = desligado, padrão), `duração (min)` (padrão 180), `delta mínimo de 5 min (mg/dL)` (padrão 0).
+- Vale só depois de um **bolus manual** (`BS.Type.NORMAL`; SMB e microbolus de TBR não contam), dentro da duração, com glicemia **no alvo ou acima** (`profile.getTargetMgdl()`) e delta dos últimos 5 min **maior** que o configurado (`GlucoseStatusProvider`).
+- Uma TBR abaixo de `% × basal da bomba` (inclusive 0%) vira esse mínimo. A taxa ajustada é a que vai para o plano e para o registro da TBR (IOB = o que a bomba entrega).
+- Log: `MedLink post-bolus minimum basal: x -> y U/h (motivo)`; quando não aplica, o motivo vai em debug.
+
+**Início parado/ativo** (`data/MedLinkSuspendStartRule`, `NextStartStop(firstOffsetMinutes)`):
+- Antes, todo plano abaixo de 100% começava com SUSPEND; como o loop refaz o plano a cada ~5 min, a bomba ficava parada mais do que a porcentagem pedida.
+- Agora o início segue o **relógio**, não quantas vezes o plano foi calculado: o tempo é dividido em ciclos de uma suspensão + um intervalo ativo do próprio plano, alinhados ao relógio. Calculado na parte ativa do ciclo, o plano começa ativo pelos minutos que faltam dela; na parte parada, começa suspenso. Recalcular a qualquer momento dá a mesma resposta, e ao longo do tempo a parte ativa é a proporção da TBR (50% → metade do tempo, 75% → três quartos).
+- Se a bomba estava parada e o plano começa ativo, ela é ligada na hora.
+- Log: `MedLink temp basal plan: suspend X min / active Y min, starts active for N min | starts suspended`.
+
+**Testes:** `MedLinkPostBolusMinBasalTest` (6), `MedLinkSuspendStartRuleTest` (5: metade, mesmo minuto = mesma resposta, 75%, 25%, limites). medtronic 163/163. O plugin (fila, BLE) não tem teste automático.
+
+**No teste de campo:** ligar a basal mínima, dar um bolus manual com a glicemia subindo e conferir no log a TBR do loop sendo elevada; com uma TBR de 50%, o início deve seguir o horário (metade do ciclo `starts suspended`, metade `starts active for N min`), não a contagem de planos.
+
 ## 4y. Suspensão bloqueada pela bateria do MedLink ou do telefone, aviso vermelho na barra de status (2026-11-10)
 
 **Antes:** o `stopPump` recusava a suspensão com a bateria do telefone ou da **bomba** a 5% ou menos (fixo) e abria um alarme ("bomba não pode ser suspensa"). A bateria do MedLink não contava. A "previsão" do telefone (`batteryDelta`) tinha o sinal invertido (positiva carregando) e o `lastBatteryLevel` nunca era atualizado.
@@ -524,7 +542,89 @@ horizontal em modo indeterminado; quando a bomba entrega, volta ao percentual (d
 - A suspensão pedida pelo usuário continua bloqueada, como antes.
 - A previsão com `batteryDelta` saiu da regra (estava invertida).
 
-**Testes:** `MedLinkSuspendBatteryRuleTest` (5). medtronic 157/157 (neste commit). A notificação não tem teste automático.
+**Testes:** `MedLinkSuspendBatteryRuleTest` (5). medtronic 168/168. A notificação não tem teste automático.
+
+## 4z. SMB "não iniciado" que nunca era reenviado nem falhava (2026-11-10) — NÃO TESTADO EM CAMPO
+
+**Sintoma (`logs/smb_bolus_not_executed.log`):**
+- 15:44:32 `BOLUS  0.4` escrito e confirmado pelo MedLink (`set bolus`, `bolus verification`), mas a bomba não aplicou: a resposta do BOLUS (15:44:55) mostra `pump normal state` e o bolus anterior (`last bolus: 0.1u 15:31`, igual ao baseline) → NOT_STARTED comprovado → `resend (attempt 2)` → `BOLUS resend requested but no held command, failing`.
+- Depois, a cada `M` do watchdog (15:45:09, 15:46:45, 15:46:47...) o mesmo: NOT_STARTED → resend → "no held command". O bolus não é reenviado nem falha.
+
+**Causa:**
+- `resendHeldBolus` só reenviava um comando que estivesse em `onHoldCommandQueue`, e ele só fica lá quando a conexão cai antes da resposta. Na primeira vez (15:44:55) o comando do bolus ainda era o comando atual (a resposta dele estava sendo tratada); nas seguintes ele já tinha terminado e saído das filas. Nos dois casos o reenvio "falhava".
+- E esse "falhar" chamava `onRejectedBeforeWrite`, que mantém um bolus já escrito em UNRESOLVED: o SMB ficava pendente para sempre, cada `M` do watchdog (60 s) pedia o reenvio de novo, e novos SMBs eram recusados ("mesmo tipo pendente").
+
+**Correção:**
+- `MedLinkBLE.resendHeldBolus`: reenvia o comando rastreado (`trackedBolusExecutor`) mesmo que ele não esteja em espera: `clearExecutedCommand` + `resetRetries` + início da fila de bolus. Se ele ainda é o comando atual, espera ele terminar (checa a cada 1 s, até 30 s; senão falha o bolus). Se ainda está numa fila, é zerado para ser escrito de novo e não é adicionado duas vezes. O limite de 5 tentativas do tracker continua valendo.
+- Sem comando rastreado: `MedLinkBolusTracker.onResendImpossible` falha o bolus (o resultado vai para o loop, novos bolus liberados).
+- Sem envio duplo: o reenvio só acontece enquanto `MedLinkBolusTracker.resendPending()` (o `M` permitiu e o bolus ainda não foi escrito de novo; escrever zera a permissão), e só uma espera por vez (um `M` do watchdog durante a espera não inicia outra).
+- Log: `BOLUS resend: waiting for the bolus command to finish`, depois `BOLUS resend after M proved it was not started (held|finished command)` e um novo `writing <BOLUS`.
+
+**Por que a primeira tentativa não foi aplicada:** o MedLink confirmou o comando, mas a bomba continuou em estado normal com o bolus anterior. É uma falha de comunicação MedLink → bomba; o reenvio (até 5 tentativas) é a resposta prevista, e era ele que não acontecia.
+
+**Testes:** `MedLinkBolusTrackerTest` (+2: reenvio impossível falha e libera; reenvio pendente só até o bolus ser escrito de novo). rileylink 510/510. O reenvio no `MedLinkBLE` não tem teste automático (T10).
+
+## 4aa. Tentativas de comando configuráveis; aviso de alarme na tela da bomba (2026-11-10) — NÃO TESTADO EM CAMPO
+
+**Contexto:** o MedLink às vezes confirma um BOLUS, START ou STOP que a bomba não aplica (4z: `BOLUS  0.4` confirmado, bomba em estado normal com o bolus anterior). Normalmente é uma mensagem/alarme na tela da bomba.
+
+**Antes:** as tentativas eram fixas em 5 (`MedLinkBolusTracker.MAX_ATTEMPTS` para bolus, `MedLinkStartRetryRule.MAX_FAILURES` para START e STOP) e o aviso de bomba bloqueada aparecia depois de 2 comandos confirmados sem efeito seguidos (`MedLinkPumpLockRule.LOCK_AFTER`).
+
+**Agora:**
+- Configuração nova `Tentativas de comando` (`MedLinkMedtronicIntPreferenceKey.CommandAttempts`, padrão 5, de 1 a 10), passada ao `MedLinkBLE` (`commandAttemptsProvider`). O mesmo número vale para:
+  - tentativas de um bolus (tracker; também o "tentativa n de N" do diálogo de progresso);
+  - novas tentativas de START e de STOP (e o texto do alarme quando desistem);
+  - comandos confirmados sem efeito seguidos antes do aviso.
+- O aviso (`medlink_pump_block_locked`, notificação urgente + alarme, como antes) agora diz quantos comandos falharam e que a bomba provavelmente mostra um alarme na tela: `Bomba não responde: 5 comandos seguidos de start, stop ou bolus foram confirmados pela MedLink, mas a bomba não os aplicou. A bomba provavelmente mostra um alarme na tela...`. Some quando um comando funciona.
+- **Mudança de comportamento:** com o padrão 5, o aviso aparece depois de 5 comandos sem efeito (antes 2).
+- O valor é lido a cada uso (mudar a configuração vale para o próximo comando).
+
+**Testes:** `MedLinkPumpLockRuleTest` (+1), `MedLinkStartRetryRuleTest` (+1), `MedLinkBolusTrackerTest` (+1: tentativas seguem a configuração e ela é lida a cada bolus). rileylink 513/513, medtronic 168/168.
+
+## 4ab. Explicações das configurações novas do MedLink (2026-11-10) — NÃO TESTADO EM CAMPO
+
+As 5 configurações adicionadas (4x, 4y, 4aa) têm um resumo curto embaixo do título e uma explicação completa, com exemplo e padrão, no diálogo de edição (en, pt-BR, pl, ru): `Tentativas de comando`, `Bateria mínima para suspensão (%)`, `Basal mínima pós-bolus (%)`, `Basal mínima pós-bolus: duração (min)` e `Basal mínima pós-bolus: delta mínimo de 5 min (mg/dL)`. Textos sem formatação que contêm `%` usam `formatted="false"` (antes, `%%` apareceria literalmente).
+
+## 4ac. Tentativas de comando também limitam as repetições no MedLinkBLE (2026-11-10) — NÃO TESTADO EM CAMPO
+
+- A configuração `Tentativas de comando` (4aa) também é o limite de repetições de um comando no `MedLinkBLE` (antes `MAX_TRIES = 5` fixo): os quatro pontos que comparam `nrRetries` (`completedCommand`, a nova tentativa em `retryCommand`, `nextCommand` e a desconexão por repetições) usam `commandAttempts()`. Um comando que chega ao limite é abandonado como antes (bolus: `dropBolusOutOfTries`; START: nova tentativa com alarme, T13).
+- As tentativas de **conexão** ao MedLink (`connectTries` em `medLinkConnect`) também usam `commandAttempts()` (antes 5 fixo): cada falha ao abrir a conexão (`connectGatt` sem GATT) tenta de novo até passar do limite, ou seja, a primeira tentativa + N repetições, como antes.
+- Textos da configuração atualizados (resumo e explicação) em en, pt-BR, pl, ru.
+- Com o valor 1, um comando não é repetido: uma falha de escrita já abandona o comando, e a conexão é repetida só uma vez.
+
+**Testes:** sem teste novo (código do `MedLinkBLE`, T10). rileylink 513/513, medtronic 168/168.
+
+## 4ad. Aba Medtronic: basal da bomba, do plano e da hora, em percentual (2026-11-10) — NÃO TESTADO EM CAMPO
+
+- A linha "Basal temporária" mostrava `tempBasalAmount` (número sem unidade, com significados diferentes conforme quem o gravou). Agora mostra três percentuais em relação à basal base da hora (`baseBasalRate`): `Bomba 100% · plano 60% · nesta hora 150%`.
+  - **Bomba:** o que a bomba faz agora: 0% parada, 100% rodando, `--` com estado desconhecido.
+  - **Plano:** o que as suspensões/microbolus que faltam do plano entregam de agora até o fim do plano (`TempBasalMicrobolusOperations.endsAt`, gravado junto com `durationInMinutes`). Sem plano: `--`.
+  - **Nesta hora:** o que foi entregue desde o início da hora do relógio: tempo com a bomba rodando x basal base + microbolus de TBR (`BS.Type.TBR` do banco), dividido pela basal base no mesmo tempo. Exemplo: 18:30, basal 1 U/h, entregue 0,75 U → 150%.
+- O tempo rodando/parada vem de uma linha do tempo nova, em memória (`MedLinkBasalPercent.Timeline`, últimas 2 h), gravada a cada mudança de `pumpRunningState` (`setPumpRunning/Suspended/Unknow` do status, `setPumpRunningState` e `setSuspended` do plugin). Depois de reiniciar o app ela começa vazia: só o tempo com estado conhecido entra no cálculo (`--` até a primeira leitura). O estado desconhecido não entra.
+- Cálculo em `pump/medtronic/.../data/MedLinkBasalPercent.kt` (puro); o plugin junta os dados em `basalPercents()`, a aba busca os microbolus de TBR da hora.
+- Limitações: o estado é o lido pelo status/comando, não o horário exato da mudança na bomba; no início da hora (ex.: 18:01) um microbolus pesa muito no percentual.
+
+**Testes:** `MedLinkBasalPercentTest` (12: exemplo do usuário 150%, metade parada 50%, microbolus antes da hora, depois de reiniciar, estado desconhecido, sem basal, plano de suspensões, plano começando parado, plano acima de 100%, sem plano, linha do tempo). medtronic 180/180, app compila.
+
+## 4ae. Loop travado em "A bomba está ocupada" depois de uma TBR pequena (2026-11-11) — NÃO TESTADO EM CAMPO
+
+- Log `logs/looplock.log` (23:16): plano anterior de suspensões ativo (`desiredRate=0.364`), o loop pediu 1,16 U/h com basal base 1,3. Isso dá ~3 min de suspensão, abaixo do intervalo mínimo: nenhum plano novo, `clearTempBasal()` esvaziou as operações e ligou a bomba. Em seguida `reactivateTime()` fazia `operations.first` na fila vazia → `NoSuchElementException`.
+- A exceção saía de `MedLinkCommandBasalAbsolute.execute()`; o `QueueWorker` não chamava `queue.resetPerforming()` e terminava ("work end"). O comando ficava "performing" para sempre: todo loop (e o loop manual) esperava 2 min em `isEmptyQueue()` e parava em "A bomba está ocupada".
+- Correções:
+  - `TempBasalMicrobolusOperations.reactivateTime()` devolve `null` sem operações (`peekFirst`).
+  - `setTempBasalAbsolute`: só estende a basal quando os dois horários de reativação existem; o `!!` do resultado de `scheduleSuspension` (nulo antes do primeiro start) virou um resultado `success=true, enacted=false`.
+  - `QueueWorker`: `execute()` dentro de `try/catch/finally`; a exceção é registrada (`command X failed`) e `resetPerforming()` sempre roda. Vale para todas as bombas: uma exceção num comando não trava mais a fila.
+- Limitação: o callback do comando que deu exceção não é chamado (o loop segue no próximo ciclo).
+
+**Testes:** `TempBasalMicrobolusOperationsTest` (plano vazio / limpo devolve `null`). Sem teste do `QueueWorker` (worker Android). medtronic 182/182, implementation 201/203 (só `HardLimitsImplTest`), app compila.
+
+## 4af. Cores da aba Medtronic: bateria por tempo, voltagem e ISIG (2026-11-11) — NÃO TESTADO EM CAMPO
+
+- Bateria por tempo: a cor usava a idade do banco (`PUMP_BATTERY_CHANGE`) e o texto usava `medLinkPumpStatus.batteryAge`; sem evento no banco não havia cor. Agora texto, ícone e cor usam a mesma idade (a do plugin, ou a do banco quando o plugin não tem). Vermelho (0%) mostra a bateria vazia, amarelo (até 25%) a de um quarto; sem idade conhecida a cor volta ao branco.
+- Bateria por voltagem: o texto ficava vazio (`buildString { String.format(...) }` descartava o resultado). Agora mostra `x.xx V`.
+- ISIG: a cor de ISIG baixo (≤ 8 amarelo, ≤ 7 vermelho) era sobrescrita logo depois pela de ISIG alto (≥ 26 / ≥ 31). Agora é uma chamada só.
+
+**Testes:** `MedLinkBatteryAgeTest` (ícone acompanha a cor de 0 a 100%). medtronic 182/182.
 
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
@@ -554,7 +654,13 @@ Resultados em `pump/rileylink/build/test-results/testFullDebugUnitTest/*.xml`.
 | `ble/MedLinkPostGuardTest` | post velho na thread BLE não escreve (4r) |
 
 Fixtures sintéticas: `pump/rileylink/src/test/resources/medlink/` (veja o `README.md` de lá).
-Última execução (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
+Cenários adicionados em 2026-11-10 (lacunas das seções 4q, 4s, 4t):
+- `MedLinkLoopBolusMergeTest` (+5): manual + TBR inteiro, manual + TBR + SMB, manual juntado parcial (o manual é preenchido primeiro, a parte TBR recebe o resto), nada entregue, `temporaryId` distinto por parte com a primeira na hora do bolus da bomba.
+- `MedLinkBolusTrackerTest` (+3): `M` atrasado depois que a resposta do BOLUS registrou o bolus não registra de novo; resposta "bolusing" mantém o bolus a verificar (o `M` do fim fica); bolus só fica "a verificar" depois de escrito.
+- `MedLinkCommandSMBBolusTest` (+3): limite exato da janela, pedido com hora no futuro, janela segue o intervalo configurado.
+
+Última execução (2026-11-10): rileylink 508/508, implementation 198/200 (só o `HardLimitsImplTest` conhecido).
+Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFullDebug` OK. Antes (4k): rileylink 484/484, `:app:assembleFullDebug` OK. Antes (4j): rileylink 482/482, `:app:assembleFullDebug` OK. Antes (4i): rileylink 475/475, `:app:assembleFullDebug` OK. Antes (4h): rileylink 468/468. Antes (T16): rileylink 465/465, `:app:assembleFullDebug` OK. Antes (T15): rileylink 461/461. Antes: rileylink 448/448, `:app:compileFullDebugKotlin` OK. Anterior: rileylink 439/439, medtronic sem falhas, `:app:compileFullDebugKotlin` OK.
 `HardLimitsImplTest` (minDia/maxDia) em `implementation` já falhava antes e não tem relação com estas mudanças.
 
 ---

@@ -86,7 +86,16 @@ class MedLinkBLE //extends RileyLinkBLE
     private var lastStartStopSent: Long = 0
 
     /** T9: the one bolus in flight. Only `M` / `A` answers resolve it. */
-    val bolusTracker = MedLinkBolusTracker(clock = { System.currentTimeMillis() }) { aapsLogger.info(LTag.PUMPBTCOMM, it) }.also {
+    /**
+     * 4aa / 4ac: "command attempts" setting (set by the pump plugin): repetitions of a command here (an executor that
+     * reaches this many tries is given up), tries to connect to the MedLink, bolus tries, START/STOP retries, and confirmed commands without effect in a
+     * row before the "pump locked / alarm on the pump screen" message.
+     */
+    var commandAttemptsProvider: () -> Int = { MedLinkBolusTracker.MAX_ATTEMPTS }
+
+    fun commandAttempts(): Int = commandAttemptsProvider().coerceAtLeast(1)
+
+    val bolusTracker = MedLinkBolusTracker(clock = { System.currentTimeMillis() }, maxAttemptsProvider = { commandAttempts() }) { aapsLogger.info(LTag.PUMPBTCOMM, it) }.also {
         it.onConfirmedWithoutEffect = { what -> onCommandWithoutEffect(what) }
         it.onPumpEffect = { what -> onCommandEffect(what) }
         it.onProgress = { r, delivered -> reportBolusProgress(r, delivered) }
@@ -316,11 +325,11 @@ class MedLinkBLE //extends RileyLinkBLE
 
     private val notifyingCharacteristics: MutableSet<BluetoothGattCharacteristic> = HashSet()
     private var commandQueueBusy: CommandQueueBusy? = null
-    private val MAX_TRIES = 5
     private val BASELINE_MAX_AGE_MS = 30_000L
     private val WATCHDOG_MS = 30_000L
     private val BLOCK_STATUS_RETRY_MS = 60_000L
     private val M_INVALID_RESET = 2
+    private val RESEND_WAIT_TRIES = 30
     private val MAX_BASELINE_REQUESTS = 2
     private var isRetrying = false
     private val commandsToAdd = ConcurrentLinkedDeque<CommandsToAdd>()
@@ -955,7 +964,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
     private var connectTries = 0
     private fun medLinkConnect() {
-        if (connectTries > MAX_TRIES) {
+        if (connectTries > commandAttempts()) {
             aapsLogger.info(LTag.PUMPBTCOMM, "max connection tries")
             return
         }
@@ -1394,7 +1403,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
     fun completedCommand(force: Boolean, waitNextIteration: Boolean) {
         lastCharacteristic = ""
-        if (currentCommand != null && currentCommand!!.nrRetries > MAX_TRIES) {
+        if (currentCommand != null && currentCommand!!.nrRetries > commandAttempts()) {
             aapsLogger.info(LTag.PUMPBTCOMM, "maxtries")
             aapsLogger.info(LTag.PUMPBTCOMM, "removing command")
             val failed = currentCommand
@@ -1864,7 +1873,7 @@ class MedLinkBLE //extends RileyLinkBLE
             aapsLogger.info(LTag.PUMPBTCOMM, "Retrying " + currentCommand!!.nrRetries)
         }
         if (hasCommandsToExecute()) {
-            if (currentCommand != null && currentCommand!!.nrRetries >= MAX_TRIES) {
+            if (currentCommand != null && currentCommand!!.nrRetries >= commandAttempts()) {
 //                currentCommand.clearExecutedCommand();
                 // Max retries reached, give up on this one and proceed
                 aapsLogger.error(LTag.PUMPBTCOMM, "Max number of tries reached")
@@ -1930,7 +1939,7 @@ class MedLinkBLE //extends RileyLinkBLE
         aapsLogger.info(LTag.PUMPBTCOMM, "nextCommand $servicesDiscovered")
         aapsLogger.info(LTag.PUMPBTCOMM, "nextCommand ${commandQueueBusy.toString()}")
         aapsLogger.info(LTag.PUMPBTCOMM, "nextCommand $connectionStatus")
-        if (currentCommand != null && currentCommand!!.nrRetries > MAX_TRIES) {
+        if (currentCommand != null && currentCommand!!.nrRetries > commandAttempts()) {
             removeFirstCommand(true)
         }
         printBuffer()
@@ -2319,7 +2328,7 @@ class MedLinkBLE //extends RileyLinkBLE
                             )
                             latestReceivedAnswer = 0L
                             //TODO fix handling this events
-                        } else if (currentCommand != null && currentCommand!!.nrRetries > MAX_TRIES) {
+                        } else if (currentCommand != null && currentCommand!!.nrRetries > commandAttempts()) {
                             medLinkUtil!!.sendBroadcastMessage(
                                 MedLinkConst.Intents.MedLinkDisconnected,
                                 context
@@ -2619,7 +2628,7 @@ class MedLinkBLE //extends RileyLinkBLE
         val key = Triple(executor, phase, attempt)
         if (lastBolusPhase == key) return
         lastBolusPhase = key
-        handler.post { callback(phase, attempt, MedLinkBolusTracker.MAX_ATTEMPTS) }
+        handler.post { callback(phase, attempt, commandAttempts()) }
     }
 
     /** The result of the executor's own bolus (part 0); the owner ignores repeated calls. */
@@ -2687,7 +2696,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
     /** Recompute the lock; tell the plugin when it changes. */
     private fun updatePumpBlock() {
-        val block = MedLinkPumpLockRule.decide(confirmedWithoutEffect)
+        val block = MedLinkPumpLockRule.decide(confirmedWithoutEffect, commandAttempts())
         if (block == pumpBlock) return
         aapsLogger.warn(LTag.PUMPBTCOMM, "pump block ${pumpBlock ?: "none"} -> ${block ?: "none"} (confirmed without effect: $confirmedWithoutEffect)")
         pumpBlock = block
@@ -2837,18 +2846,56 @@ class MedLinkBLE //extends RileyLinkBLE
         needToCheckOnHold = onHoldCommandQueue.isNotEmpty()
     }
 
-    private fun resendHeldBolus() {
-        val executor = trackedBolusExecutor
-        if (executor == null || !onHoldCommandQueue.remove(executor)) {
-            // nothing to re-send: fail the request instead of guessing
-            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend requested but no held command, failing")
-            bolusTracker.onRejectedBeforeWrite()
+    /** 4z: one resend waiting for the bolus command at a time (a second watchdog `M` must not start another). */
+    private var resendWaiting = false
+
+    private fun resendHeldBolus(wait: Int = 0) {
+        if (wait == 0 && resendWaiting) {
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend already waiting for the bolus command")
             return
         }
-        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend after M proved it was not started")
+        // never send twice: only while M allowed the resend and the bolus was not written again
+        if (!bolusTracker.resendPending()) {
+            resendWaiting = false
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend no longer needed (${bolusTracker.current?.state})")
+            return
+        }
+        val executor = trackedBolusExecutor
+        if (executor == null) {
+            resendWaiting = false
+            // nothing to re-send: fail the request (the loop gets the result) instead of leaving it unresolved
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend requested but there is no bolus command, failing")
+            executeBolusAction(bolusTracker.onResendImpossible("no bolus command to re-send"))
+            return
+        }
+        // 4z: the bolus answer that proved "not started" is handled while the bolus command is still the current one
+        // (logs/smb_bolus_not_executed.log 15:44:55): wait until it finishes and leaves the queues, then send it again
+        if (executor === currentCommand) {
+            resendWaiting = true
+            if (wait >= RESEND_WAIT_TRIES) {
+                resendWaiting = false
+                aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend: the bolus command did not finish in $RESEND_WAIT_TRIES s, failing")
+                executeBolusAction(bolusTracker.onResendImpossible("bolus command still running"))
+                return
+            }
+            if (wait == 0) aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend: waiting for the bolus command to finish")
+            handler.postDelayed({ resendHeldBolus(wait + 1) }, 1_000L)
+            return
+        }
+        resendWaiting = false
+        // the command is held only when the connection dropped before its answer; after a normal answer it finished
+        // and left the queues. M proved it was not started either way: send the same command again.
+        val held = onHoldCommandQueue.remove(executor)
         needToCheckOnHold = onHoldCommandQueue.isNotEmpty()
-        joinWaitingInto(executor)
         executor.clearExecutedCommand()
+        executor.resetRetries()
+        if (orderedQueues.any { q -> q.any { it === executor } }) {
+            aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend: the command is still queued, it will be written again")
+            nextCommand()
+            return
+        }
+        aapsLogger.info(LTag.PUMPBTCOMM, "BOLUS resend after M proved it was not started (${if (held) "held" else "finished"} command)")
+        joinWaitingInto(executor)
         bolusExecutionQueue.addFirst(executor)
         nextCommand()
     }
@@ -3032,7 +3079,7 @@ class MedLinkBLE //extends RileyLinkBLE
     private fun scheduleStartRetry(executor: CommandExecutor<*>?, reason: String) {
         startFailures++
         val failedAt = System.currentTimeMillis()
-        val decision = MedLinkStartRetryRule.onFailed(startFailures)
+        val decision = MedLinkStartRetryRule.onFailed(startFailures, commandAttempts())
         aapsLogger.warn(LTag.PUMPBTCOMM, "START failed ($reason), failure $startFailures: $decision")
         when (decision) {
             is MedLinkStartRetryRule.Decision.Retry -> {
@@ -3044,7 +3091,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
             MedLinkStartRetryRule.Decision.GiveUp   -> {
                 startFailures = 0
-                raiseBolusAlarm("Pump is still SUSPENDED after ${MedLinkStartRetryRule.MAX_FAILURES} START attempts ($reason). Resume the pump manually.")
+                raiseBolusAlarm("Pump is still SUSPENDED after ${commandAttempts()} START attempts ($reason). Resume the pump manually.")
             }
         }
     }
@@ -3083,7 +3130,7 @@ class MedLinkBLE //extends RileyLinkBLE
         currentCommand = null
         stopFailures++
         val failedAt = System.currentTimeMillis()
-        val decision = MedLinkStartRetryRule.onFailed(stopFailures)
+        val decision = MedLinkStartRetryRule.onFailed(stopFailures, commandAttempts())
         aapsLogger.warn(LTag.PUMPBTCOMM, "STOP failed ($reason), failure $stopFailures: $decision")
         when (decision) {
             is MedLinkStartRetryRule.Decision.Retry -> {
@@ -3095,7 +3142,7 @@ class MedLinkBLE //extends RileyLinkBLE
 
             MedLinkStartRetryRule.Decision.GiveUp   -> {
                 stopFailures = 0
-                raiseBolusAlarm("Pump is still RUNNING after ${MedLinkStartRetryRule.MAX_FAILURES} STOP attempts ($reason). Suspend the pump manually if needed.")
+                raiseBolusAlarm("Pump is still RUNNING after ${commandAttempts()} STOP attempts ($reason). Suspend the pump manually if needed.")
             }
         }
         nextCommand()
