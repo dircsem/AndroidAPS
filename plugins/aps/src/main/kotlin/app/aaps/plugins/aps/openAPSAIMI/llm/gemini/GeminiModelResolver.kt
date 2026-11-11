@@ -32,13 +32,15 @@ class GeminiModelResolver @Inject constructor(
         // TTL: 24h
         private val CACHE_TTL_MS = TimeUnit.HOURS.toMillis(24)
 
-        // Fallback fallback priority list
+        // Fallback priority list. Durable aliases first (Google keeps *-latest pointing at the
+        // current GA release), then confirmed GA concrete IDs. No preview/shut-down models here
+        // (gemini-2.0-flash, gemini-1.5-* and *-preview variants were retired).
         private val FALLBACK_PRIORITY = listOf(
-            "gemini-3-flash-preview",
-            "gemini-3-pro",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro-latest"
+            "gemini-flash-latest",
+            "gemini-pro-latest",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro"
         )
     }
 
@@ -49,8 +51,8 @@ class GeminiModelResolver @Inject constructor(
      * Resolves a valid model ID for generateContent calls.
      * 
      * @param apiKey The API Key to use for listing models
-     * @param preferredModel The user's preferred model (e.g. "gemini-3-pro-preview")
-     * @return A valid model ID (e.g. "gemini-3-pro-preview") ready for use in URL
+     * @param preferredModel The user's preferred model (e.g. "gemini-flash-latest")
+     * @return A valid model ID (e.g. "gemini-flash-latest") ready for use in URL
      */
     fun resolveGenerateContentModel(apiKey: String, preferredModel: String?): String {
         val availableModels = getOrFetchModels(apiKey)
@@ -76,7 +78,7 @@ class GeminiModelResolver @Inject constructor(
 
         // 3. Last resort - Find anything that looks like "gemini" and "pro" or "flash"
         val fallback = availableModels.firstOrNull { it.contains("gemini") && (it.contains("pro") || it.contains("flash")) }
-            ?: "gemini-3-flash-preview" // Hard fallback if everything fails (network down + no cache)
+            ?: "gemini-flash-latest" // Hard fallback if everything fails (network down + no cache)
 
         Log.w(TAG, "Using last resort fallback: $fallback")
         return fallback

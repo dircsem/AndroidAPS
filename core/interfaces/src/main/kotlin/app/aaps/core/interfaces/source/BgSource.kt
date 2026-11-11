@@ -3,13 +3,6 @@ package app.aaps.core.interfaces.source
 interface BgSource {
 
     /**
-     *  Does bg source support advanced filtering ? Currently Dexcom native mode only
-     *
-     *  @return true if supported
-     */
-    fun advancedFilteringSupported(): Boolean = false
-
-    /**
      *  Sensor battery level in %
      *
      *  -1 if not supported
@@ -19,4 +12,32 @@ interface BgSource {
 
     val isMedLink : Boolean
         get() = false
+    /**
+     *  Check if sensor has any error condition (expired, fault, replacement needed, signal lost)
+     *
+     *  @return true if sensor has error and BG values should not be displayed
+     */
+    fun hasSensorError(): Boolean = false
+
+    /**
+     * True when a fingerstick should go to the SENSOR instead of being fitted in the app.
+     *
+     * False for every source by default, and false even on a source that can do it until the user
+     * has switched it on. While it is true the app must not also fit a line on top of the same
+     * sensor's readings, or the correction is applied twice.
+     */
+    fun calibratesInSensor(): Boolean = false
+
+    /**
+     * Hand a fingerstick to the sensor's own algorithm.
+     *
+     * ⚠️ A sensor keeps a calibration it accepts for good: it cannot be edited or deleted
+     * afterwards, unlike a calibration entry stored in the app. Only ever call this for an explicit
+     * user action.
+     *
+     * @param glucoseMgdl the blood value
+     * @param bloodAtMs wall clock of the PRICK, not of the moment the value was typed in
+     */
+    fun calibrateSensor(glucoseMgdl: Int, bloodAtMs: Long): SensorCalibrationResult =
+        SensorCalibrationResult.NotSupported
 }

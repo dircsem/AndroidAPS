@@ -2,7 +2,7 @@
 ## Advanced Intelligent Mathematical Insulin (AIMI)
 
 **Version**: 3.4.0  
-**Last Updated**: January 2026  
+**Last Updated**: May 2026  
 **Languages**: 🌍 Multi-language (see Settings → Language)
 
 ---
@@ -19,8 +19,9 @@
    - [AIMI Auditor](#aimi-auditor)
    - [AIMI Trajectory](#aimi-trajectory)
    - [PKPD](#pkpd-pharmacokineticpharmacodynamic-model)
-8. [Troubleshooting](#troubleshooting)
-9. [Recommended Settings](#recommended-settings-by-user-type)
+8. [Eversense CGM (E3 / 365)](#eversense-cgm-e3--365) 📡
+9. [Troubleshooting](#troubleshooting)
+10. [Recommended Settings](#recommended-settings-by-user-type)
 
 ---
 
@@ -331,6 +332,38 @@ AIMI Context allows you to **inform the algorithm** about factors that affect in
 | 🍷 **Alcohol** | ⬇️⬆️ Complex (initial drop, then rise) | 4-12 hours |
 | 🔄 **Luteal Phase** | ⬆️ +10 to +20% | 14 days |
 
+### Current AIMI Understanding (body state card)
+
+At the top of **AIMI Context**, AIMI shows how it reads your body **before** insulin posture:
+
+- **Mode headline** — e.g. Dawn Endogenous, Fast Meal, Stress Resistance
+- **Narrative** — plain-language summary of therapeutic posture
+- **Live body signals** — steps/15 min, heart rate, activity, sleep debt (Health Connect)
+- **Thermal rhythm** — skin temperature evolution vs your personal baseline (Garmin or Oura via Health Connect)
+- **Signal gauges** — Meal, Endogenous, Resistance, **Thermal**, Sensor
+
+#### Thermal rhythm (Garmin / Oura)
+
+AIMI does **not** dose from absolute body temperature. It tracks **how skin temperature moves** relative to your own nightly baseline:
+
+| Reading | Meaning |
+|---------|---------|
+| *Stable around baseline* | Normal rhythm — no thermal stress signal |
+| *Progressive warming* | Possible inflammatory or illness stress (combined with HR, sleep, context) |
+| *Cooling + sleep debt* | Recovery burden — conservative posture |
+| *Luteal BBT rise* | Cycle physiology (women) — read before insulin, not treated as infection |
+| *Pending* | Enable **Skin Temperature** and **Basal Body Temperature** in Health Connect for Garmin/Oura |
+
+**Setup:**
+
+1. Garmin Connect or Oura → sync to **Health Connect**
+2. AIMI → grant **Skin Temperature** + **Basal Body Temperature** permissions
+3. Open Context — **Thermal rhythm** updates between loop ticks when wearable data changes
+
+**Noise handling:** variations smaller than **0.03 °C** are ignored so normal wearable jitter does not trigger false alerts.
+
+**Effect on insulin:** thermal signals influence AIMI’s **understanding** (resistance/recovery probabilities, patient mode, recursive belief authority). They do **not** add a fixed “+X% for fever” bolus. Dosing still flows through the belief tree and safety gates.
+
 ---
 
 ## 🛡️ Safety Features
@@ -504,6 +537,84 @@ Instead of using a fixed DIA curve, PKPD models insulin **dynamically**:
 
 ---
 
+## 📡 Eversense CGM (E3 / 365)
+
+OpenApsAIMI includes the **native Eversense CGM plugin** (CAPTCG patch series). It works with the AIMI loop like any other glucose source. This plugin is **experimental** — always verify readings with a fingerstick before treatment decisions.
+
+Upstream reference: [CAPTCG/AndroidAPS-Eversense-](https://github.com/CAPTCG/AndroidAPS-Eversense-)
+
+### E3 vs 365
+
+| Transmitter | Sensor life | Official Eversense app | Notes |
+|-------------|-------------|------------------------|-------|
+| **Eversense E3** (180-day) | 180 days | **Required** for insertion/warm-up, then **disconnect** for AAPS BLE | **EU** DMS endpoints |
+| **Eversense 365** (1-year) | 365 days | **Not required** — AAPS standalone | **US** DMS endpoints |
+
+### Before using AIMI
+
+1. **Insertion** by a Senseonics-trained clinician (warm-up shown in the official app).
+2. **Do not calibrate** during warm-up or initialization.
+3. In the official app: **Connections → your transmitter → Disconnect** (frees BLE for AAPS).
+4. In **Config Builder → BG Source**: select **Eversense**.
+5. Open **Eversense plugin settings** and enter **DMS credentials** (Eversense portal username/password) — required for cloud auth and the security certificate on every new connection.
+6. **Scan** and **pair** the transmitter over Bluetooth.
+
+Without active CGM data, **AIMI cannot run the loop** (meal-mode prebolus, SMB, etc.).
+
+### Plugin settings (summary)
+
+| Setting | Purpose |
+|---------|---------|
+| **DMS credentials** | Eversense cloud login (E3 EU / 365 US) |
+| **Calibration** | Phase, last/next calibration, **Calibrate** button when `READY` |
+| **Placement signal** | Excellent ≥75 · Good 48–74 · Low 30–47 · Very poor 1–24 |
+| **Use ESEL smoothing** | Optional glucose smoothing (fork preference) |
+| **Enable Eversense cloud upload** | Upload to DMS portal for care team |
+| **Show cloud upload result** | Optional upload result toast |
+
+**Poor placement**: 3 consecutive low readings → urgent notification and placement guide.
+
+### Calibration
+
+- Transmitter must be **CalibrationReadiness = READY** (shown in the plugin).
+- Tap **Calibrate**, enter fingerstick BG; value is sent over **Bluetooth** (E3 uses corrected **0x3C** dual-timestamp packet).
+- **Rejected** during warm-up, initialization, or when not ready.
+- After success, last calibration date is updated locally (some E3 firmware versions do not return it reliably from flash).
+
+### Daily use with AIMI
+
+1. Apply a **fresh adhesive patch** each morning; wear the transmitter on the upper arm.
+2. **Charge the transmitter daily** — no glucose data while charging.
+3. Check BG and trend arrows in AAPS; AIMI uses these values like any CGM source.
+4. **Calibrate** when due; if symptoms do not match CGM, **always fingerstick**.
+5. For **firmware updates** via the official app: remove the CGM source in AAPS, reconnect in Senseonics, then set up Eversense in AAPS again.
+
+### DMS portal sync (care team)
+
+If **cloud upload** is enabled:
+
+- **E3**: `PutCurrentValues` + `PutDeviceEvents` to **EU** servers.
+- **365**: diagnostic upload + **US** portal (standard 365 behavior).
+
+Readings can update the portal (glucose, trend, signal, battery, history).
+
+### Eversense troubleshooting
+
+| Issue | Checks |
+|-------|--------|
+| No BLE connection | Official app disconnected? Bluetooth / location permissions? |
+| Calibration refused | Warm-up / init phase? Wait for `READY` |
+| Absurd values after calibration | Update to latest AIMI build (0x3C packet fix) |
+| Cloud upload failed | DMS credentials, Internet; E3 = EU account |
+| AIMI loop inactive | Active BG source and recent readings |
+
+### AIMI compatibility
+
+- Eversense as **SourceSensor** `EVERSENSE_E3` or `EVERSENSE_365` — works with OpenAPS AIMI, adaptive smoothing, and standard exports.
+- Same requirement as Dexcom/xDrip: **fresh CGM data** for SMB, meal modes, and Auditor.
+
+---
+
 ## 🔧 Troubleshooting
 
 ### "Getting too many hypos"
@@ -616,7 +727,7 @@ This manual is available in the following languages:
 
 ---
 
-**Last Updated**: January 4, 2026  
-**Manual Version**: 2.0  
+**Last Updated**: May 2026  
+**Manual Version**: 2.1  
 **AIMI Version**: 3.4.0
 

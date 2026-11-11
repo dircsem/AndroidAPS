@@ -1,28 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-feature
-        android:name="android.hardware.telephony"
-        android:required="false" />
-
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_MMS" />
-    <uses-permission android:name="android.permission.SEND_SMS" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <application>
-        <activity
-            android:name=".general.smsCommunicator.activities.SmsCommunicatorOtpActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme">
-            <intent-filter>
-                <action android:name="app.aaps.plugins.main.general.smsCommunicator.activities.SmsCommunicatorOtpActivity" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
         <activity
             android:name="app.aaps.plugins.sync.wear.activities.CwfInfosActivity"
             android:exported="false"
@@ -39,6 +22,11 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".general.dashboard.AimiAdaptationStatusActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <activity
             android:name=".general.manual.UserManualActivity"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar" />
@@ -48,12 +36,17 @@
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar" />
 
-        <service 
+        <service
             android:name=".general.persistentNotification.DummyService"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps AndroidAPS alive for continuous automated insulin delivery (artificial pancreas loop)." />
+        </service>
 
         <service
             android:name="app.aaps.plugins.sync.wear.wearintegration.DataLayerListenerServiceMobile"
+            android:foregroundServiceType="connectedDevice"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />

@@ -52,7 +52,8 @@ object LocalSentinel {
         val smbFactor: Double,             // 0.0-1.0 (multiplicateur SMB)
         val extraIntervalMin: Int,         // 0-20 min (ajout à l'intervalle)
         val preferBasal: Boolean,          // Préférer basal vs SMB
-        val details: List<String>          // Détails pour logs
+        val details: List<String>,         // Détails pour logs
+        val agreement: Double = 1.0        // Coherence agreement [0-1] (1.0 = decision fully coherent with variables) — the "gendarme" score
     )
     
     /**
@@ -91,6 +92,7 @@ object LocalSentinel {
         eventualBg: Double?,
         predBgsAvailable: Boolean,
         iobTotal: Double,
+        maxIob: Double = 0.0,
         iobActivity: Double?,
         pkpdStage: String?,
         lastBolusAgeMin: Double,
@@ -244,57 +246,65 @@ object LocalSentinel {
         // 7. COMPUTE RECOMMENDATION
         // ================================================================
         
-        val (recommendation, smbFactor, extraInterval, preferBasal) = when {
-            mainReason == "STACKING_RISK" || mainReason == "SMB_CHAIN" -> {
-                // Stacking : réduire fortement + augmenter interval
-                Tuple4(Recommendation.HOLD_SOFT, 0.6, 6, false)
+        // ================================================================
+        // 8. COHERENCE AUDIT — the "gendarme": agreement between the loop's proposed SMB and what the variables say.
+        //    Regression is PROPORTIONAL to disagreement (NOT a flat stacking cut). A coherent rising meal high keeps
+        //    agreement high (no reduction); a dose the data contradicts (falling / eventual<target / degraded)
+        //    regresses proportionally and may DEFER. The score/tier above are kept only to escalate to the external
+        //    LLM and for logs — they no longer drive the dose factor.
+        // ================================================================
+        var agreement = 1.0
+        val why = mutableListOf<String>()
+        val dosing = smbProposed > 0.05
+        val risingHigh = bg > target + 20.0 && delta > 0.5
+
+        if (dosing) {
+            when {
+                eventualBg != null && eventualBg < target -> { agreement -= 0.35; why.add("eventual<target") }
+                eventualBg != null && eventualBg < target + 30.0 && delta < 0.0 -> { agreement -= 0.20; why.add("eventual~target+falling") }
             }
-            mainReason == "PREDICTION_MISSING" -> {
-                // Degraded mode : cap modéré + interval
-                Tuple4(Recommendation.REDUCE_SMB, 0.7, 4, false)
-            }
-            mainReason == "DRIFT_PERSISTENT" || mainReason == "PLATEAU_HIGH" -> {
-                // Drift lent : préférer basal
-                Tuple4(Recommendation.PREFER_BASAL, 0.8, 2, true)
-            }
-            mainReason in listOf("HIGH_VARIABILITY", "OSCILLATIONS") -> {
-                // Variabilité : limiter SMB pour stabiliser
-                Tuple4(Recommendation.REDUCE_SMB, 0.75, 3, false)
-            }
-            mainReason == "CONTRADICTION_PKPD_ML" -> {
-                // Contradiction PKPD : prudent
-                Tuple4(Recommendation.INCREASE_INTERVAL, 0.8, 4, false)
-            }
-            mainReason == "RECENT_BOLUS_STACKING" -> {
-                // Recent bolus : augmenter interval
-                Tuple4(Recommendation.INCREASE_INTERVAL, 0.85, 3, false)
-            }
-            mainReason == "AUTODRIVE_STUCK" -> {
-                // Autodrive stuck : switch to basal
-                Tuple4(Recommendation.PREFER_BASAL, 0.9, 2, true)
-            }
-            bg < 120 && delta > 0 -> {
-                // BG proche target + montée : limiter variabilité (éviter hypo)
-                Tuple4(Recommendation.CONFIRM, 0.9.coerceIn(0.6, 1.0), 1, false)
-            }
-            else -> {
-                // Normal
-                Tuple4(Recommendation.CONFIRM, 1.0, 0, false)
-            }
+            if (delta < -0.5) { agreement -= 0.25; why.add("falling") }
+            if (predictedBg != null && predictedBg < target - 10.0) { agreement -= 0.20; why.add("pred<target-10") }
+            // genuine RELATIVE stacking — only when NOT a coherent rising high (a rising meal high is coherent, not stacking)
+            if (!risingHigh && maxIob > 0.0 && iobTotal > 0.70 * maxIob && delta < 0.5) { agreement -= 0.25; why.add("iob>0.7·maxIob&!rising") }
         }
-        
+        // Degraded / unverifiable data → cannot confirm coherence → caution.
+        if (!predBgsAvailable || predictedBg == null || eventualBg == null) { agreement -= 0.25; why.add("pred_missing") }
+        if (isStale) { agreement -= 0.15; why.add("stale") }
+        if (noise >= 3) { agreement -= 0.10; why.add("noise") }
+        if (pumpUnreachable) { agreement -= 0.30; why.add("pump_unreachable") }
+
+        agreement = agreement.coerceIn(0.0, 1.0)
+        val defer = dosing && agreement < 0.30 && (delta < 0.0 || (eventualBg != null && eventualBg < target))
+        details.add("AGREEMENT=${"%.2f".format(agreement)}${if (why.isEmpty()) "" else " [${why.joinToString(",")}]"}")
+
+        val recommendation = when {
+            defer -> Recommendation.HOLD_SOFT
+            agreement < 0.60 -> Recommendation.REDUCE_SMB
+            agreement < 0.85 -> Recommendation.INCREASE_INTERVAL
+            else -> Recommendation.CONFIRM
+        }
+        // Proportional regression: smbFactor = agreement (floor 0.30 so a coherent-but-uncertain dose isn't zeroed);
+        // a strongly-contradicted dose (defer) is held to 0 this tick and re-evaluated next tick.
+        val smbFactor = if (defer) 0.0 else agreement.coerceAtLeast(0.30)
+        val extraInterval = ((1.0 - agreement) * 8.0).toInt().coerceIn(0, 12)
+        val preferBasal = mainReason == "DRIFT_PERSISTENT" || mainReason == "PLATEAU_HIGH" || mainReason == "AUTODRIVE_STUCK"
+        val auditReason = when {
+            defer -> "DEFER_INCOHERENT"
+            agreement < 0.85 -> "LOW_AGREEMENT"
+            else -> mainReason
+        }
+
         return SentinelAdvice(
             score = score.coerceIn(0, 100),
             tier = tier,
-            reason = mainReason,
+            reason = auditReason,
             recommendation = recommendation,
             smbFactor = smbFactor,
             extraIntervalMin = extraInterval,
             preferBasal = preferBasal,
-            details = details
+            details = details,
+            agreement = agreement
         )
     }
-    
-    // Tuple helper (Kotlin n'a pas Tuple4 natif)
-    private data class Tuple4<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 }

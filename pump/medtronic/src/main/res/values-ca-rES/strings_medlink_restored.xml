@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Error bomba</string>
+    <string name="medtronic_error_pump_frequency_not_set">Freqüència bomba no configurada.</string>
+    <string name="medtronic_errors">Errors</string>
+    <string name="medtronic_error_serial_not_set">Nr. de sèrie # no configurat.</string>
+    <string name="medtronic_history_type">Tipus:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Bomba no accessible</string>
+    <string name="medtronic_warning">Avís</string>
+    <string name="medtronic_pump_history">Historial bomba Medtronic</string>
+</resources>

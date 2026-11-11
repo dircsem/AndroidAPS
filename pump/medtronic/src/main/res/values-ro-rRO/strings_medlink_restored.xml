@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Eroare a pompei</string>
+    <string name="medtronic_error_pump_frequency_not_set">Frecvența pompei nesetată.</string>
+    <string name="medtronic_errors">Erori</string>
+    <string name="medtronic_error_serial_not_set">Număr serial nesetat.</string>
+    <string name="medtronic_history_type">Tip:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pompă indisponibilă</string>
+    <string name="medtronic_warning">Atenție</string>
+    <string name="medtronic_pump_history">Istoric pompă Medtronic</string>
+</resources>

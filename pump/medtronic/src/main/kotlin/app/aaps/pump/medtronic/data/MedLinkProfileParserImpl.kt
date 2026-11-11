@@ -40,7 +40,7 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         var buffer = StringBuffer()
         buffer.append("{")
         buffer = addData(buffer, "dia", true)
-        buffer = addData(buffer, Constants.defaultDIA, false)
+        buffer = addData(buffer, DEFAULT_DIA, false)
         parseBolusWizardSettings(profileData)
         buffer = parseCarbRatio(profileData, buffer)
         buffer = parseInsulinSensitivity(profileData, buffer)
@@ -272,3 +272,6 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         }
     }
 }
+
+/** MedLink: DIA written into the profile read from the Veo (Constants.defaultDIA was removed in AAPS 4.0). */
+private const val DEFAULT_DIA = 5.0

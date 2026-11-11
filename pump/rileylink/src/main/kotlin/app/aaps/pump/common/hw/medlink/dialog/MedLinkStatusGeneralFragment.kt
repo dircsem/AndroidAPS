@@ -75,7 +75,7 @@ class MedLinkStatusGeneralFragment : DaggerFragment() {
         //         medLinkServiceData.versionCC110 ?: RileyLinkStatusGeneralFragment.EMPTY
         //     )
         // }
-        val rileyLinkPumpDevice = activePlugin.activePump as RileyLinkPumpDevice
+        val rileyLinkPumpDevice = activePlugin.activePumpInternal as RileyLinkPumpDevice
         val rileyLinkPumpInfo = rileyLinkPumpDevice.pumpInfo
         targetDevice?.resourceId?.let { binding.deviceType.setText(it) }
         if (targetDevice == RileyLinkTargetDevice.MedtronicPump) {

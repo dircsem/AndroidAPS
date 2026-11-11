@@ -5,10 +5,17 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import app.aaps.core.data.iob.InMemoryGlucoseValue
+import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.EB
+import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.IobTotal
@@ -20,33 +27,52 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.source.CgmSensorLifecycle
+import app.aaps.core.interfaces.source.CgmSensorStatusProvider
+import app.aaps.core.interfaces.source.CgmStagingEvidence
+import app.aaps.core.interfaces.source.CgmWarmupProvider
+import app.aaps.core.interfaces.source.CgmWarmupStatus
+import app.aaps.core.interfaces.source.PromotionRejectReason
+import app.aaps.core.interfaces.source.PromotionResult
+import app.aaps.core.interfaces.source.StagingState
 import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.plugins.aps.openAPSAIMI.physio.AIMIPhysioDataRepositoryMTR
 import app.aaps.plugins.aps.openAPSAIMI.trajectory.TrajectoryGuard // 🌀 Trajectory
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.AutodriveEngine // 🧠 Engine
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.plugins.aps.openAPSAIMI.trajectory.TrajectoryType
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAcceptOpenLoopChange
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
-import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
+import app.aaps.core.interfaces.rx.events.EventInitializationChanged
+import app.aaps.core.interfaces.rx.events.EventLoopUpdateGui
+import app.aaps.core.interfaces.rx.events.EventNewOpenLoopNotification
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
-import app.aaps.core.interfaces.rx.events.EventTempBasalChange
-import app.aaps.core.interfaces.rx.events.EventTempTargetChange
+import app.aaps.core.interfaces.rx.events.EventScale
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewGraph
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewIobCob
+import app.aaps.core.interfaces.rx.events.EventUpdateOverviewSensitivity
 import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualitySnapshot
 import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualityTier
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.TrendCalculator
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.data.time.T
-import app.aaps.core.objects.extensions.directionToIcon
+import app.aaps.core.objects.extensions.directionToLegacyDrawable
 import app.aaps.core.objects.extensions.displayText
 import java.io.Serializable
 import app.aaps.core.objects.extensions.round
@@ -55,8 +81,27 @@ import app.aaps.core.objects.extensions.toStringFull
 import app.aaps.core.objects.extensions.toStringShort
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.plugins.main.R
+import app.aaps.core.objects.overview.DashboardCoherentGlucose
+import androidx.core.text.HtmlCompat
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
@@ -83,20 +128,72 @@ class OverviewViewModel(
     private val preferences: Preferences,
     private val overviewData: OverviewData,
     private val trajectoryGuard: TrajectoryGuard, // 🌀 Trajectory Injection
-    private val autodriveEngine: AutodriveEngine // 🧠 Engine Injection
+    private val autodriveEngine: AutodriveEngine, // 🧠 Engine Injection
+    private val aimiPhysioDataRepository: AIMIPhysioDataRepositoryMTR
 ) : ViewModel() {
 
     private val disposables = CompositeDisposable()
     private var started = false
+    /** Cancelled in [stop]; Rx + DB observation for dashboard updates run here (same pattern as OverviewFragment flows). */
+    private var updateScope: CoroutineScope? = null
+
+    /**
+     * [updateStatus] runs suspend DB reads on [Dispatchers.IO]. Without serialization, overlapping runs can
+     * finish out of order and the last [MutableLiveData.postValue] may apply an older snapshot (stale reservoir,
+     * activity %, TBR, steps, HR, etc.).
+     */
+    private val updateMutex = Mutex()
+
+    /**
+     * Coalesces high-frequency overview signals (RM/EPS/TE, bucketed BG, pump, loop GUI, …) into a single
+     * [updateStatus] after a short quiet window. Cancelling the previous job avoids piling N full dashboard
+     * recomputes (TIR-of-day, steps, HR, …) under [updateMutex] when the bus chatters — the main cause of
+     * persistent “frozen” hybrid UI while work catches up.
+     *
+     * Use [launchUpdate] (no debounce) for [refreshAll] and any path that must run immediately with other work
+     * in the same mutex block.
+     */
+    private var debouncedStatusJob: Job? = null
+
+    /** Midnight of the day [yesterdayTirTarget] was read for; the value is read again only after midnight. */
+    private var yesterdayTirDayStart: Long = -1L
+    private var yesterdayTirTarget: Double? = null
+
+    private fun scheduleDebouncedStatusRefresh(debounceMs: Long = 120L) {
+        val scope = updateScope ?: return
+        debouncedStatusJob?.cancel()
+        debouncedStatusJob = scope.launch {
+            delay(debounceMs)
+            updateMutex.withLock {
+                updateStatus()
+            }
+        }
+    }
+
+    private fun launchUpdate(block: suspend () -> Unit) {
+        updateScope?.launch {
+            updateMutex.withLock {
+                block()
+            }
+        }
+    }
 
     private val _statusCardState = MutableLiveData<StatusCardState>()
     val statusCardState: LiveData<StatusCardState> = _statusCardState
+    @Volatile private var latestStatusCardState: StatusCardState? = null
 
     private val _adjustmentState = MutableLiveData<AdjustmentCardState>()
     val adjustmentState: LiveData<AdjustmentCardState> = _adjustmentState
 
     private val _graphMessage = MutableLiveData<String>()
     val graphMessage: LiveData<String> = _graphMessage
+
+    /**
+     * One-shot user feedback for a staging-sensor promotion (result message). Hoisted to the Compose
+     * layer (a background ViewModel has no Compose tree) — the dashboard collects and shows a toast.
+     */
+    private val _promotionEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val promotionEvents = _promotionEvents.asSharedFlow()
 
     // Adaptive smoothing quality (informational, used only for UI badge in phase 1)
     private var adaptiveSmoothingQualityTier: AdaptiveSmoothingQualityTier? = null
@@ -150,98 +247,379 @@ class OverviewViewModel(
     }
 
     fun start() {
-        if (started) return
-        started = true
-        subscribeToUpdates()
+        if (!started) {
+            updateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            started = true
+            subscribeToUpdates()
+            updateScope?.launch {
+                while (true) {
+                    delay(ADAPTATION_FRESHNESS_TICK_MS)
+                    updateMutex.withLock {
+                        refreshAimiAdaptationSummary()
+                    }
+                }
+            }
+        }
+        // Always pull latest pump/IOB/loop state on resume — [started] can already be true after a shallow
+        // pause, and loop completion often emits [EventLoopUpdateGui] without [EventRefreshOverview].
         refreshAll()
     }
 
     fun stop() {
         started = false
         disposables.clear()
+        updateScope?.cancel()
+        updateScope = null
     }
 
     override fun onCleared() {
         disposables.clear()
+        updateScope?.cancel()
+        updateScope = null
         super.onCleared()
     }
 
     private fun subscribeToUpdates() {
+        val scope = updateScope ?: return
+
         disposables += rxBus
             .toObservable(EventRefreshOverview::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ refreshAll() }, fabricPrivacy::logException)
 
+        // Match [OverviewFragment.onResume]: debounce BG bucket storms before refresh.
         disposables += rxBus
             .toObservable(EventBucketedDataCreated::class.java)
+            .debounce(1L, TimeUnit.SECONDS)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ updateStatus() }, fabricPrivacy::logException)
-
-        disposables += rxBus
-            .toObservable(EventTempBasalChange::class.java)
-            .observeOn(aapsSchedulers.io)
-            .subscribe({ updateAdjustments() }, fabricPrivacy::logException)
-
-        disposables += rxBus
-            .toObservable(EventTempTargetChange::class.java)
-            .observeOn(aapsSchedulers.io)
-            .subscribe({ updateAdjustments() }, fabricPrivacy::logException)
-
-        disposables += rxBus
-            .toObservable(EventExtendedBolusChange::class.java)
-            .observeOn(aapsSchedulers.io)
-            .subscribe({ updateAdjustments() }, fabricPrivacy::logException)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
 
         disposables += rxBus
             .toObservable(EventPumpStatusChanged::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ updateStatus() }, fabricPrivacy::logException)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
+
+        // End of loop.invoke() — keeps hybrid dashboard in sync with classic overview when APS enacts changes.
+        disposables += rxBus
+            .toObservable(EventLoopUpdateGui::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
+
+        disposables += rxBus
+            .toObservable(EventAcceptOpenLoopChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
+
+        disposables += rxBus
+            .toObservable(EventNewOpenLoopNotification::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
 
         disposables += activePlugin.activeOverview.overviewBus
             .toObservable(EventUpdateOverviewGraph::class.java)
+            .debounce(1L, TimeUnit.SECONDS)
             .observeOn(aapsSchedulers.io)
             .subscribe({ updateGraphMessage() }, fabricPrivacy::logException)
 
         disposables += activePlugin.activeOverview.overviewBus
             .toObservable(EventUpdateOverviewIobCob::class.java)
+            .debounce(1L, TimeUnit.SECONDS)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ updateStatus() }, fabricPrivacy::logException)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
+
+        // Same bus as OverviewFragment.updateSensitivity() — keeps activity % / AIMI metrics in sync after autosens refresh.
+        disposables += activePlugin.activeOverview.overviewBus
+            .toObservable(EventUpdateOverviewSensitivity::class.java)
+            .debounce(1L, TimeUnit.SECONDS)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
 
         disposables += rxBus
-            .toObservable(app.aaps.core.interfaces.rx.events.EventPreferenceChange::class.java)
+            .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ 
-                if (it.isChanged(app.aaps.core.keys.StringKey.OApsAIMIContextStorage.key)) {
-                    updateStatus() 
+            .subscribe({
+                if (it.isChanged(StringKey.OApsAIMIContextStorage.key) ||
+                    it.isChanged(BooleanKey.OverviewShowWizardButton.key) ||
+                    it.isChanged(UnitDoubleKey.OverviewLowMark.key) ||
+                    it.isChanged(UnitDoubleKey.OverviewHighMark.key) ||
+                    it.isChanged(BooleanNonKey.AutosensUsedOnMainPhone.key) ||
+                    it.isChanged(DoubleKey.AutosensMax.key) ||
+                    it.isChanged(DoubleKey.AutosensMin.key)
+                ) {
+                    refreshAll()
                 }
             }, fabricPrivacy::logException)
+
+        disposables += rxBus
+            .toObservable(EventScale::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ refreshAll() }, fabricPrivacy::logException)
+
+        disposables += rxBus
+            .toObservable(EventInitializationChanged::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleDebouncedStatusRefresh() }, fabricPrivacy::logException)
+
+        fun <T : Any> observePersistenceChanges(clazz: Class<T>, onEmit: suspend () -> Unit) {
+            scope.launch {
+                try {
+                    persistenceLayer.observeChanges(clazz).collect {
+                        try {
+                            onEmit()
+                        } catch (e: Exception) {
+                            fabricPrivacy.logException(e)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    fabricPrivacy.logException(e)
+                }
+            }
+        }
+        observePersistenceChanges(TB::class.java) { updateAdjustments() }
+        observePersistenceChanges(TT::class.java) { updateAdjustments() }
+        observePersistenceChanges(EB::class.java) { updateAdjustments() }
+        // Same persistence streams as [OverviewFragment.onResume] (EPS / RM → scheduleUpdateGUI / processAps).
+        observePersistenceChanges(EPS::class.java) { scheduleDebouncedStatusRefresh() }
+        observePersistenceChanges(RM::class.java) { scheduleDebouncedStatusRefresh() }
+        // Cannula / sensor ages on the hybrid card
+        observePersistenceChanges(TE::class.java) { scheduleDebouncedStatusRefresh() }
+
+        // Generic CGM warm-up: refresh the hero when the active source starts/updates/ends a warm-up
+        // (phase change, (re)connection, or first glucose → handoff). No-op for sources that don't
+        // implement [CgmWarmupProvider]. Per-second countdown ticking is driven from the Compose layer.
+        scope.launch {
+            try {
+                (activePlugin.activeBgSource as? CgmWarmupProvider)?.warmupStatus?.collect {
+                    scheduleDebouncedStatusRefresh()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
+
+        // Generic dual-sensor lifecycle + staging: refresh the hero when the active source reports a
+        // production lifecycle change (early/end of life) or any staging-slot change (warm-up, settling,
+        // ready). No-op for sources that don't implement [CgmSensorStatusProvider]; the staging slot is
+        // collect-only and never feeds the loop until an explicit promote.
+        scope.launch {
+            try {
+                (activePlugin.activeBgSource as? CgmSensorStatusProvider)?.let { sensor ->
+                    merge(
+                        sensor.lifecycle.map { },
+                        sensor.stagingState.map { },
+                        sensor.stagingLifecycle.map { },
+                        sensor.stagingWarmupStatus.map { },
+                        sensor.stagingEvidence.map { },
+                    ).collect {
+                        scheduleDebouncedStatusRefresh()
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
+
+        // Same preference-driven refresh as overview [merge(...).onEach { scheduleUpdateGUI() }].
+        scope.launch {
+            try {
+                merge(
+                    preferences.observe(BooleanKey.OverviewShowWizardButton).drop(1).map { },
+                    preferences.observe(UnitDoubleKey.OverviewLowMark).drop(1).map { },
+                    preferences.observe(UnitDoubleKey.OverviewHighMark).drop(1).map { },
+                    preferences.observe(BooleanNonKey.AutosensUsedOnMainPhone).drop(1).map { },
+                    preferences.observe(DoubleKey.AutosensMax).drop(1).map { },
+                    preferences.observe(DoubleKey.AutosensMin).drop(1).map { },
+                ).collect {
+                    refreshAll()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
+        // Steps / HR: coalesce bursts from sync (Health Connect, watch) then refresh hybrid metrics.
+        scope.launch {
+            try {
+                persistenceLayer.observeChanges(HR::class.java)
+                    .debounce(400L)
+                    .collect {
+                        try {
+                            scheduleDebouncedStatusRefresh()
+                        } catch (e: Exception) {
+                            fabricPrivacy.logException(e)
+                        }
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
+        scope.launch {
+            try {
+                persistenceLayer.observeChanges(SC::class.java)
+                    .debounce(400L)
+                    .collect {
+                        try {
+                            // New step buckets in DB → allow a fresh HC daily aggregate on next refresh.
+                            aimiPhysioDataRepository.invalidateTodayStepsHcAggregateCache()
+                            scheduleDebouncedStatusRefresh()
+                        } catch (e: Exception) {
+                            fabricPrivacy.logException(e)
+                        }
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
     }
 
     private fun refreshAll() {
-        updateStatus()
-        updateAdjustments()
-        updateGraphMessage()
+        launchUpdate {
+            updateStatus()
+            updateAdjustments()
+            updateGraphMessage()
+        }
     }
 
-    private fun updateStatus() {
+    private data class AimiAdaptationSummary(
+        val text: String,
+        val contentDescription: String,
+        val hasAttention: Boolean,
+    )
+
+    private fun buildAimiAdaptationSummary(rt: RT?, now: Long): AimiAdaptationSummary {
+        val adaptationState = AimiAdaptationStatusPresenter.present(
+            status = rt?.aimiAdaptationStatus,
+            now = now,
+            staleAfterMs = T.mins(preferences.get(IntKey.AlertsStaleDataThreshold).toLong()).msecs(),
+        )
+        val summary = if (adaptationState.hasStatus) {
+            resourceHelper.gs(
+                R.string.aimi_adaptation_status_counts,
+                adaptationState.activeCount,
+                adaptationState.readyCount,
+                adaptationState.waitingOrLearningCount,
+                adaptationState.attentionCount,
+            )
+        } else {
+            resourceHelper.gs(R.string.dashboard_aimi_adaptation_no_data)
+        }
+        return AimiAdaptationSummary(
+            text = summary,
+            contentDescription = resourceHelper.gs(R.string.dashboard_aimi_adaptation_a11y, summary),
+            hasAttention = adaptationState.attentionCount > 0,
+        )
+    }
+
+    private fun refreshAimiAdaptationSummary() {
+        val currentState = latestStatusCardState ?: return
+        val rt = loop.lastRun?.request?.rawData() as? RT
+        val summary = buildAimiAdaptationSummary(rt, dateUtil.now())
+        val refreshedState = currentState.copy(
+            aimiAdaptationSummary = summary.text,
+            aimiAdaptationContentDescription = summary.contentDescription,
+            aimiAdaptationHasAttention = summary.hasAttention,
+        )
+        latestStatusCardState = refreshedState
+        _statusCardState.postValue(refreshedState)
+    }
+
+    /**
+     * Promote the active source's staging sensor to production (the ONLY action that swaps the loop's
+     * glucose source — safety-critical). Runs on the update scope; the result message is emitted on
+     * [promotionEvents] for the UI and the dashboard is refreshed so the staging card reflects the new
+     * state. No-op when the active source has no staging capability.
+     */
+    fun promoteStaging() {
+        val scope = updateScope ?: return
+        val sensor = activePlugin.activeBgSource as? CgmSensorStatusProvider ?: return
+        scope.launch {
+            try {
+                val message = when (val result = sensor.promoteStagingToProduction()) {
+                    is PromotionResult.Ok       -> resourceHelper.gs(R.string.dashboard_staging_promote_ok)
+                    is PromotionResult.Rejected -> resourceHelper.gs(promotionRejectReasonRes(result.reason))
+                }
+                _promotionEvents.emit(message)
+                scheduleDebouncedStatusRefresh()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fabricPrivacy.logException(e)
+            }
+        }
+    }
+
+    private fun promotionRejectReasonRes(reason: PromotionRejectReason): Int = when (reason) {
+        PromotionRejectReason.STAGING_ABSENT            -> R.string.dashboard_staging_promote_rejected_absent
+        PromotionRejectReason.STAGING_NOT_SETTLED       -> R.string.dashboard_staging_promote_rejected_not_settled
+        PromotionRejectReason.STAGING_NO_VALID_GLUCOSE  -> R.string.dashboard_staging_promote_rejected_no_glucose
+        PromotionRejectReason.STAGING_NO_RECENT_GLUCOSE -> R.string.dashboard_staging_promote_rejected_no_recent_glucose
+        PromotionRejectReason.LOOP_BUSY                 -> R.string.dashboard_staging_promote_rejected_loop_busy
+    }
+
+    private suspend fun updateStatus() {
         refreshAdaptiveSmoothingQualityFromPlugin()
         val lastBg = lastBgData.lastBg()
-        val glucoseText = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)
-        val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)?.directionToIcon()
+        val now = dateUtil.now()
+        val profile: EffectiveProfile? = profileFunction.getProfile()
+        val gs = glucoseStatusProvider.glucoseStatusData
+        val smoothing = activePlugin.activeSmoothing
+        val displayMgdl = DashboardCoherentGlucose.displayMgdl(lastBg, gs, smoothing, now)
+        val displayTs = DashboardCoherentGlucose.displayTimestamp(lastBg, gs, smoothing, now)
+        val glucoseText = profileUtil.fromMgdlToStringInUnits(displayMgdl)
+        val activeTemporaryTarget = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val targetRange = DashboardV2StatusValueResolver.resolveTargetRangeMgdl(
+            temporaryLow = activeTemporaryTarget?.lowTarget,
+            temporaryHigh = activeTemporaryTarget?.highTarget,
+            profileLow = profile?.getTargetLowMgdl(now),
+            profileHigh = profile?.getTargetHighMgdl(now),
+            aimiTargetBg = loop.lastRun?.request?.targetBG,
+        )
+        val targetText = targetRange?.let { range ->
+            profileUtil.toTargetRangeString(
+                low = range.low,
+                high = range.high,
+                sourceUnits = GlucoseUnit.MGDL,
+            )
+        }
+        val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)?.directionToLegacyDrawable()
         val trendDescription = trendCalculator.getTrendDescription(iobCobCalculator.ads) ?: ""
-        val deltaText = glucoseStatusProvider.glucoseStatusData?.shortAvgDelta?.let {
-            profileUtil.fromMgdlToSignedStringInUnits(it)
-        } ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
-        val iobText = totalIobText()
-        val cobText = iobCobCalculator
-            .getCobInfo("Dashboard COB")
+        val deltaMgdlForDisplay = when {
+            gs == null -> null
+            gs.shortAvgDelta.isFinite() -> gs.shortAvgDelta
+            gs.delta.isFinite() -> gs.delta
+            else -> null
+        }
+        val deltaText = deltaMgdlForDisplay?.let { v ->
+            "Δ " + profileUtil.fromMgdlToSignedStringInUnits(v)
+        } ?: ("Δ " + resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short))
+        val bolusSnap = bolusIob()
+        val basalSnap = basalIob()
+        val iobText = formatDashboardIobHeader(bolusSnap, basalSnap)
+        val cobText = iobCobCalculator.getCobInfo("Dashboard COB")
             .displayText(resourceHelper, decimalFormatter)
             ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
-        val timeAgo = dateUtil.minAgoShort(lastBg?.timestamp)
-        val timeAgoLong = dateUtil.minAgoLong(resourceHelper, lastBg?.timestamp)
+        val timeAgo = dateUtil.minAgoShort(displayTs)
+        val timeAgoLong = dateUtil.minAgoLong(resourceHelper, displayTs)
+        val displayBgDescription = DashboardCoherentGlucose.displayBgDescription(
+            displayMgdl,
+            profileFunction,
+            preferences,
+            resourceHelper
+        )
         val contentDescription =
             resourceHelper.gs(R.string.a11y_blood_glucose) + " " +
-                glucoseText + " " + lastBgData.lastBgDescription() + " " + timeAgoLong
+                glucoseText + " " + displayBgDescription + " " + timeAgoLong
 
 
         // ═══════════════════════════════════════════════════════════════
@@ -261,10 +639,10 @@ class OverviewViewModel(
         }
         
         // 2. Reservoir
-        val reservoirText = activePlugin.activePump.reservoirLevel?.let { level ->
-            if (level > 0) decimalFormatter.to2Decimal(level) + " IE" 
+        val reservoirUnits = activePlugin.activePump.reservoirLevel.value.cU
+        val reservoirText =
+            if (reservoirUnits > 0) decimalFormatter.to2Decimal(reservoirUnits) + " IE"
             else null
-        }
         
         // 3. Infusion Age (from CarePortal)
         val infusionAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)?.let { event ->
@@ -285,46 +663,69 @@ class OverviewViewModel(
         }
         
         // 5. Basal (current profile basal rate)
-        val basalText = profileFunction.getProfile()?.let { profile ->
-            val currentBasal = profile.getBasal(dateUtil.now())
-            decimalFormatter.to2Decimal(currentBasal) + " IE"
+        val scheduledBasalRateUh = profile?.getBasal(now)
+        val basalText = scheduledBasalRateUh?.let { rate ->
+            decimalFormatter.to2Decimal(rate) + " IE"
         }
         
-        // 6. Activity % - simplified (TBR percentage)
-        val activityPctText = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.takeIf { it.isInProgress }?.let { tbr ->
-            profileFunction.getProfile()?.let { profile ->
-                val currentBasal = profile.getBasal(dateUtil.now())
+        val activeTempBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(now)?.takeIf { it.isInProgress }
+        val effectiveBasalRateUh = DashboardV2StatusValueResolver.resolveEffectiveBasalRateUh(
+            temporaryBasal = activeTempBasal?.let { tbr ->
+                DashboardV2StatusValueResolver.TemporaryBasal(
+                    rate = tbr.rate,
+                    isAbsolute = tbr.isAbsolute,
+                )
+            },
+            scheduledBasalRateUh = scheduledBasalRateUh,
+        )
+        val effectiveBasalText = effectiveBasalRateUh?.let { rate ->
+            resourceHelper.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, rate)
+        }
+
+        // 6. Activity % — delta vs scheduled basal during an active TBR (not the same framing as the "% of profile" on the TBR line).
+        val activityPctText = activeTempBasal?.let { tbr ->
+            profile?.let { p ->
+                val currentBasal = p.getBasal(now)
                 if (currentBasal > 0) {
-                    val pct = ((tbr.rate / currentBasal) * 100 - 100).toInt()
-                    val sign = if (pct >= 0) "+" else ""
-                    "$sign$pct%"
+                    if (tbr.rate <= 1e-4) {
+                        resourceHelper.gs(R.string.dashboard_activity_tbr_basal_delivery_stopped)
+                    } else {
+                        val pct = ((tbr.rate / currentBasal) * 100 - 100).toInt()
+                        val sign = if (pct >= 0) "+" else ""
+                        "$sign$pct%"
+                    }
                 } else "0%"
             } ?: "0%"
         } ?: "0%"
         
         // 7. Pump Battery
-        val pumpBatteryText = activePlugin.activePump.batteryLevel?.let { "$it%" }
-        
-        // 8. IOB (replacing Last Sensor Value as per user request)
-        val lastSensorValueText = run {
-            val bolus = bolusIob()
-            val basal = basalIob()
-            val total = bolus.iob + basal.basaliob
-            decimalFormatter.to2Decimal(total) + " IE"
-        }
-        
-        // 9. TBR Rate (Combined U/h and %)
-        val tbrRateText = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.takeIf { it.isInProgress }?.let { tbr ->
+        val pumpBatteryText = activePlugin.activePump.batteryLevel.value?.let { "$it%" }
+
+        // 8. IOB (same formatting as the rest of AAPS — avoids mixing "IE" + locale-decimal vs treatment screens)
+        val totalIobForSensorLine = bolusSnap.iob + basalSnap.basaliob
+        val lastSensorValueText =
+            if (totalIobForSensorLine >= 0) {
+                resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, totalIobForSensorLine)
+            } else {
+                resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units_signed, totalIobForSensorLine)
+            }
+
+        // 9. TBR: compact strip shows rate only (full line in étendu keeps % vs profil — long string was easy to clip in the horizontal chips row)
+        val tbrRateCompactText = activeTempBasal?.let { tbr ->
+            decimalFormatter.to2Decimal(tbr.rate) + " U/h"
+        } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
+
+        val tbrRateText = activeTempBasal?.let { tbr ->
             val rateUh = decimalFormatter.to2Decimal(tbr.rate) + " U/h"
-            val pctStr = profileFunction.getProfile()?.let { profile ->
-                val currentBasal = profile.getBasal(dateUtil.now())
+            val pctStr = profile?.let { p ->
+                val currentBasal = p.getBasal(now)
                 if (currentBasal > 0) {
                     val pct = ((tbr.rate / currentBasal) * 100).toInt()
                     " ($pct%)"
                 } else ""
             } ?: ""
             rateUh + pctStr
-        } ?: "0.00 U/h"
+        } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
 
         // 10. Steps & HR
         var stepsText: String = "--"
@@ -337,12 +738,12 @@ class OverviewViewModel(
         var tirTarget: Double? = null
         var tirHigh: Double? = null
         var tirVeryHigh: Double? = null
+        var tirDayReady = false
         var avgBgMgdl: Double? = null
         var bgCv: Double? = null
         var a1c: Double? = null
         
         try {
-            val now = System.currentTimeMillis()
             val from = dateUtil.beginOfDay(now) // Start of today (Midnight)
             
             // --- TODAY CLINICAL STATS COMPUTATION ---
@@ -373,33 +774,37 @@ class OverviewViewModel(
                 // GMI / Estimated A1C Formula: (mean + 46.7) / 28.7
                 a1c = (mean + 46.7) / 28.7
             }
-            
-            // --- Steps (Integration of rolling windows) ---
-            val stepsList = persistenceLayer.getStepsCountFromTimeToTime(from, now).sortedBy { it.timestamp }
-            var totalSteps = 0.0
-            var lastTimestamp = from
 
-            stepsList.forEach { sc ->
-                if (sc.duration > 0 && sc.steps5min > 0) {
-                    val dt = (sc.timestamp - lastTimestamp).coerceAtLeast(0)
-                    if (dt > 0) {
-                        // Calculate rate (steps per ms)
-                        val rate = sc.steps5min.toDouble() / sc.duration
-                        // Determine meaningful time window (handle overlaps vs gaps)
-                        // If dt < duration (overlap), we integrate over dt.
-                        // If dt >= duration (gap), we integrate over duration (full record) and assume 0 for the gap.
-                        val coveredDuration = java.lang.Math.min(dt, sc.duration)
-                        
-                        totalSteps += rate * coveredDuration
-                    }
-                }
-                lastTimestamp = java.lang.Math.max(lastTimestamp, sc.timestamp)
+            // Yesterday's TIR does not change during the day: read it once per day, not on every refresh.
+            // Same formula as today's tirTarget above, so both values can be compared.
+            if (yesterdayTirDayStart != from) {
+                val bgsYesterday = persistenceLayer.getBgReadingsDataFromTimeToTime(dateUtil.beginOfDay(from - 1), from, true)
+                yesterdayTirTarget = bgsYesterday.takeIf { it.isNotEmpty() }
+                    ?.let { list -> list.count { it.value in 70.0..180.0 } * 100.0 / list.size }
+                yesterdayTirDayStart = from
             }
+            // Early in the day, today's TIR rests on too few readings to mean anything.
+            tirDayReady = tirTarget != null && now - from >= T.hours(TIR_DAY_READY_HOURS).msecs()
 
-            if (totalSteps > 1) {
-                stepsText = "%.0f".format(totalSteps)
-            } else {
-                 if (stepsList.isNotEmpty()) stepsText = "0"
+            // --- Steps (Today): max(HC aggregate, persistence) when HC is in play ---
+            // Persistence uses max per-device 5‑min buckets → cannot merge complementary phone+watch like
+            // Health Connect / Santé, often ~1k low. HC [COUNT_TOTAL] can lag; taking the max of both
+            // avoids sticking on whichever pipeline is behind (HC cache cleared on SC updates elsewhere).
+            val persistenceSteps = computeDashboardPersistenceStepsToday(from, now)
+            val hcTodaySteps = aimiPhysioDataRepository.fetchTodayStepsTotalAggregated(from, now)
+            val chosenTotal: Double? = when {
+                hcTodaySteps != null ->
+                    max(
+                        hcTodaySteps.toDouble().coerceAtLeast(0.0),
+                        persistenceSteps.total.coerceAtLeast(0.0),
+                    )
+                persistenceSteps.hasRows -> persistenceSteps.total
+                else -> null
+            }
+            stepsText = when {
+                chosenTotal == null -> "--"
+                chosenTotal > 1.0 -> decimalFormatter.to0Decimal(chosenTotal)
+                else -> decimalFormatter.to0Decimal(0.0)
             }
 
             // Heart Rate (Average or Last)
@@ -411,7 +816,7 @@ class OverviewViewModel(
             if (hrList.isNotEmpty()) {
                 val lastHr = hrList.lastOrNull()?.beatsPerMinute
                 if (lastHr != null && lastHr > 0) {
-                    hrText = "%.0f".format(lastHr)
+                    hrText = decimalFormatter.to0Decimal(lastHr)
                 }
             }
         
@@ -424,6 +829,18 @@ class OverviewViewModel(
         val aimiPulseSummary = buildAimiPulseSummary(lastApsRequest)
         val aimiPulseMeta = buildAimiPulseMeta(lastApsRequest)
         val aimiPulseHypoRisk = lastApsRequest?.isHypoRisk == true
+
+        val tirStatsLine = if (avgBgMgdl != null && a1c != null) {
+            val avgStr = profileUtil.fromMgdlToStringInUnits(avgBgMgdl)
+            resourceHelper.gs(R.string.dashboard_tir_stats_format, avgStr, a1c)
+        } else {
+            resourceHelper.gs(R.string.dashboard_tir_stats_placeholder)
+        }
+
+        // Display-only: read RM from DB like [OverviewDataCacheImpl.updateRunningModeFromDatabase].
+        // Avoid [Loop.runningMode] / [runningModePreCheck] here — they reconcile pump vs mode, may write RM,
+        // emit [EventRefreshOverview], and amplify refresh work under [updateMutex] (dashboard can look "frozen").
+        val loopRunningMode = persistenceLayer.getRunningModeActiveAt(now).mode
 
         // 12. AIMI Insights (Autodrive V3)
         val request = lastApsRequest
@@ -440,35 +857,64 @@ class OverviewViewModel(
         val insightFactor = "⚡ x${decimalFormatter.to1Decimal(relevance)}"
         
         val healthScore = rt?.trajectoryHealth?.toDouble()?.div(100.0) ?: autodriveEngine.getHealthScore()
+        val adaptationSummary = buildAimiAdaptationSummary(rt, now)
+
+        // Generic CGM warm-up status of the active source (null for sources that don't implement the provider).
+        val warmupStatus = (activePlugin.activeBgSource as? CgmWarmupProvider)?.warmupStatus?.value
+
+        // Generic dual-sensor lifecycle + staging status (null / ABSENT for sources that don't implement it).
+        val sensorStatus = activePlugin.activeBgSource as? CgmSensorStatusProvider
+        val productionLifecycle = sensorStatus?.lifecycle?.value
+        val stagingSlotState = sensorStatus?.stagingState?.value ?: StagingState.ABSENT
+        val stagingLifecycleValue = sensorStatus?.stagingLifecycle?.value
+        val stagingWarmupValue = sensorStatus?.stagingWarmupStatus?.value
+        val stagingEvidenceValue = sensorStatus?.stagingEvidence?.value
 
         val state = StatusCardState(
             glucoseText = glucoseText,
-            glucoseColor = lastBgData.lastBgColor(context),
+            glucoseColor = DashboardCoherentGlucose.displayBgColor(
+                context,
+                displayMgdl,
+                profileFunction,
+                preferences,
+                resourceHelper
+            ),
             trendArrowRes = trendArrow,
             trendDescription = trendDescription,
             deltaText = deltaText,
             iobText = iobText,
+            iobTotalU = bolusSnap.iob + basalSnap.basaliob,
             cobText = cobText,
-            loopStatusText = loopStatusText(loop.runningMode),
-            loopIsRunning = !loop.runningMode.isSuspended(),
+            loopStatusText = loopStatusText(loopRunningMode),
+            loopIsRunning = !loopRunningMode.pausesLoopExecution(),
             timeAgo = timeAgo,
             timeAgoDescription = timeAgoLong,
-            isGlucoseActual = lastBgData.isActualBg(),
+            glucoseTimestampMs = displayTs,
+            isGlucoseActual = DashboardCoherentGlucose.isDisplayActual(
+                lastBg,
+                gs,
+                smoothing,
+                now,
+                T.mins(9).msecs()
+            ),
             contentDescription = contentDescription,
-            pumpStatusText = buildPumpLine(dateUtil.now()),
+            pumpStatusText = buildPumpAdjustmentDisplay(dateUtil.now()).lineHtml,
             predictionText = buildPredictionLine(dateUtil.now()),
             unicornImageRes = selectUnicornImage(  // 🦄 Dynamic unicorn image
-                bg = lastBg?.recalculated,
+                bg = displayMgdl,
                 delta = glucoseStatusProvider.glucoseStatusData?.delta
             ),
             isAimiContextActive = preferences.get(app.aaps.core.keys.StringKey.OApsAIMIContextStorage).length > 5,
             // For GlucoseCircleView
-            glucoseValue = lastBg?.recalculated,
-            targetLow = profileFunction.getProfile()?.getTargetLowMgdl(),
-            targetHigh = profileFunction.getProfile()?.getTargetHighMgdl(),
-            
+            glucoseValue = displayMgdl,
+            targetLow = profile?.getTargetLowMgdl(),
+            targetHigh = profile?.getTargetHighMgdl(),
+            targetText = targetText,
+            isTempTargetActive = activeTemporaryTarget != null,
+            unitText = profileFunction.getUnits().displayLabel,
+
             // Circle-Top Hybrid Dashboard fields
-            glucoseMgdl = lastBg?.recalculated?.toInt(),
+            glucoseMgdl = displayMgdl?.toInt(),
             noseAngleDeg = noseAngleDeg,
             reservoirText = reservoirText,
             infusionAgeText = infusionAgeText,
@@ -477,7 +923,9 @@ class OverviewViewModel(
             lastSensorValueText = lastSensorValueText,
             activityPctText = activityPctText,
             tbrRateText = tbrRateText,
+            tbrRateCompactText = tbrRateCompactText,
             basalText = basalText,
+            effectiveBasalText = effectiveBasalText,
             stepsText = stepsText,
             hrText = hrText,
             cvText = cvText,
@@ -488,9 +936,12 @@ class OverviewViewModel(
             tirTarget = tirTarget,
             tirHigh = tirHigh,
             tirVeryHigh = tirVeryHigh,
+            tirYesterdayTarget = yesterdayTirTarget,
+            tirDayReady = tirDayReady,
             avgBgMgdl = avgBgMgdl,
             bgCv = bgCv,
             a1c = a1c,
+            tirStatsLine = tirStatsLine,
             
             // AIMI Insights
             insightT3c = insightT3c,
@@ -498,6 +949,9 @@ class OverviewViewModel(
             insightFactor = insightFactor,
             trajectoryRelevanceScore = relevance,
             aimiHealthScore = healthScore,
+            aimiAdaptationSummary = adaptationSummary.text,
+            aimiAdaptationContentDescription = adaptationSummary.contentDescription,
+            aimiAdaptationHasAttention = adaptationSummary.hasAttention,
 
             aimiPulseTitle = aimiPulseTitle,
             aimiPulseSummary = aimiPulseSummary,
@@ -506,45 +960,45 @@ class OverviewViewModel(
 
             adaptiveSmoothingQualityTier = adaptiveSmoothingQualityTier,
             adaptiveSmoothingQualityBadgeText = adaptiveSmoothingQualityBadgeText,
-            adaptiveSmoothingQualityDialogMessage = adaptiveSmoothingQualityDialogMessage
+            adaptiveSmoothingQualityDialogMessage = adaptiveSmoothingQualityDialogMessage,
+            warmup = warmupStatus,
+            lifecycle = productionLifecycle,
+            stagingState = stagingSlotState,
+            stagingLifecycle = stagingLifecycleValue,
+            stagingWarmup = stagingWarmupValue,
+            stagingEvidence = stagingEvidenceValue,
         )
+        latestStatusCardState = state
         _statusCardState.postValue(state)
     }
 
     /**
      * Calculates total IOB text for display.
-     * 
+     *
      * CRITICAL FIX: Removed abs() that was causing IOB to appear increasing
      * when basal IOB was negative (during low TBR).
-     * 
-     * Scenario that was broken:
-     * - T1: Bolus IOB = 1.0 U, Basal IOB = -1.0 U → total = abs(0.0) = 0.0 U ✓
-     * - T2: Bolus IOB = 0.5 U, Basal IOB = -1.5 U → total = abs(-1.0) = 1.0 U ✗ (INCREASED!)
-     * 
+     *
      * Total IOB can be negative (insulin debt from low TBR), which is valid
      * and important clinical information to display.
      */
-    private fun totalIobText(): String {
-        val bolus = bolusIob()
-        val basal = basalIob()
-        
-        // FIXED: No abs() - total can be negative (insulin debt)
+    private suspend fun totalIobText(): String =
+        formatDashboardIobHeader(bolusIob(), basalIob())
+
+    /** Shared by [updateStatus] (single IOB fetch) and [totalIobText]. */
+    private fun formatDashboardIobHeader(bolus: IobTotal, basal: IobTotal): String {
         val total = bolus.iob + basal.basaliob
-        
-        // Display with sign to show positive/negative IOB
         val formattedTotal = if (total >= 0) {
             resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, total)
         } else {
-            // Negative IOB (insulin debt) - show with minus sign
             "-" + resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, -total)
         }
-        
         return "IOB: $formattedTotal"
     }
 
-    private fun bolusIob(): IobTotal = iobCobCalculator.calculateIobFromBolus().round()
+    private suspend fun bolusIob(): IobTotal = iobCobCalculator.calculateIobFromBolus().round()
 
-    private fun basalIob(): IobTotal = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
+    private suspend fun basalIob(): IobTotal =
+        iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
 
     private fun loopStatusText(mode: RM.Mode): String =
         resourceHelper.gs(
@@ -562,26 +1016,40 @@ class OverviewViewModel(
             }
         )
 
-    private fun updateAdjustments() {
+    private suspend fun updateAdjustments() {
         val now = dateUtil.now()
         val lastBg = lastBgData.lastBg()
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
+        val displayMgdl = DashboardCoherentGlucose.displayMgdl(
+            lastBg,
+            glucoseStatus,
+            activePlugin.activeSmoothing,
+            now
+        )
         val adjustments = buildActiveAdjustments(now)
+        val pumpDisplay = buildPumpAdjustmentDisplay(now)
         val state = AdjustmentCardState(
-            glycemiaLine = buildGlycemiaLine(lastBg, trendArrow, glucoseStatus),
+            glycemiaLine = buildGlycemiaLine(displayMgdl, trendArrow, glucoseStatus),
             predictionLine = buildPredictionLine(now),
             iobActivityLine = buildIobActivityLine(),
             decisionLine = buildDecisionLine(),
-            pumpLine = buildPumpLine(now),
-            safetyLine = buildSafetyLine(lastBg, glucoseStatus),
+            pumpLine = pumpDisplay.lineHtml,
+            pumpReservoirPlain = pumpDisplay.reservoirPlain,
+            pumpSitePlain = pumpDisplay.sitePlain,
+            pumpSensorPlain = pumpDisplay.sensorPlain,
+            safetyLine = buildSafetyLine(displayMgdl, glucoseStatus),
             modeLine = resolveModeLine(now),
             adjustments = adjustments,
             reason = buildDecisionLine(),
             // Populate new fields
             peakTime = loop.lastRun?.request?.oapsProfileAimi?.peakTime,
             dia = loop.lastRun?.request?.oapsProfileAimi?.dia,
-            targetBg = loop.lastRun?.request?.oapsProfileAimi?.target_bg,
+            // The actual AIMI-adjusted target (RT.targetBG), not oapsProfileAimi.target_bg — that field is
+            // the raw INPUT profile target AIMI started its computation from, not what it ended up
+            // targeting after its own PKPD adjustments (same bug as the Glass dashboard's Target pill).
+            // targetBG defaults to 0.0 when a loop ran but never set it — not a real target, show "--" instead.
+            targetBg = loop.lastRun?.request?.targetBG?.takeIf { it > 0.0 },
             smb = loop.lastRun?.request?.smb,
             basal = loop.lastRun?.request?.rate,
             detailedReason = loop.lastRun?.request?.reason,
@@ -607,7 +1075,7 @@ class OverviewViewModel(
         _graphMessage.postValue(message)
     }
 
-    private fun buildActiveAdjustments(now: Long): List<String> {
+    private suspend fun buildActiveAdjustments(now: Long): List<String> {
         val adjustments = mutableListOf<String>()
         processedTbrEbData.getTempBasalIncludingConvertedExtended(now)?.takeIf { it.isInProgress }?.let {
             adjustments += resourceHelper.gs(R.string.dashboard_adjustment_temp_basal, it.toStringShort(resourceHelper))
@@ -631,13 +1099,19 @@ class OverviewViewModel(
     }
 
     private fun buildGlycemiaLine(
-        lastBg: InMemoryGlucoseValue?,
+        displayMgdl: Double?,
         trendArrow: TrendArrow?,
         glucoseStatus: GlucoseStatus?
     ): String {
-        val glucoseText = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)
-        val deltaText = glucoseStatus?.shortAvgDelta?.let { profileUtil.fromMgdlToSignedStringInUnits(it) }
-            ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        val glucoseText = profileUtil.fromMgdlToStringInUnits(displayMgdl)
+        val deltaMgdl = when {
+            glucoseStatus == null -> null
+            glucoseStatus.shortAvgDelta.isFinite() -> glucoseStatus.shortAvgDelta
+            glucoseStatus.delta.isFinite() -> glucoseStatus.delta
+            else -> null
+        }
+        val deltaText = deltaMgdl?.let { "Δ " + profileUtil.fromMgdlToSignedStringInUnits(it) }
+            ?: ("Δ " + resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short))
         return resourceHelper.gs(
             R.string.dashboard_adjustment_glycemia,
             glucoseText,
@@ -653,16 +1127,38 @@ class OverviewViewModel(
             fabricPrivacy.logMessage("PRED_UNAVAILABLE: predictions empty")
             return resourceHelper.gs(R.string.dashboard_adjustment_prediction_unavailable)
         }
-        val targetTime = now + TimeUnit.MINUTES.toMillis(PREDICTION_LOOKAHEAD_MINUTES)
-        val closest = predictions.minByOrNull { abs(it.timestamp - targetTime) }
-            ?: return resourceHelper.gs(R.string.dashboard_adjustment_prediction_unavailable)
-        val valueText = profileUtil.fromMgdlToStringInUnits(closest.value)
-        val minutes = max(1L, abs(closest.timestamp - now) / TimeUnit.MINUTES.toMillis(1))
-        val minutesText = resourceHelper.gs(R.string.dashboard_adjustment_minutes, minutes)
-        return resourceHelper.gs(R.string.dashboard_adjustment_prediction, "→", valueText, minutesText)
+        val bestTerminal = predictions
+            .filter { it.sourceSensor == SourceSensor.UAM_PREDICTION }
+            .maxByOrNull { it.timestamp }
+        val floorTerminal = predictions
+            .filter { it.sourceSensor == SourceSensor.IOB_PREDICTION }
+            .maxByOrNull { it.timestamp }
+        if (bestTerminal == null && floorTerminal == null) {
+            return resourceHelper.gs(R.string.dashboard_adjustment_prediction_unavailable)
+        }
+        val terminalTimestamp = maxOf(
+            bestTerminal?.timestamp ?: 0L,
+            floorTerminal?.timestamp ?: 0L,
+        )
+        val horizonMinutes = if (terminalTimestamp > now) {
+            ((terminalTimestamp - now) / TimeUnit.MINUTES.toMillis(1)).coerceAtLeast(1L)
+        } else {
+            Constants.PREDICTION_GRAPH_HORIZON_HOURS * 60L
+        }
+        val displayHorizonMinutes = maxOf(Constants.PREDICTION_GRAPH_MIN_MINUTES.toLong(), horizonMinutes)
+        val bestText = bestTerminal?.let { profileUtil.fromMgdlToStringInUnits(it.value) }
+            ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        val floorText = floorTerminal?.let { profileUtil.fromMgdlToStringInUnits(it.value) }
+            ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        return resourceHelper.gs(
+            R.string.dashboard_adjustment_scenario_projection,
+            bestText,
+            floorText,
+            displayHorizonMinutes,
+        )
     }
 
-    private fun buildIobActivityLine(): String {
+    private suspend fun buildIobActivityLine(): String {
         val autosensPercent = ((loop.lastRun?.request?.autosensResult?.ratio ?: 1.0) * 100.0)
         val activityText = decimalFormatter.to0Decimal(autosensPercent)
         return resourceHelper.gs(R.string.dashboard_adjustment_iob_activity, totalIobText(), activityText)
@@ -723,11 +1219,21 @@ class OverviewViewModel(
         return resourceHelper.gs(R.string.dashboard_aimi_pulse_meta, smb, basalDisplay, sens)
     }
 
-    private fun buildPumpLine(now: Long): String {
-        val reservoirLevel = activePlugin.activePump.reservoirLevel
+    private data class PumpAdjustmentDisplay(
+        val lineHtml: String,
+        val reservoirPlain: String,
+        val sitePlain: String,
+        val sensorPlain: String,
+    )
+
+    private fun htmlSegmentToPlain(html: String): String =
+        HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+
+    private suspend fun buildPumpAdjustmentDisplay(now: Long): PumpAdjustmentDisplay {
+        val reservoirUnits = activePlugin.activePump.reservoirLevel.value.cU
         val reservoirText =
-            if (reservoirLevel > 0)
-                resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, reservoirLevel)
+            if (reservoirUnits > 0)
+                resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, reservoirUnits)
             else resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
 
         val siteEvent = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
@@ -750,9 +1256,10 @@ class OverviewViewModel(
             }
         }
 
-        val lastConnection = activePlugin.activePump.lastDataTime
+        val lastConnection = activePlugin.activePump.lastDataTime.value
         val threshold = T.mins(preferences.get(IntKey.AlertsPumpUnreachableThreshold).toLong()).msecs()
-        val isUnreachable = preferences.get(app.aaps.core.keys.BooleanKey.AlertPumpUnreachable) && (lastConnection + threshold < now)
+        val isUnreachable =
+            preferences.get(app.aaps.core.keys.BooleanKey.AlertPumpUnreachable) && (lastConnection + threshold < now)
 
         val statusText = if (isUnreachable) {
             val unreachableText = resourceHelper.gs(app.aaps.core.ui.R.string.pump_unreachable)
@@ -761,11 +1268,17 @@ class OverviewViewModel(
             reservoirText
         }
 
-        return resourceHelper.gs(R.string.dashboard_adjustment_pump, statusText, siteAge, sensorAge)
+        val lineHtml = resourceHelper.gs(R.string.dashboard_adjustment_pump, statusText, siteAge, sensorAge)
+        return PumpAdjustmentDisplay(
+            lineHtml = lineHtml,
+            reservoirPlain = htmlSegmentToPlain(statusText),
+            sitePlain = htmlSegmentToPlain(siteAge),
+            sensorPlain = htmlSegmentToPlain(sensorAge),
+        )
     }
 
-    private fun buildSafetyLine(lastBg: InMemoryGlucoseValue?, glucoseStatus: GlucoseStatus?): String {
-        val bgValue = lastBg?.recalculated
+    private fun buildSafetyLine(displayMgdl: Double?, glucoseStatus: GlucoseStatus?): String {
+        val bgValue = displayMgdl
         val level = when {
             bgValue == null -> null
             bgValue < SAFETY_CRITICAL_BG -> resourceHelper.gs(R.string.dashboard_adjustment_safety_level_critical)
@@ -801,7 +1314,7 @@ class OverviewViewModel(
         return resourceHelper.gs(R.string.dashboard_adjustment_safety, level, finalSafetyText)
     }
 
-    private fun resolveModeLine(now: Long): String? {
+    private suspend fun resolveModeLine(now: Long): String? {
         val events = persistenceLayer.getTherapyEventDataFromTime(now - MODE_LOOKBACK_MS, TE.Type.NOTE, false)
         var latest: Pair<TE, ModeKeyword>? = null
         events.forEach { event ->
@@ -886,6 +1399,54 @@ class OverviewViewModel(
         }
     }
 
+    private data class DashboardPersistenceStepsToday(
+        val hasRows: Boolean,
+        val total: Double,
+    )
+
+    /**
+     * Same 5‑min bucket / device pick as pre–Health Connect dashboard (wear → Garmin → HC rows → phone).
+     * Total is the maximum across devices only — it does not dedupe across devices like Health Connect / Santé;
+     * the dashboard combines this with the HC aggregate by taking the maximum of the two when HC is available.
+     */
+    private suspend fun computeDashboardPersistenceStepsToday(from: Long, now: Long): DashboardPersistenceStepsToday {
+        val stepsList = persistenceLayer.getStepsCountFromTimeToTime(from, now).sortedBy { it.timestamp }
+        if (stepsList.isEmpty()) return DashboardPersistenceStepsToday(false, 0.0)
+
+        fun isGarmin(device: String?): Boolean = device == "Garmin-Watchface"
+        fun isHealthConnect(device: String?): Boolean = device == "HealthConnect"
+        fun isPhone(device: String?): Boolean = device == "PhoneSensor"
+        fun isWear(device: String?): Boolean =
+            !device.isNullOrBlank() && !isGarmin(device) && !isHealthConnect(device) && !isPhone(device)
+
+        val bestSource = stepsList
+            .firstOrNull { isWear(it.device) }?.device
+            ?: stepsList.firstOrNull { isGarmin(it.device) }?.device
+            ?: stepsList.firstOrNull { isHealthConnect(it.device) }?.device
+            ?: stepsList.firstOrNull { isPhone(it.device) }?.device
+
+        fun dedupedTotalForDevice(device: String): Double =
+            stepsList
+                .asSequence()
+                .filter { it.device == device }
+                .groupBy { it.timestamp / (5 * 60 * 1000L) }
+                .values
+                .sumOf { bucket -> bucket.maxOfOrNull { it.steps5min.coerceAtLeast(0) } ?: 0 }
+                .toDouble()
+
+        val totalsByDevice = stepsList
+            .asSequence()
+            .mapNotNull { it.device.takeUnless(String::isNullOrBlank) }
+            .distinct()
+            .associateWith { dedupedTotalForDevice(it) }
+
+        val totalSteps = totalsByDevice
+            .values
+            .maxOrNull()
+            ?: if (bestSource != null) dedupedTotalForDevice(bestSource) else 0.0
+
+        return DashboardPersistenceStepsToday(true, totalSteps)
+    }
 
     class Factory(
         private val context: Context,
@@ -908,7 +1469,8 @@ class OverviewViewModel(
         private val preferences: Preferences,
         private val overviewData: OverviewData,
         private val trajectoryGuard: TrajectoryGuard, // 🌀 Add to Factory
-        private val autodriveEngine: AutodriveEngine // 🧠 Add to Factory
+        private val autodriveEngine: AutodriveEngine, // 🧠 Add to Factory
+        private val aimiPhysioDataRepository: AIMIPhysioDataRepositoryMTR
     ) : ViewModelProvider.Factory {
 
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -935,7 +1497,8 @@ class OverviewViewModel(
                     preferences,
                     overviewData,
                     trajectoryGuard,
-                    autodriveEngine
+                    autodriveEngine,
+                    aimiPhysioDataRepository
                 ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class $modelClass")
@@ -945,9 +1508,11 @@ class OverviewViewModel(
     private data class ModeKeyword(val token: String, val labelRes: Int)
 
     companion object {
-        private const val PREDICTION_LOOKAHEAD_MINUTES = 30L
+        /** Hours after midnight before today's TIR is shown and compared with yesterday. */
+        private const val TIR_DAY_READY_HOURS = 6L
         private const val SAFETY_LIMITED_BG = 90.0
         private const val SAFETY_CRITICAL_BG = 70.0
+        private val ADAPTATION_FRESHNESS_TICK_MS = TimeUnit.MINUTES.toMillis(1)
         private val MODE_LOOKBACK_MS = TimeUnit.HOURS.toMillis(12)
         private val modeKeywords = listOf(
             ModeKeyword("meal", R.string.dashboard_mode_meal),
@@ -970,6 +1535,15 @@ data class StatusCardState(
     val trendDescription: String,
     val deltaText: String,
     val iobText: String,
+    /**
+     * The same total as [iobText], as a number.
+     *
+     * Insulin on board decays continuously, so any screen that computes it again, or reads it off
+     * the last plotted point of a five-minute graph grid, lands on a slightly different figure — a
+     * user reported 7.88 U in the header and 7.82 U on the chart card at the same moment. One value,
+     * computed once here, is published for every surface that wants to print it.
+     */
+    val iobTotalU: Double,
     val cobText: String,
     val loopStatusText: String,
     val loopIsRunning: Boolean,
@@ -985,7 +1559,13 @@ data class StatusCardState(
     val glucoseValue: Double? = null,
     val targetLow: Double? = null,
     val targetHigh: Double? = null,
-    
+    /** Active temporary target when present, otherwise profile target, in the user's glucose units. */
+    val targetText: String? = null,
+    /** True when a temporary target is currently active (not just when [targetText] is non-blank). */
+    val isTempTargetActive: Boolean = false,
+    /** Display label of the user's glucose unit preference ("mg/dL" or "mmol/L"). */
+    val unitText: String = "mg/dL",
+
     // Circle-Top Hybrid Dashboard fields
     val glucoseMgdl: Int? = null,
     val noseAngleDeg: Float? = null,
@@ -996,7 +1576,11 @@ data class StatusCardState(
     val lastSensorValueText: String? = null,
     val activityPctText: String? = null,
     val tbrRateText: String? = null,
+    /** TBR rate only (no % of profile) for the horizontal compact chip row. */
+    val tbrRateCompactText: String? = null,
     val basalText: String? = null,
+    /** Active TBR rate when present, otherwise scheduled profile basal; always formatted in U/h. */
+    val effectiveBasalText: String? = null,
     val stepsText: String? = null,
     val hrText: String? = null,
     val cvText: String? = null,
@@ -1007,9 +1591,15 @@ data class StatusCardState(
     val tirTarget: Double? = null,
     val tirHigh: Double? = null,
     val tirVeryHigh: Double? = null,
+    /** Yesterday's full-day time in range 70–180 (%), null when yesterday has no reading. */
+    val tirYesterdayTarget: Double? = null,
+    /** True once today has enough hours of data for its TIR to be shown and compared. */
+    val tirDayReady: Boolean = false,
     val avgBgMgdl: Double? = null,
     val bgCv: Double? = null,
     val a1c: Double? = null,
+    /** Pre-formatted TIR summary line (average BG uses current unit preference). */
+    val tirStatsLine: String = "",
     
     // AIMI Insights
     val insightT3c: String? = null,
@@ -1017,6 +1607,9 @@ data class StatusCardState(
     val insightFactor: String? = null,
     val trajectoryRelevanceScore: Double? = null,
     val aimiHealthScore: Double? = null,
+    val aimiAdaptationSummary: String = "",
+    val aimiAdaptationContentDescription: String = "",
+    val aimiAdaptationHasAttention: Boolean = false,
 
     /** Narrative layer: plain-text excerpt of last APS `reason` + timing (AIMI pulse card). */
     val aimiPulseTitle: String = "",
@@ -1027,7 +1620,36 @@ data class StatusCardState(
     // Adaptive Smoothing Quality Badge (phase 1: informational only)
     val adaptiveSmoothingQualityTier: AdaptiveSmoothingQualityTier? = null,
     val adaptiveSmoothingQualityBadgeText: String = "",
-    val adaptiveSmoothingQualityDialogMessage: String = ""
+    val adaptiveSmoothingQualityDialogMessage: String = "",
+
+    /**
+     * Generic warm-up / (re)connection status of the active BG source, or null when the source does
+     * not report one (or is READY / IDLE / FAILED). Populated from
+     * `(activeBgSource as? CgmWarmupProvider)?.warmupStatus`. Drives the hero warm-up ring only when
+     * there is no fresh glucose to show — never references any specific CGM vendor.
+     */
+    val warmup: CgmWarmupStatus? = null,
+    /** Time of the glucose shown in the header (the one "time ago" is computed from). */
+    val glucoseTimestampMs: Long? = null,
+
+    /**
+     * Production sensor lifecycle (early/end of life) of the active source, or null when the source
+     * does not report one. Drives a small, non-alarming "beginning of life" / "expires soon" subtext
+     * under the hero — the glucose ring itself stays normal.
+     */
+    val lifecycle: CgmSensorLifecycle? = null,
+
+    /** Coarse staging-slot state of the active source; [StagingState.ABSENT] hides the staging card. */
+    val stagingState: StagingState = StagingState.ABSENT,
+
+    /** Staging sensor lifecycle (age → settle progress), or null when there is no staging sensor. */
+    val stagingLifecycle: CgmSensorLifecycle? = null,
+
+    /** Staging sensor warm-up status (countdown), or null when nothing to show. */
+    val stagingWarmup: CgmWarmupStatus? = null,
+
+    /** Proof that the staging sensor really sends data (reading count), or null when unknown. */
+    val stagingEvidence: CgmStagingEvidence? = null,
 )
 
 data class AdjustmentCardState(
@@ -1036,6 +1658,10 @@ data class AdjustmentCardState(
     val iobActivityLine: String,
     val decisionLine: String,
     val pumpLine: String,
+    /** Plain-text segments for compact pump badges (same data as [pumpLine], without HTML). */
+    val pumpReservoirPlain: String = "",
+    val pumpSitePlain: String = "",
+    val pumpSensorPlain: String = "",
     val safetyLine: String,
     val modeLine: String?,
     val adjustments: List<String>,

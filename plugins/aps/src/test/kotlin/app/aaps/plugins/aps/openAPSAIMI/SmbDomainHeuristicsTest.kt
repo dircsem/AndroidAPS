@@ -32,6 +32,9 @@ class SmbDomainHeuristicsTest {
             profileIsf = 45.0,
             tddIsf = 45.0,
             pkpdScale = 1.0,
+            weightKineticFactor = 1.0,
+            physioAbsorptionFactor = 1.0,
+            physioSiFactor = 1.0,
             damping = SmbDamping(),
             activity = InsulinActivityState(
                 window = InsulinActivityWindow(
@@ -154,6 +157,30 @@ class SmbDomainHeuristicsTest {
 
     @Test
     fun highBgOverrideRespectsHypoGuard() {
+        // Le blocage prédictif ne reste actif qu'en dessous de la marge d'artefact hyper
+        // (`hypo + PredictiveHypoConstants.DEFAULT_HYPER_ARTIFACT_MARGIN_MGDL`, soit hypo + 40) : au-delà,
+        // une prédiction basse à glycémie franchement haute est traitée comme un artefact et suppimée.
+        // On reste donc sous 140 = 100 + 40 tout en gardant l'override éligible (BG >= 120, delta >= 1.5).
+        val res = HighBgOverride.apply(
+            bg = 125.0,
+            delta = 1.6,
+            predictedBg = 75.0,
+            eventualBg = 72.0,
+            hypoGuard = 100.0,
+            iob = 0.1,
+            maxSmb = 2.0,
+            currentDose = 0.2,
+            pumpStep = 0.05
+        )
+        assertFalse(res.overrideUsed)
+        assertEquals(0.2, res.dose, 1e-6)
+        assertEquals(null, res.newInterval)
+    }
+
+    @Test
+    fun highBgOverrideAllowedWhenLowPredictionIsAHyperArtefact() {
+        // Contrepartie du cas ci-dessus : mêmes prédictions basses, mais BG au-delà de hypo + 40.
+        // La suppression « hyper artefact » lève le blocage prédictif et l'override s'applique.
         val res = HighBgOverride.apply(
             bg = 155.0,
             delta = 1.6,
@@ -165,9 +192,9 @@ class SmbDomainHeuristicsTest {
             currentDose = 0.2,
             pumpStep = 0.05
         )
-        assertFalse(res.overrideUsed)
+        assertTrue(res.overrideUsed)
         assertEquals(0.2, res.dose, 1e-6)
-        assertEquals(null, res.newInterval)
+        assertEquals(0, res.newInterval)
     }
 
     @Test

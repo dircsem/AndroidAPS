@@ -43,6 +43,7 @@ import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveListPreference
 import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
+import app.aaps.core.ui.compose.icons.IcPatchPump
 import app.aaps.pump.apex.connectivity.ApexBluetooth
 import app.aaps.pump.apex.connectivity.FirmwareVersion
 import app.aaps.pump.apex.connectivity.ProtocolVersion
@@ -82,11 +83,10 @@ class ApexPumpPlugin @Inject constructor(
     PluginDescription()
         .mainType(PluginType.PUMP)
         .fragmentClass(ApexFragment::class.java.name)
-        .pluginIcon(R.drawable.ic_apex_detailed)
+        .icon(IcPatchPump)
         .pluginName(R.string.apex_plugin_name)
         .shortName(R.string.apex_plugin_shortname)
-        .description(R.string.apex_plugin_description)
-        .preferencesId(PluginDescription.PREFERENCE_SCREEN),
+        .description(R.string.apex_plugin_description),
     emptyList(),
     aapsLogger,
     rh,

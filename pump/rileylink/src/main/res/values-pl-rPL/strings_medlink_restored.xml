@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="riley_link_ble_config_remove_riley_link">Usuń</string>
+    <string name="riley_link_ble_config_scan_error">Błąd skanowania: %1$d</string>
+    <string name="riley_link_ble_config_scan_finished">Skanowanie zakończono</string>
+    <string name="rileylink_error_pump_unreachable">Pompa nieosiągalna</string>
+    <string name="rileylink_settings_tab1">Ustawienia</string>
+    <string name="rileylink_settings_tab2">Historia</string>
+</resources>

@@ -1,22 +1,32 @@
 package app.aaps.plugins.aps.openAPSAIMI.learning
 
 import android.content.Context
+import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.interfaces.Preferences
-import org.json.JSONObject
+import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /**
  * Unified Reactivity Learner - Remplace le système de buckets temporels
@@ -36,6 +46,40 @@ class UnifiedReactivityLearner @Inject constructor(
     private val log: AAPSLogger,
     private val storageHelper: AimiStorageHelper
 ) {
+    internal data class BgSample(val value: Double, val timestamp: Long)
+
+    data class SegmentFactorSnapshot(
+        val daypart: ReactivityDaypart,
+        val factor: Double,
+    )
+
+    data class StatusSnapshot(
+        val globalFactor: Double,
+        val shortTermFactor: Double,
+        val combinedFactor: Double,
+        val segmentFactors: List<SegmentFactorSnapshot>,
+        val lastAnalysis: AnalysisSnapshot?,
+        val last24hSampleCount: Int,
+        val last2hSampleCount: Int,
+        val shortAnalysisCount: Long,
+        val longAnalysisCount: Long,
+        val lastShortAnalysisTime: Long,
+        val lastAnalysisTime: Long,
+        val updatedAt: Long?,
+    )
+
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val bg24hRef = AtomicReference<List<BgSample>>(emptyList())
+    private val bg2hRef = AtomicReference<List<BgSample>>(emptyList())
+    private val exerciseEventsRef = AtomicReference<List<Long>>(emptyList())
+    private val bg24hRefreshInFlight = AtomicBoolean(false)
+    private val bg2hRefreshInFlight = AtomicBoolean(false)
+    private val exerciseRefreshInFlight = AtomicBoolean(false)
+    private val shortAnalysisCount = AtomicLong(0L)
+    private val longAnalysisCount = AtomicLong(0L)
+    private val statusRef = AtomicReference<StatusSnapshot>()
+    private var last24hSampleCount = 0
+    private var last2hSampleCount = 0
     
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 30 * 60 * 1000L  // 30 minutes
@@ -52,8 +96,14 @@ class UnifiedReactivityLearner @Inject constructor(
         val hypo_count: Int,
         val globalFactor: Double,
         val shortTermFactor: Double,
+        val segmentFactor: Double,
+        val segmentDaypart: ReactivityDaypart,
         val previousFactor: Double,
-        val adjustmentReason: String
+        val adjustmentReason: String,
+        val floorLocked: Boolean = false,
+        val floorLockReason: String = "",
+        val floorReleased: Boolean = false,
+        val totalReadings: Int = 0,
     )
     
     var lastAnalysis: AnalysisSnapshot? = null
@@ -90,19 +140,41 @@ class UnifiedReactivityLearner @Inject constructor(
      */
     var shortTermFactor = 1.0
         private set
+
+    private val segmentFactors = ReactivityDaypart.entries.associateWith { 1.0 }.toMutableMap()
     
     private var lastAnalysisTime = 0L
     private var lastShortAnalysisTime = 0L
+    // D3: latch a confirmed rise between 30-min analyses so a mid-interval meal rise isn't lost before consumption.
+    private var pendingConfirmedRise = false
+    // F2: last hypo burden (% <70 over 24h) already priced into globalFactor. The burden is a rolling-window
+    // metric; without this latch a single episode re-applies its penalty on every 30-min analysis for 24h
+    // (up to 48×). We only penalize the *increment* of burden since the previous analysis. Persisted so the
+    // "already priced in" state survives restarts.
+    private var lastSeenHypoBurdenPct = 0.0
     
     init {
         load()
+        publishStatus()
     }
     
     /**
-     * Retourne le facteur combiné (60% long terme, 40% court terme)
+     * Retourne le facteur combiné (40% global, 30% court terme, 30% segment horaire).
      */
-    fun getCombinedFactor(): Double {
-        return (globalFactor * 0.60 + shortTermFactor * 0.40).coerceIn(0.5, 1.5)
+    fun getCombinedFactor(hourOfDay: Int = currentHourOfDay()): Double {
+        val daypart = ReactivityDaypart.fromHour(hourOfDay)
+        val segment = segmentFactors[daypart] ?: globalFactor
+        return ReactivityDaypart.combineFactors(globalFactor, shortTermFactor, segment)
+    }
+
+    fun segmentFactorFor(hourOfDay: Int): Double {
+        val daypart = ReactivityDaypart.fromHour(hourOfDay)
+        return segmentFactors[daypart] ?: globalFactor
+    }
+
+    private fun currentHourOfDay(): Int {
+        val calendar = Calendar.getInstance()
+        return calendar.get(Calendar.HOUR_OF_DAY)
     }
     
     /**
@@ -116,6 +188,7 @@ class UnifiedReactivityLearner @Inject constructor(
         val tir_above_250: Double,    // % Time In severe hyper > 250 mg/dL
         val tir_above_180: Double,    // % temps en hyperglycémie totale (>180)
         val hypo_count: Int,          // Nombre d'épisodes hypo < 70
+        val tir_below_70: Double,     // % temps < 70 sur 24h (charge hypo pondérée par la durée) — D1
         val cv_percent: Double,       // Coefficient de Variation (%)
         val crossing_count: Int,      // Oscillations (crossings de seuil 120)
         val mean_bg: Double,          // Glycémie moyenne
@@ -130,18 +203,10 @@ class UnifiedReactivityLearner @Inject constructor(
         val start = now - (24 * 60 * 60 * 1000L)
         
         try {
-            // Récupérer toutes les valeurs BG des 24 dernières heures
-            // getBgReadingsDataFromTime retourne Single<List<GV>>, donc on utilise blockingGet()
-            val bgReadingsList = persistenceLayer.getBgReadingsDataFromTime(start, false)
-                .blockingGet()
-            
-            // Extraire les valeurs et filtrer
-            val bgReadings = bgReadingsList
-                .mapNotNull { gv ->
-                    // GV type a la propriété 'value' de type Double
-                    val value = gv.value
-                    if (value > 39.0) value else null
-                }
+            refreshBg24hAsync(start)
+            refreshExerciseEventsAsync(start)
+            val bgSamples = bg24hRef.get()
+            val bgReadings = bgSamples.map { it.value }
             
             if (bgReadings.isEmpty() || bgReadings.size < 12) {
                 log.warn(LTag.APS, "UnifiedReactivityLearner: Pas assez de données BG (${bgReadings.size})")
@@ -161,18 +226,10 @@ class UnifiedReactivityLearner @Inject constructor(
             val tir180_250 = (inRange180_250.toDouble() / bgReadings.size.toDouble()) * 100.0
             val tir_above_250 = (above250.toDouble() / bgReadings.size.toDouble()) * 100.0
             val tir_above_180 = (above180.toDouble() / bgReadings.size.toDouble()) * 100.0
+            val tir_below_70 = (bgReadings.count { it < 70.0 }.toDouble() / bgReadings.size.toDouble()) * 100.0
             
             // 2. Détection épisodes hypo (groupements contigus < 70)
-            var hypo_count = 0
-            var inHypo = false
-            for (bg in bgReadings) {
-                if (bg < 70.0 && !inHypo) {
-                    hypo_count++
-                    inHypo = true
-                } else if (bg >= 70.0) {
-                    inHypo = false
-                }
-            }
+            val hypo_count = ReactivityDaypart.countHypoEpisodes(bgReadings)
             
             // 3. Coefficient de Variation (CV%)
             val mean = bgReadings.average()
@@ -198,6 +255,7 @@ class UnifiedReactivityLearner @Inject constructor(
                 tir_above_250 = tir_above_250,
                 tir_above_180 = tir_above_180,
                 hypo_count = hypo_count,
+                tir_below_70 = tir_below_70,
                 cv_percent = cv_percent,
                 crossing_count = crossing_count,
                 mean_bg = mean,
@@ -227,20 +285,27 @@ class UnifiedReactivityLearner @Inject constructor(
         var adjustment = 1.0
         val reasons = mutableListOf<String>()
         
-        // 🔴 PRIORITÉ 1 : Hypo répétées (SÉCURITÉ ABSOLUE)
-        when {
-            perf.hypo_count >= 3 -> {
-                adjustment *= 0.80  // Réduction forte
-                reasons.add("3+ hypos → factor × 0.80")
-            }
-            perf.hypo_count == 2 -> {
-                adjustment *= 0.85  // Réduction modérée
-                reasons.add("2 hypos → factor × 0.85")
-            }
-            perf.hypo_count == 1 -> {
-                adjustment *= 0.92  // Réduction légère
-                reasons.add("1 hypo → factor × 0.92")
-            }
+        // 🔴 PRIORITÉ 1 : charge hypo pondérée par la DURÉE (D1). Un unique relevé de 5 min ne doit PAS épingler
+        // le plancher 24 h : la pénalité suit la fraction de temps < 70 (charge réelle), pas un comptage binaire.
+        val hypoBurdenPct = perf.tir_below_70
+        // F2 — event-based penalty. Only a genuinely new/worsening episode (burden increased since the
+        // previous analysis) applies the penalty; an episode already priced in keeps depressing the factor
+        // via the persisted state, but no longer *re-compounds* while it lingers in the 24h window. Burden
+        // decreasing (episode aging out) is not credited here — upward recovery is handled by the optimal /
+        // good-enough convergence paths below. Note: `hypoBurdenPct` itself (current burden) still drives the
+        // hyper safety-damping, the adaptive α, and the floor-lock reason — only the penalty *application* is gated.
+        val burdenIncreased = hypoBurdenPct > lastSeenHypoBurdenPct + 1e-9
+        lastSeenHypoBurdenPct = hypoBurdenPct
+        val hypoPenalty = if (!burdenIncreased) 1.0 else when {
+            hypoBurdenPct >= 5.0 -> 0.80   // charge sévère / prolongée
+            hypoBurdenPct >= 2.0 -> 0.88
+            hypoBurdenPct >= 0.8 -> 0.94   // ~2-3 relevés contigus
+            hypoBurdenPct > 0.0  -> 0.98   // relevé isolé → quasi neutre
+            else               -> 1.0
+        }
+        if (hypoPenalty < 1.0) {
+            adjustment *= hypoPenalty
+            reasons.add("Hypo burden ${"%.1f".format(hypoBurdenPct)}% (${perf.hypo_count} ep, new) → factor ×${"%.2f".format(hypoPenalty)}")
         }
         
         // 🟡 PRIORITÉ 2 : Hyperglycémie prolongée
@@ -256,13 +321,14 @@ class UnifiedReactivityLearner @Inject constructor(
         }
 
         if (hyperAdjustment > 1.0) {
-            // SÉCURITÉ : On autorise l'augmentation même si hypo_count > 0, 
-            // mais avec un amorti de sécurité si des hypos sont présentes.
-            // EXCEPTION : Si la montée est confirmée (isConfirmedRise), on ignore l'amorti hypo
-            // car l'urgence hyperglycémique prime sur la prudence passée.
+            // SÉCURITÉ : On autorise l'augmentation même si hypo_count > 0,
+            // avec amorti progressif selon la charge hypo récente.
+            // EXCEPTION : Si la montée est confirmée (isConfirmedRise), on ignore l'amorti hypo.
             val safetyDamping = when {
                 isConfirmedRise -> 1.0
-                perf.hypo_count > 0 -> 0.5
+                hypoBurdenPct >= 5.0 -> 0.50
+                hypoBurdenPct >= 2.0 -> 0.70
+                hypoBurdenPct >= 0.8 -> 0.85
                 else -> 1.0
             }
             val finalHyperAdj = 1.0 + (hyperAdjustment - 1.0) * safetyDamping
@@ -276,20 +342,26 @@ class UnifiedReactivityLearner @Inject constructor(
             reasons.add("Hyper detection: adj x${"%.2f".format(finalHyperAdj)}$hypoWarning")
         }
         
-        // 🟢 PRIORITÉ 3 : Oscillations (stabilité glycémique)
-        if (perf.cv_percent > 40 || perf.crossing_count > 10) {
+        // 🟢 PRIORITÉ 3 : Oscillations (stabilité glycémique). D2 : ne pénaliser QUE si la variabilité est réellement
+        // élevée (CV ET crossings) — le comptage de crossings du seuil fixe 120 pénalisait à tort une cible ~100
+        // (glycémie 100-130 = bonne journée) tant que le CV était bas. Le `&&` neutralise ce faux positif.
+        if (perf.cv_percent > 40 && perf.crossing_count > 10) {
             adjustment *= 0.93  // Légère réduction pour amortir
             reasons.add("Variabilité élevée (CV=${perf.cv_percent.toInt()}%, Crossings=${perf.crossing_count}) → factor × 0.93")
         }
         
         // 🎯 Convergence vers 1.0 si performance optimale
+        // F4 — use hypo *burden* (< 0.4% ≈ a single stray reading), not a binary episode count. A lone
+        // reading <70 previously set hypo_count > 0 and blocked the only fast recovery path for a full 24h.
         val isOptimal = perf.tir70_180 > 70 &&
-                       perf.hypo_count == 0 &&
+                       hypoBurdenPct < 0.4 &&
                        perf.cv_percent < 36 &&
                        perf.tir_above_180 < 15
         
         val previousFactor = globalFactor
         var targetFactor = globalFactor * adjustment
+        var floorReleased = false
+        var floorLockReason = ""
 
         if (isOptimal) {
             // EMA douce vers 1.0 (decay de 5% par analyse)
@@ -302,7 +374,7 @@ class UnifiedReactivityLearner @Inject constructor(
             // 🎯 Adaptive Learning Rate based on glycemic context
             // IMPROVEMENT: Adjust learning speed based on situation severity
             val alpha = when {
-                perf.hypo_count > 0 -> 0.80      // Very fast: Safety critical
+                hypoBurdenPct >= 2.0 -> 0.80     // Very fast: real hypo burden (safety critical)
                 perf.cv_percent > 40 -> 0.50     // Moderate: High variability
                 perf.tir_above_180 > 40 -> 0.60  // Fast: Persistent hyper
                 else -> 0.70                      // Standard: Normal conditions
@@ -312,13 +384,74 @@ class UnifiedReactivityLearner @Inject constructor(
             
             // Apply EMA: New = (Target * alpha) + (Old * (1-alpha))
             globalFactor = (targetFactor * alpha + globalFactor * (1 - alpha)).coerceIn(0.5, 1.5)
+
+            // F4 — "good enough" recovery (fixes the frozen zone A4). Without this, a good-but-not-optimal
+            // day (CV 36–44, hypo-free, mild/no hyper) has `adjustment == 1.0` → target == globalFactor →
+            // the EMA above freezes the factor wherever it last fell. Nudge gently back toward neutral so a
+            // clean day recovers even when it doesn't clear the strict `isOptimal` bar. Only upward, capped
+            // at 1.0, and only when no directional signal fired this tick (adjustment == 1.0).
+            val goodEnough = adjustment == 1.0 &&
+                hypoBurdenPct < 0.4 &&
+                perf.tir70_180 > 75 &&
+                perf.tir_above_180 < 15 &&
+                perf.cv_percent < 45
+            if (goodEnough && globalFactor < 1.0) {
+                val nudgeAlpha = 0.03
+                globalFactor = (1.0 * nudgeAlpha + globalFactor * (1 - nudgeAlpha)).coerceIn(0.5, 1.5)
+                reasons.add("Bonne journée (récupération douce) → nudge vers 1.0")
+            }
+        }
+
+        // 🛡️ Floor release: keep an escape path for real meal rises even with generally good TIR.
+        // F3 — widen the release band from the hard floor (≤0.55) up to <0.75 so a confirmed meal rise at
+        // BG 120–150 (which never qualifies as `isConfirmedRise` at higher BG) can still escape a depressed
+        // factor. Deliberately conservative vs the report's <1.0: the release stays rise/hyper-gated and
+        // capped at 0.95, so it can only open the throttle where there is genuine upward pressure.
+        val belowFloorBand = globalFactor < 0.75
+        val acceptableCv = perf.cv_percent < 45
+        val sustainedHyper = perf.tir_above_180 > 25
+        val acuteRiseHyper = isConfirmedRise && perf.tir_above_180 > 10
+        val acuteRiseWithGoodTir = isConfirmedRise && perf.tir70_180 > 80
+        val riseAgainstSlowShortTerm = isConfirmedRise && shortTermFactor < 1.0
+        val canReleaseFloor = belowFloorBand &&
+            acceptableCv &&
+            ((hypoBurdenPct < 1.0 && sustainedHyper) || acuteRiseHyper || acuteRiseWithGoodTir || riseAgainstSlowShortTerm)
+        if (canReleaseFloor) {
+            val releaseStep = when {
+                isConfirmedRise && perf.tir_above_180 > 25 -> 0.10
+                isConfirmedRise -> 0.07
+                else -> 0.04
+            }
+            val released = (globalFactor + releaseStep).coerceAtMost(0.95)
+            if (released > globalFactor) {
+                floorReleased = true
+                globalFactor = released
+                reasons.add("Floor release +${"%.2f".format(releaseStep)} (rise=$isConfirmedRise, TIR>180=${perf.tir_above_180.toInt()}%)")
+            }
+        }
+        if (globalFactor <= 0.5501) {
+            floorLockReason = when {
+                hypoBurdenPct >= 0.8 -> "Recent hypo burden"
+                perf.cv_percent > 40 -> "High variability (CV)"
+                perf.tir_above_180 < 25 -> "No sustained hyper pressure"
+                else -> "Awaiting stronger rise confirmation"
+            }
         }
         
         val reasonsStr = reasons.joinToString(", ")
         log.info(LTag.APS, "UnifiedReactivityLearner: Nouveau globalFactor = ${"%.3f".format(globalFactor)} | $reasonsStr")
+        if (globalFactor <= 0.5501) {
+            log.info(LTag.APS, "UnifiedReactivityLearner: Floor lock active (<=0.55) | reason=$floorLockReason")
+        } else if (floorReleased) {
+            log.info(LTag.APS, "UnifiedReactivityLearner: Floor released progressively to ${"%.3f".format(globalFactor)}")
+        }
         
         // 📊 Capture snapshot for rT display
         val now = dateUtil.now()
+        val windowStart = now - (24 * 60 * 60 * 1000L)
+        updateSegmentFactors(windowStart, now)
+
+        val currentDaypart = ReactivityDaypart.fromHour(currentHourOfDay())
         lastAnalysis = AnalysisSnapshot(
             timestamp = now,
             tir70_180 = perf.tir70_180,
@@ -326,14 +459,72 @@ class UnifiedReactivityLearner @Inject constructor(
             hypo_count = perf.hypo_count,
             globalFactor = globalFactor,
             shortTermFactor = shortTermFactor,
+            segmentFactor = segmentFactors[currentDaypart] ?: globalFactor,
+            segmentDaypart = currentDaypart,
             previousFactor = previousFactor,
-            adjustmentReason = reasonsStr
+            adjustmentReason = reasonsStr,
+            floorLocked = globalFactor <= 0.5501,
+            floorLockReason = floorLockReason,
+            floorReleased = floorReleased,
+            totalReadings = perf.total_readings,
         )
+        last24hSampleCount = perf.total_readings
+        longAnalysisCount.incrementAndGet()
+        publishStatus(now)
         
         save()
         exportToCSV(perf, reasonsStr)
         
         return globalFactor
+    }
+
+    private fun updateSegmentFactors(windowStart: Long, windowEnd: Long) {
+        val samples = bg24hRef.get()
+        if (samples.size < 12) return
+
+        val exerciseTimestamps = exerciseEventsRef.get()
+        for (daypart in ReactivityDaypart.entries) {
+            val segmentSamples = samples.filter { sample ->
+                ReactivityDaypart.fromHour(hourFromTimestamp(sample.timestamp)) == daypart
+            }
+            if (segmentSamples.size < 3) continue
+
+            val values = segmentSamples.map { it.value }
+            val hypoCount = ReactivityDaypart.countHypoEpisodes(values)
+            val above180 = values.count { it > 180.0 }
+            val tirAbove180 = (above180.toDouble() / values.size) * 100.0
+            val exerciseInSegment = ReactivityDaypart.hasExerciseInDaypart(
+                exerciseTimestamps = exerciseTimestamps,
+                daypart = daypart,
+                windowStart = windowStart,
+                windowEnd = windowEnd,
+                hourFromTimestamp = ::hourFromTimestamp,
+            )
+
+            val currentSegment = segmentFactors[daypart] ?: globalFactor
+            val rawSegment = ReactivityDaypart.computeRawSegmentFactor(
+                currentSegment = currentSegment,
+                hypoCount = hypoCount,
+                tirAbove180 = tirAbove180,
+                exerciseInSegment = exerciseInSegment,
+            )
+            val shrunk = ReactivityDaypart.shrinkTowardGlobal(
+                rawSegment = rawSegment,
+                global = globalFactor,
+                sampleCount = segmentSamples.size,
+            )
+            segmentFactors[daypart] = ReactivityDaypart.capSegmentAgainstGlobal(
+                segment = shrunk,
+                global = globalFactor,
+                hypoCount = hypoCount,
+            ).coerceIn(ReactivityDaypart.FACTOR_MIN, ReactivityDaypart.FACTOR_MAX)
+        }
+    }
+
+    private fun hourFromTimestamp(timestamp: Long): Int {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timestamp
+        return calendar.get(Calendar.HOUR_OF_DAY)
     }
     
     /**
@@ -342,21 +533,31 @@ class UnifiedReactivityLearner @Inject constructor(
      */
     fun processIfNeeded(isConfirmedRise: Boolean = false) {
         val now = dateUtil.now()
-        
+
+        // D3: latch the confirmed rise. The 24h analysis (the ONLY consumer of the flag) runs every 30 min; without
+        // latching, a meal rise seen between two analyses never reaches computeAdjustment, so the floor-release and
+        // hypo-damping-bypass escapes never fire. Any `true` within the interval is preserved until consumed.
+        if (isConfirmedRise) pendingConfirmedRise = true
+
         // === SHORT-TERM ANALYSIS (every 10 min on last 2h) ===
         if (now - lastShortAnalysisTime >= SHORT_ANALYSIS_INTERVAL_MS) {
             val shortPerf = analyzeLast2h()
             if (shortPerf != null) {
                 computeShortTermAdjustment(shortPerf)
+                last2hSampleCount = shortPerf.total_readings
+                shortAnalysisCount.incrementAndGet()
             }
             lastShortAnalysisTime = now
+            publishStatus(now)
         }
         
         // === LONG-TERM ANALYSIS (every 30 min on last 24h) ===
         if (now - lastAnalysisTime >= ANALYSIS_INTERVAL_MS) {
             val perf = analyzeLast24h() ?: return
-            computeAdjustment(perf, isConfirmedRise)
+            computeAdjustment(perf, pendingConfirmedRise)
+            pendingConfirmedRise = false
             lastAnalysisTime = now
+            publishStatus(now)
         }
         
         save()
@@ -370,11 +571,9 @@ class UnifiedReactivityLearner @Inject constructor(
         val start = now - (2 * 60 * 60 * 1000L)  // 2 hours
         
         try {
-            val bgReadingsList = persistenceLayer.getBgReadingsDataFromTime(start, false)
-                .blockingGet()
-            
-            val bgReadings = bgReadingsList
-                .mapNotNull { gv -> if (gv.value > 39.0) gv.value else null }
+            refreshBg2hAsync(start)
+            val bgSamples = bg2hRef.get()
+            val bgReadings = bgSamples.map { it.value }
             
             if (bgReadings.isEmpty() || bgReadings.size < 6) {
                 return null  // Need at least 30 min of data
@@ -393,12 +592,7 @@ class UnifiedReactivityLearner @Inject constructor(
             val tir_above_250 = (above250.toDouble() / bgReadings.size) * 100.0
             val tir_above_180 = (above180.toDouble() / bgReadings.size) * 100.0
             
-            var hypo_count = 0
-            var inHypo = false
-            for (bg in bgReadings) {
-                if (bg < 70.0 && !inHypo) { hypo_count++; inHypo = true }
-                else if (bg >= 70.0) { inHypo = false }
-            }
+            var hypo_count = ReactivityDaypart.countHypoEpisodes(bgReadings)
             
             val mean = bgReadings.average()
             val variance = bgReadings.map { (it - mean).pow(2) }.average()
@@ -410,20 +604,73 @@ class UnifiedReactivityLearner @Inject constructor(
                     (bgReadings[i-1] > 120 && bgReadings[i] < 120)) crossing_count++
             }
             
+            val tir_below_70 = (bgReadings.count { it < 70.0 }.toDouble() / bgReadings.size) * 100.0
             return GlycemicPerformance(
                 tir70_180, tir70_140, tir140_180, tir180_250, tir_above_250,
-                tir_above_180, hypo_count, cv_percent, crossing_count, mean, bgReadings.size
+                tir_above_180, hypo_count, tir_below_70, cv_percent, crossing_count, mean, bgReadings.size
             )
         } catch (e: Exception) {
             log.error(LTag.APS, "UnifiedReactivityLearner: Error in 2h analysis", e)
             return null
         }
     }
+
+    private fun refreshBg24hAsync(start: Long) {
+        if (!bg24hRefreshInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                val values = persistenceLayer.getBgReadingsDataFromTime(start, ascending = false)
+                    .mapNotNull { gv -> toBgSample(gv) }
+                bg24hRef.set(values)
+            } catch (_: Exception) {
+                bg24hRef.set(emptyList())
+            } finally {
+                bg24hRefreshInFlight.set(false)
+            }
+        }
+    }
+
+    private fun refreshBg2hAsync(start: Long) {
+        if (!bg2hRefreshInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                val values = persistenceLayer.getBgReadingsDataFromTime(start, ascending = false)
+                    .mapNotNull { gv -> toBgSample(gv) }
+                bg2hRef.set(values)
+            } catch (_: Exception) {
+                bg2hRef.set(emptyList())
+            } finally {
+                bg2hRefreshInFlight.set(false)
+            }
+        }
+    }
+
+    private fun refreshExerciseEventsAsync(start: Long) {
+        if (!exerciseRefreshInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                val timestamps = persistenceLayer.getTherapyEventDataFromTime(start, ascending = true)
+                    .filter { event -> event.isValid && event.type == TE.Type.EXERCISE }
+                    .map { event -> event.timestamp }
+                exerciseEventsRef.set(timestamps)
+            } catch (_: Exception) {
+                exerciseEventsRef.set(emptyList())
+            } finally {
+                exerciseRefreshInFlight.set(false)
+            }
+        }
+    }
+
+    private fun toBgSample(gv: GV): BgSample? {
+        val value = gv.value
+        if (value <= 39.0) return null
+        return BgSample(value = value, timestamp = gv.timestamp)
+    }
     
     /**
      * Ajustement court terme plus agressif
      */
-    private fun computeShortTermAdjustment(perf: GlycemicPerformance) {
+    internal fun computeShortTermAdjustment(perf: GlycemicPerformance) {
         var adjustment = 1.0
         
         // Hypo in last 2h: Strong reduction
@@ -445,8 +692,21 @@ class UnifiedReactivityLearner @Inject constructor(
             adjustment *= 0.95
         }
         
+        // F1 — Neutral convergence (recovery path).
+        // A stable, hypo-free, low-variability 2h window carries no directional signal, so `adjustment`
+        // stays exactly 1.0. Without a rappel term the EMA below is algebraically a no-op
+        // (f·α + f·(1−α) = f), so shortTermFactor stays pinned wherever it last fell — e.g. at the 0.5
+        // floor after a single hypo — indefinitely, and the pin is persisted across restarts. Give it a
+        // gentle pull back toward neutral on a good window so a clean day actually recovers.
+        // ~1h half-life at the 10-min short-term cadence.
+        if (adjustment == 1.0) {
+            val neutralAlpha = 0.08
+            shortTermFactor = (1.0 * neutralAlpha + shortTermFactor * (1 - neutralAlpha)).coerceIn(0.5, 1.5)
+            return
+        }
+
         val target = shortTermFactor * adjustment
-        
+
         // Adaptive learning rate for short-term (faster than long-term)
         val alpha = when {
             perf.hypo_count >= 1 -> 0.70        // Ultra-fast: Hypo is urgent
@@ -454,7 +714,7 @@ class UnifiedReactivityLearner @Inject constructor(
             perf.cv_percent > 35 -> 0.45         // Moderate-fast: High variability
             else -> 0.40                         // Standard short-term rate
         }
-        
+
         shortTermFactor = (target * alpha + shortTermFactor * (1 - alpha)).coerceIn(0.5, 1.5)
     }
     
@@ -503,6 +763,14 @@ class UnifiedReactivityLearner @Inject constructor(
                 shortTermFactor = json.optDouble("shortTermFactor", 1.0).coerceIn(0.5, 1.5)
                 lastAnalysisTime = json.optLong("lastAnalysisTime", 0L)
                 lastShortAnalysisTime = json.optLong("lastShortAnalysisTime", 0L)
+                lastSeenHypoBurdenPct = json.optDouble("lastSeenHypoBurdenPct", 0.0)
+                val segmentJson = json.optJSONObject("segmentFactors")
+                ReactivityDaypart.entries.forEach { daypart ->
+                    segmentFactors[daypart] = segmentJson
+                        ?.optDouble(daypart.jsonKey(), globalFactor)
+                        ?.coerceIn(ReactivityDaypart.FACTOR_MIN, ReactivityDaypart.FACTOR_MAX)
+                        ?: globalFactor
+                }
                 log.info(LTag.APS, "UnifiedReactivityLearner: ✅ Loaded state")
                 log.info(LTag.APS, "  → globalFactor=$globalFactor, shortTerm=$shortTermFactor")
             },
@@ -512,7 +780,44 @@ class UnifiedReactivityLearner @Inject constructor(
                 shortTermFactor = 1.0
                 lastAnalysisTime = 0L
                 lastShortAnalysisTime = 0L
+                lastSeenHypoBurdenPct = 0.0
+                ReactivityDaypart.entries.forEach { daypart ->
+                    segmentFactors[daypart] = 1.0
+                }
             }
+        )
+    }
+
+    fun statusSnapshot(): StatusSnapshot {
+        val snapshot = statusRef.get()
+        return snapshot.copy(segmentFactors = snapshot.segmentFactors.toList())
+    }
+
+    private fun publishStatus(observedAt: Long? = null) {
+        val currentDaypart = ReactivityDaypart.fromHour(currentHourOfDay())
+        val immutableSegments = ReactivityDaypart.entries.map { daypart ->
+            SegmentFactorSnapshot(daypart, segmentFactors[daypart] ?: globalFactor)
+        }
+        val lastEngineUpdate = maxOf(lastAnalysisTime, lastShortAnalysisTime, lastAnalysis?.timestamp ?: 0L)
+        statusRef.set(
+            StatusSnapshot(
+                globalFactor = globalFactor,
+                shortTermFactor = shortTermFactor,
+                combinedFactor = ReactivityDaypart.combineFactors(
+                    globalFactor,
+                    shortTermFactor,
+                    segmentFactors[currentDaypart] ?: globalFactor,
+                ),
+                segmentFactors = immutableSegments,
+                lastAnalysis = lastAnalysis,
+                last24hSampleCount = last24hSampleCount,
+                last2hSampleCount = last2hSampleCount,
+                shortAnalysisCount = shortAnalysisCount.get(),
+                longAnalysisCount = longAnalysisCount.get(),
+                lastShortAnalysisTime = lastShortAnalysisTime,
+                lastAnalysisTime = lastAnalysisTime,
+                updatedAt = observedAt ?: lastEngineUpdate.takeIf { it > 0L },
+            )
         )
     }
     
@@ -526,6 +831,12 @@ class UnifiedReactivityLearner @Inject constructor(
         json.put("shortTermFactor", shortTermFactor)
         json.put("lastAnalysisTime", lastAnalysisTime)
         json.put("lastShortAnalysisTime", lastShortAnalysisTime)
+        json.put("lastSeenHypoBurdenPct", lastSeenHypoBurdenPct)
+        val segmentJson = JSONObject()
+        ReactivityDaypart.entries.forEach { daypart ->
+            segmentJson.put(daypart.jsonKey(), segmentFactors[daypart] ?: globalFactor)
+        }
+        json.put("segmentFactors", segmentJson)
         
         if (storageHelper.saveFileSafe(file, json.toString())) {
             log.debug(LTag.APS, "UnifiedReactivityLearner: ✅ Saved state")

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Pump Error</string>
+    <string name="mdt_last_bolus" translatable="false">%1$.1f %2$s (%3$s)</string>
+    <string name="medtronic_error_pump_frequency_not_set">Pump Frequency not set.</string>
+    <string name="medtronic_errors">Errors</string>
+    <string name="medtronic_error_serial_not_set">Serial # not set.</string>
+    <string name="medtronic_history_type">Type:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pump unreachable</string>
+    <string name="medtronic_warning">Warning</string>
+    <string name="medtronic_pump_history">Medtronic Pump History</string>
+</resources>

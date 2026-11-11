@@ -6,10 +6,6 @@
             android:enabled="true"
             android:exported="false" />
 
-        <activity
-            android:name=".dialog.MedtronicHistoryActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
         <service
             android:name=".service.MedLinkMedtronicService"
             android:enabled="true"

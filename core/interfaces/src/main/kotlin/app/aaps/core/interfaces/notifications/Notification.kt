@@ -1,23 +1,26 @@
 package app.aaps.core.interfaces.notifications
 
 import android.content.Context
-import androidx.annotation.RawRes
-import java.util.concurrent.TimeUnit
 
+/**
+ * In-app notification model and ID / level constants.
+ * (Values restored from compiled bytecode — keep in sync with persisted notification IDs.)
+ */
+@Suppress("unused", "MemberVisibilityCanBePrivate")
 open class Notification {
 
-    var id = 0
-    var date: Long = 0
-    var text: String = ""
-    var level = 0
-    var validTo: Long = 0
-    @RawRes var soundId: Int? = null
+    var id: Int = 0
+    var date: Long = 0L
+    var text: String? = null
+    var level: Int = 0
+    var validTo: Long = 0L
+    var soundId: Int? = null
     var action: Runnable? = null
-    var buttonText = 0
-
+    var buttonText: Int = 0
     var contextForAction: Context? = null
 
     constructor()
+
     constructor(id: Int, date: Long, text: String, level: Int, validTo: Long) {
         this.id = id
         this.date = date
@@ -26,41 +29,46 @@ open class Notification {
         this.validTo = validTo
     }
 
-    constructor(id: Int, text: String, level: Int, validMinutes: Int) {
+    constructor(id: Int, text: String, level: Int, buttonText: Int) {
         this.id = id
-        date = System.currentTimeMillis()
         this.text = text
         this.level = level
-        validTo = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(validMinutes.toLong())
+        this.buttonText = buttonText
     }
 
     constructor(id: Int, text: String, level: Int) {
         this.id = id
-        date = System.currentTimeMillis()
         this.text = text
         this.level = level
     }
 
     constructor(id: Int) {
         this.id = id
-        date = System.currentTimeMillis()
     }
 
-    fun text(text: String): Notification = this.also { it.text = text }
-    fun level(level: Int): Notification = this.also { it.level = level }
-    fun sound(soundId: Int): Notification = this.also { it.soundId = soundId }
+    fun text(text: String): Notification {
+        this.text = text
+        return this
+    }
+
+    fun level(level: Int): Notification {
+        this.level = level
+        return this
+    }
+
+    fun sound(soundId: Int): Notification {
+        this.soundId = soundId
+        return this
+    }
 
     companion object {
+        const val CALIBRATION_ALARM = 110 // MedLink
 
-        const val CALIBRATION_ALARM = 110
-
-        // Hard to convert to enums because for NS notifications we create dynamic ID
         const val URGENT = 0
         const val NORMAL = 1
         const val LOW = 2
         const val INFO = 3
         const val ANNOUNCEMENT = 4
-
         const val PROFILE_SET_FAILED = 0
         const val PROFILE_SET_OK = 1
         const val EASY_MODE_ENABLED = 2
@@ -145,13 +153,12 @@ open class Notification {
         const val AAPS_DIR_NOT_SELECTED = 92
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
-        const val HYPO_RISK_ALARM = 95
-        const val APEX_SERVICE_MSG = 96
-        const val PUMP_IS_LOCKED = 97
-        const val MEDLINK_SUSPEND_LOW_BATTERY = 98 // was 96 before the merge of AAPS 3.4.2.2 (96 = APEX_SERVICE_MSG)
+        const val HYPO_RISK_ALARM = 105
+        const val APEX_SERVICE_MSG = 106
+        const val PUMP_IS_LOCKED = 107
+        const val MEDLINK_SUSPEND_LOW_BATTERY = 98 // MedLink, free in both AAPS 3.4.2.2 and 4.0
 
         const val USER_MESSAGE = 1000
-
         const val IMPORTANCE_HIGH = 2
         const val CATEGORY_ALARM = "alarm"
     }

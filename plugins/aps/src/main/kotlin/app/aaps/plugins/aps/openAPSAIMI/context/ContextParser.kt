@@ -91,6 +91,17 @@ class ContextParser @Inject constructor(
         private val TRAVEL_PATTERNS = listOf(
             Regex("\\b(travel|flight|trip|voyage|vol|avion)\\b", RegexOption.IGNORE_CASE)
         )
+
+        // Slow-carb / fat-protein meal patterns
+        private val SLOW_CARB_PATTERNS = listOf(
+            Regex("\\b(pizza|frites|fries|chips|burger|fromage|cheese|gras|gateau|dessert)\\b", RegexOption.IGNORE_CASE),
+            Regex("\\b(fatty|fat meal|slow carb|repas lent|vetrijk|friet|kaas)\\b", RegexOption.IGNORE_CASE)
+        )
+
+        // Hypo / recovery patterns
+        private val HYPO_PATTERNS = listOf(
+            Regex("\\b(hypo|hypoglyc|low\\s?bg|going low|treating low|en hypo|sucre bas|resucrage)\\b", RegexOption.IGNORE_CASE)
+        )
         
         // Duration patterns
         private val DURATION_HOUR_PATTERN = Regex("(\\d+)\\s*(?:h|hour|hours|heure|heures)", RegexOption.IGNORE_CASE)
@@ -127,7 +138,10 @@ class ContextParser @Inject constructor(
         matchActivity(text, now)?.let { intents.add(it) }
         matchIllness(text, now)?.let { intents.add(it) }
         matchStress(text, now)?.let { intents.add(it) }
-        matchMealRisk(text, now)?.let { intents.add(it) }
+        matchHypoRecovery(text, now)?.let { intents.add(it) }
+        // Slow-carb takes precedence over generic meal-risk (avoids double intent on "repas gras").
+        val slow = matchSlowCarbMeal(text, now)?.also { intents.add(it) }
+        if (slow == null) matchMealRisk(text, now)?.let { intents.add(it) }
         matchAlcohol(text, now)?.let { intents.add(it) }
         matchTravel(text, now)?.let { intents.add(it) }
         
@@ -228,6 +242,18 @@ class ContextParser @Inject constructor(
                 confidence = 1.0f,
                 timezoneShiftHours = 0
             )
+            PresetType.SLOW_CARB -> SlowCarbMeal(
+                startTimeMs = now,
+                durationMs = preset.defaultDuration.inWholeMilliseconds,
+                intensity = preset.defaultIntensity,
+                confidence = 1.0f
+            )
+            PresetType.HYPO_RECOVERY -> HypoRecovery(
+                startTimeMs = now,
+                durationMs = preset.defaultDuration.inWholeMilliseconds,
+                intensity = preset.defaultIntensity,
+                confidence = 1.0f
+            )
         }
     }
     
@@ -312,7 +338,31 @@ class ContextParser @Inject constructor(
             riskWindow = duration
         )
     }
-    
+
+    private fun matchSlowCarbMeal(text: String, baseTimeMs: Long): SlowCarbMeal? {
+        if (!SLOW_CARB_PATTERNS.any { it.containsMatchIn(text) }) return null
+        val duration = extractDuration(text) ?: 5.hours
+        val intensity = extractIntensity(text) ?: Intensity.MEDIUM
+        return SlowCarbMeal(
+            startTimeMs = baseTimeMs,
+            durationMs = duration.inWholeMilliseconds,
+            intensity = intensity,
+            confidence = 1.0f
+        )
+    }
+
+    private fun matchHypoRecovery(text: String, baseTimeMs: Long): HypoRecovery? {
+        if (!HYPO_PATTERNS.any { it.containsMatchIn(text) }) return null
+        val duration = extractDuration(text) ?: 60.minutes
+        val intensity = extractIntensity(text) ?: Intensity.MEDIUM
+        return HypoRecovery(
+            startTimeMs = baseTimeMs,
+            durationMs = duration.inWholeMilliseconds,
+            intensity = intensity,
+            confidence = 1.0f
+        )
+    }
+
     private fun matchAlcohol(text: String, baseTimeMs: Long): Alcohol? {
         if (!ALCOHOL_PATTERNS.any { it.containsMatchIn(text) }) return null
         
@@ -383,7 +433,9 @@ enum class PresetType {
     STRESS,
     MEAL_RISK,
     ALCOHOL,
-    TRAVEL
+    TRAVEL,
+    SLOW_CARB,
+    HYPO_RECOVERY
 }
 
 /**
@@ -407,7 +459,9 @@ data class ContextPreset(
             ContextPreset(PresetType.STRESS, "Stress", "😰", 8.hours, Intensity.MEDIUM),
             ContextPreset(PresetType.MEAL_RISK, "Repas non annoncé", "🍕", 6.hours, Intensity.MEDIUM),
             ContextPreset(PresetType.ALCOHOL, "Alcool", "🍷", 12.hours, Intensity.MEDIUM),
-            ContextPreset(PresetType.TRAVEL, "Voyage", "✈️", 24.hours, Intensity.MEDIUM)
+            ContextPreset(PresetType.TRAVEL, "Voyage", "✈️", 24.hours, Intensity.MEDIUM),
+            ContextPreset(PresetType.SLOW_CARB, "Repas lent (gras)", "🧀", 5.hours, Intensity.MEDIUM),
+            ContextPreset(PresetType.HYPO_RECOVERY, "Hypo / récup", "🍬", 60.minutes, Intensity.MEDIUM)
         )
     }
 }

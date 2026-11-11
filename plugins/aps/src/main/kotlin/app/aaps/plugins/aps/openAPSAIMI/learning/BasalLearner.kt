@@ -6,6 +6,8 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.exp
@@ -28,6 +30,23 @@ class BasalLearner @Inject constructor(
     private val log: AAPSLogger,
     private val storageHelper: AimiStorageHelper
 ) {
+    data class StatusSnapshot(
+        val shortTermMultiplier: Double,
+        val mediumTermMultiplier: Double,
+        val longTermMultiplier: Double,
+        val combinedMultiplier: Double,
+        val shortBufferCount: Int,
+        val mediumBufferCount: Int,
+        val fastingSampleCount: Int,
+        val shortUpdateCount: Long,
+        val mediumUpdateCount: Long,
+        val longUpdateCount: Long,
+        val lastShortUpdate: Long,
+        val lastMediumUpdate: Long,
+        val lastLongUpdate: Long,
+        val updatedAt: Long?,
+    )
+
     private val fileName = "aimi_basal_learner.json"
     private val file by lazy { storageHelper.getAimiFile(fileName) }
 
@@ -52,6 +71,16 @@ class BasalLearner @Inject constructor(
     private var fastingSamples = 0
     private var fastingSlopeSum = 0.0
     private var fastingBgSum = 0.0
+    private val shortUpdateCount = AtomicLong(0L)
+    private val mediumUpdateCount = AtomicLong(0L)
+    private val longUpdateCount = AtomicLong(0L)
+    private val statusRef = AtomicReference<StatusSnapshot>()
+
+    // === Lot 4 — exclusion post-hypo ===
+    /** Horodatage de la dernière hypo signalée par [onHypoDetected]. */
+    private var lastHypoDetectedAt = 0L
+    /** Nombre d'échantillons écartés de l'apprentissage moyen/long depuis le démarrage (télémétrie). */
+    private var postHypoExcludedSamples = 0L
 
     // === Configuration ===
     companion object {
@@ -69,14 +98,44 @@ class BasalLearner @Inject constructor(
         private const val ALPHA_MEDIUM = 0.15  // Moderate EMA
         private const val ALPHA_LONG = 0.10    // Slow EMA
 
+        /**
+         * Floor of the heuristic (H) basal multiplier. It is 0.70, and it is NOT the 0.80 of the learned
+         * (N) channel (`BasalNeuralLearner.RUNTIME_BASAL_FLOOR`). The two floors mean different things and
+         * are kept apart on purpose.
+         *
+         * Read this before trusting any "never below 0.80" claim: the blend keeps the smaller of the two
+         * channels as soon as either one is defensive, so this 0.70 can still reach the pump. A multiplier
+         * of exactly 0.70 on 100% of ticks was the field symptom on two patient devices 40 days apart, and
+         * it stayed ambiguous because several mechanisms print that same number. `n_raw` and `n_source` in
+         * the `adaptive_basal` block of AIMI_Decisions.jsonl are what separates them now.
+         *
+         * Whether H should floor at 0.80 like N is a therapy decision that needs field evidence. Do not
+         * change this value as part of a documentation or clean-up change.
+         */
         private const val CLAMP_MIN = 0.70
-        private const val CLAMP_MAX = 2.50
+        private const val CLAMP_MAX = 2.0
+
+        /**
+         * Lot 4 — durée pendant laquelle les échantillons qui suivent une hypo sont écartés de
+         * l'apprentissage moyen/long terme. Couvre le rebond (resucrage + contre-régulation) sans geler
+         * durablement l'apprentissage.
+         */
+        private const val POST_HYPO_EXCLUSION_MS = 3 * 60 * 60 * 1000L // 3 h
+
+        /**
+         * Lot 4 — pas de retour au neutre appliqué à chaque mise à jour. Sans lui, `onHypoDetected`
+         * (×0,90 sur le terme court) était **irréversible** sur glycémie calme : `updateShortTerm` pose
+         * `adjustment = 1.0` quand `|weightedError| <= 0.5`, donc `ema(prev, prev, α) = prev`, un no-op
+         * algébrique. Le motif existe déjà dans `UnifiedReactivityLearner` (convergence neutre F1).
+         */
+        private const val NEUTRAL_CONVERGENCE_STEP = 0.02
     }
 
     data class TimestampedBg(val timestamp: Long, val bg: Double, val delta: Double)
 
     init {
         load()
+        publishStatus()
     }
 
     /**
@@ -103,9 +162,23 @@ class BasalLearner @Inject constructor(
         val now = System.currentTimeMillis()
         val observation = TimestampedBg(now, currentBg, currentDelta)
 
-        // Add to buffers
+        // 🧪 Lot 4 — fenêtre d'exclusion post-hypo.
+        //
+        // Un rebond qui suit une hypo (resucrage ou contre-régulation) est haut et montant : il prend la
+        // branche `avgBg > 150 && weightedError >= -0.5 -> ×1,12` de [updateMediumTerm], et la fenêtre
+        // moyenne (TAU_MEDIUM_MS = 3 h) le surpondère justement parce qu'il est récent. L'hypo elle-même
+        // n'atteint que le terme court, à ×0,90 — soit ≈ -4 % sur la combinaison. Sans exclusion, chaque
+        // hypo apprenait donc au moteur à doser **plus**.
+        //
+        // Les échantillons de la fenêtre sont écartés des buffers moyen/long ; le terme court continue de
+        // les voir, car c'est lui qui doit réagir vite à l'hypo.
+        val inPostHypoWindow = now - lastHypoDetectedAt < POST_HYPO_EXCLUSION_MS
         shortTermBuffer.add(observation)
-        mediumTermBuffer.add(observation)
+        if (inPostHypoWindow) {
+            postHypoExcludedSamples++
+        } else {
+            mediumTermBuffer.add(observation)
+        }
 
         // Prune old data
         pruneBuffer(shortTermBuffer, SHORT_WINDOW_MS, now)
@@ -115,16 +188,18 @@ class BasalLearner @Inject constructor(
         if (now - lastShortUpdate >= SHORT_INTERVAL_MS && shortTermBuffer.size >= 3) {
             updateShortTerm(now)
             lastShortUpdate = now
+            shortUpdateCount.incrementAndGet()
         }
 
         // === MEDIUM-TERM UPDATE (every 6 hours) ===
         if (now - lastMediumUpdate >= MEDIUM_INTERVAL_MS && mediumTermBuffer.size >= 12) {
             updateMediumTerm(now)
             lastMediumUpdate = now
+            mediumUpdateCount.incrementAndGet()
         }
 
         // === LONG-TERM UPDATE (every 24 hours, fasting-based) ===
-        if (isFastingTime && currentBg > 70.0) {
+        if (isFastingTime && currentBg > 70.0 && !inPostHypoWindow) {
             fastingSamples++
             fastingSlopeSum += currentDelta
             fastingBgSum += currentBg
@@ -133,6 +208,7 @@ class BasalLearner @Inject constructor(
         if (now - lastLongUpdate >= LONG_INTERVAL_MS) {
             updateLongTerm(tdd7Days, tdd30Days)
             lastLongUpdate = now
+            longUpdateCount.incrementAndGet()
             // Reset fasting accumulators
             fastingSamples = 0
             fastingSlopeSum = 0.0
@@ -140,6 +216,7 @@ class BasalLearner @Inject constructor(
         }
 
         save()
+        publishStatus(now)
     }
 
     /**
@@ -148,8 +225,11 @@ class BasalLearner @Inject constructor(
      */
     fun onHypoDetected() {
         log.info(LTag.APS, "BasalLearner: Hypo detected, reducing short-term multiplier")
+        // Lot 4 — ouvre la fenêtre d'exclusion : le rebond qui suit ne doit pas entraîner à la hausse.
+        lastHypoDetectedAt = System.currentTimeMillis()
         shortTermMultiplier = (shortTermMultiplier * 0.90).coerceIn(CLAMP_MIN, CLAMP_MAX)
         save()
+        publishStatus(System.currentTimeMillis())
     }
 
     /**
@@ -157,9 +237,36 @@ class BasalLearner @Inject constructor(
      * Called externally when hyper > 180 for > 60 min.
      */
     fun onPersistentHyper() {
+        // 🧪 Lot 4 — garde de cohérence : un rebond consécutif à une hypo est haut et montant, il peut
+        // franchir le seuil d'hyper persistante alors qu'il est précisément l'artefact que la fenêtre
+        // d'exclusion écarte de l'apprentissage. Le laisser passer ici rouvrirait par la porte
+        // événementielle ce que [process] vient de fermer côté buffers.
+        val now = System.currentTimeMillis()
+        if (now - lastHypoDetectedAt < POST_HYPO_EXCLUSION_MS) {
+            log.info(LTag.APS, "BasalLearner: Persistent hyper ignored (post-hypo rebound window)")
+            return
+        }
         log.info(LTag.APS, "BasalLearner: Persistent hyper detected, increasing short-term multiplier")
         shortTermMultiplier = (shortTermMultiplier * 1.10).coerceIn(CLAMP_MIN, CLAMP_MAX)
         save()
+        publishStatus(now)
+    }
+
+    /**
+     * Lot 4 — rapproche un multiplicateur de 1.0 d'un pas borné à chaque mise à jour.
+     *
+     * Sans ce terme, une réduction posée par [onHypoDetected] ne se défaisait jamais sur glycémie calme :
+     * [updateShortTerm] pose `adjustment = 1.0` quand `|weightedError| <= 0.5`, ce qui rend
+     * `ema(prev, prev, α) = prev` — un no-op algébrique. Le multiplicateur restait donc bloqué sous 1.0
+     * jusqu'à ce qu'une tendance montante apparaisse.
+     *
+     * Le pas est volontairement inférieur à l'amplitude des branches d'apprentissage (×0,90 à ×1,12), pour
+     * ramener vers le neutre sans jamais masquer un signal réel.
+     */
+    private fun converge(value: Double): Double = when {
+        value > 1.0 -> max(1.0, value - NEUTRAL_CONVERGENCE_STEP)
+        value < 1.0 -> min(1.0, value + NEUTRAL_CONVERGENCE_STEP)
+        else        -> value
     }
 
     // === Private Update Functions ===
@@ -182,7 +289,9 @@ class BasalLearner @Inject constructor(
         }
 
         val newValue = shortTermMultiplier * adjustment
-        shortTermMultiplier = ema(shortTermMultiplier, newValue, ALPHA_SHORT).coerceIn(CLAMP_MIN, CLAMP_MAX)
+        shortTermMultiplier = ema(shortTermMultiplier, newValue, ALPHA_SHORT)
+            .let { converge(it) }
+            .coerceIn(CLAMP_MIN, CLAMP_MAX)
 
         log.debug(LTag.APS, "BasalLearner: Short-term update. WeightedError=${"%.2f".format(weightedError)}, " +
             "Adjustment=$adjustment, NewMultiplier=${"%.3f".format(shortTermMultiplier)}")
@@ -213,7 +322,9 @@ class BasalLearner @Inject constructor(
         }
 
         val newValue = mediumTermMultiplier * adjustment
-        mediumTermMultiplier = ema(mediumTermMultiplier, newValue, ALPHA_MEDIUM).coerceIn(CLAMP_MIN, CLAMP_MAX)
+        mediumTermMultiplier = ema(mediumTermMultiplier, newValue, ALPHA_MEDIUM)
+            .let { converge(it) }
+            .coerceIn(CLAMP_MIN, CLAMP_MAX)
 
         log.debug(LTag.APS, "BasalLearner: Medium-term update. AvgBG=${"%.0f".format(avgBg)}, " +
             "WeightedError=${"%.2f".format(weightedError)}, NewMultiplier=${"%.3f".format(mediumTermMultiplier)}")
@@ -248,7 +359,9 @@ class BasalLearner @Inject constructor(
         }
 
         val newValue = longTermMultiplier * adjustment
-        longTermMultiplier = ema(longTermMultiplier, newValue, ALPHA_LONG).coerceIn(CLAMP_MIN, CLAMP_MAX)
+        longTermMultiplier = ema(longTermMultiplier, newValue, ALPHA_LONG)
+            .let { converge(it) }
+            .coerceIn(CLAMP_MIN, CLAMP_MAX)
 
         log.info(LTag.APS, "BasalLearner: Long-term update. TDD7/30=${"%.2f".format(tdd7Days/max(1.0, tdd30Days))}, " +
             "AvgFastingBG=${"%.0f".format(avgFastingBg)}, FastingSlope=${"%.2f".format(fastingScore)}, " +
@@ -327,6 +440,30 @@ class BasalLearner @Inject constructor(
         json.put("lastMediumUpdate", lastMediumUpdate)
         json.put("lastLongUpdate", lastLongUpdate)
         storageHelper.saveFileSafe(file, json.toString())
+    }
+
+    fun statusSnapshot(): StatusSnapshot = statusRef.get()
+
+    private fun publishStatus(observedAt: Long? = null) {
+        val lastEngineUpdate = maxOf(lastShortUpdate, lastMediumUpdate, lastLongUpdate)
+        statusRef.set(
+            StatusSnapshot(
+                shortTermMultiplier = shortTermMultiplier,
+                mediumTermMultiplier = mediumTermMultiplier,
+                longTermMultiplier = longTermMultiplier,
+                combinedMultiplier = getMultiplier(),
+                shortBufferCount = shortTermBuffer.size,
+                mediumBufferCount = mediumTermBuffer.size,
+                fastingSampleCount = fastingSamples,
+                shortUpdateCount = shortUpdateCount.get(),
+                mediumUpdateCount = mediumUpdateCount.get(),
+                longUpdateCount = longUpdateCount.get(),
+                lastShortUpdate = lastShortUpdate,
+                lastMediumUpdate = lastMediumUpdate,
+                lastLongUpdate = lastLongUpdate,
+                updatedAt = observedAt ?: lastEngineUpdate.takeIf { it > 0L },
+            )
+        )
     }
 
     // === Legacy API compatibility ===

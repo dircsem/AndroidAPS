@@ -8,6 +8,7 @@ import app.aaps.database.entities.TherapyEvent
 import app.aaps.database.entities.data.GlucoseUnit
 import app.aaps.database.entities.embedments.InterfaceIDs
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.verify
@@ -30,7 +31,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `inserts new glucose value when not found`() {
+    fun `inserts new glucose value when not found`() = runTest {
         val gv = createGlucoseValue(timestamp = 1000L, value = 120.0)
 
         whenever(glucoseValueDao.findByTimestampAndSensor(1000L, GlucoseValue.SourceSensor.DEXCOM_G6_NATIVE)).thenReturn(null)
@@ -46,7 +47,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `updates glucose value when content changes`() {
+    fun `updates glucose value when content changes`() = runTest {
         val gv = createGlucoseValue(timestamp = 1000L, value = 130.0)
         val existing = createGlucoseValue(timestamp = 1000L, value = 120.0)
 
@@ -63,7 +64,38 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `updates nsId when provided but not present in existing`() {
+    fun `does not let an NS round-trip overwrite the locally stored value`() = runTest {
+        val staleEchoFromNs = createGlucoseValue(timestamp = 1000L, value = 110.0)
+        val existing = createGlucoseValue(timestamp = 1000L, value = 160.0)
+
+        whenever(glucoseValueDao.findByTimestampAndSensor(1000L, GlucoseValue.SourceSensor.DEXCOM_G6_NATIVE)).thenReturn(existing)
+
+        val transaction = CgmSourceTransaction(listOf(staleEchoFromNs), emptyList(), null, fromNsClient = true)
+        transaction.database = database
+        val result = transaction.run()
+
+        assertThat(result.updated).isEmpty()
+        assertThat(existing.value).isEqualTo(160.0)
+    }
+
+    @Test
+    fun `NS round-trip still links a missing nsId without touching value`() = runTest {
+        val staleEchoFromNs = createGlucoseValue(timestamp = 1000L, value = 110.0, nsId = "ns-123")
+        val existing = createGlucoseValue(timestamp = 1000L, value = 160.0, nsId = null)
+
+        whenever(glucoseValueDao.findByTimestampAndSensor(1000L, GlucoseValue.SourceSensor.DEXCOM_G6_NATIVE)).thenReturn(existing)
+
+        val transaction = CgmSourceTransaction(listOf(staleEchoFromNs), emptyList(), null, fromNsClient = true)
+        transaction.database = database
+        val result = transaction.run()
+
+        assertThat(result.updatedNsId).hasSize(1)
+        assertThat(existing.interfaceIDs.nightscoutId).isEqualTo("ns-123")
+        assertThat(existing.value).isEqualTo(160.0)
+    }
+
+    @Test
+    fun `updates nsId when provided but not present in existing`() = runTest {
         val gv = createGlucoseValue(timestamp = 1000L, value = 120.0, nsId = "ns-123")
         val existing = createGlucoseValue(timestamp = 1000L, value = 120.0, nsId = null)
 
@@ -80,7 +112,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `preserves nsId from existing when not provided in new`() {
+    fun `preserves nsId from existing when not provided in new`() = runTest {
         val gv = createGlucoseValue(timestamp = 1000L, value = 120.0, nsId = null)
         val existing = createGlucoseValue(timestamp = 1000L, value = 120.0, nsId = "ns-123")
 
@@ -94,7 +126,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `preserves invalid status from existing`() {
+    fun `preserves invalid status from existing`() = runTest {
         val gv = createGlucoseValue(timestamp = 1000L, value = 120.0, isValid = true)
         val existing = createGlucoseValue(timestamp = 1000L, value = 120.0, isValid = false)
 
@@ -108,7 +140,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `inserts calibration as therapy event`() {
+    fun `inserts calibration as therapy event`() = runTest {
         val calibration = CgmSourceTransaction.Calibration(
             timestamp = 2000L,
             value = 110.0,
@@ -128,7 +160,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `does not insert calibration if already exists`() {
+    fun `does not insert calibration if already exists`() = runTest {
         val calibration = CgmSourceTransaction.Calibration(
             timestamp = 2000L,
             value = 110.0,
@@ -146,7 +178,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `inserts sensor insertion as therapy event`() {
+    fun `inserts sensor insertion as therapy event`() = runTest {
         val sensorInsertionTime = 3000L
 
         whenever(therapyEventDao.findByTimestamp(TherapyEvent.Type.SENSOR_CHANGE, 3000L)).thenReturn(null)
@@ -162,7 +194,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `does not insert sensor insertion if already exists`() {
+    fun `does not insert sensor insertion if already exists`() = runTest {
         val sensorInsertionTime = 3000L
         val existingTherapyEvent = createTherapyEvent(timestamp = 3000L, type = TherapyEvent.Type.SENSOR_CHANGE)
 
@@ -176,7 +208,7 @@ class CgmSourceTransactionTest {
     }
 
     @Test
-    fun `handles multiple glucose values`() {
+    fun `handles multiple glucose values`() = runTest {
         val gv1 = createGlucoseValue(timestamp = 1000L, value = 120.0)
         val gv2 = createGlucoseValue(timestamp = 2000L, value = 125.0)
 

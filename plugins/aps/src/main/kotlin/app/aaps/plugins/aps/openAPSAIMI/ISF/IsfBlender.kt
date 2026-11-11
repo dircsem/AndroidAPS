@@ -10,8 +10,15 @@ class IsfBlender(
     private val maxStepPctPerLoop: Double = 0.05,   // ±5% / tick
     private val maxStepPctPerHour: Double = 0.20    // ±20% / h (cumulé)
 ) {
-    private var lastIsf: Double? = null
-    private var lastTsMs: Long? = null
+
+    /** Last returned ISF and the time it was set. Both are written together so they cannot drift apart. */
+    private data class Anchor(val isf: Double, val tsMs: Long)
+
+    // Volatile: the two old fields were written without any lock from two dispatchers
+    // (Dispatchers.IO for the refreshes, Dispatchers.Default for the loop). Writing one
+    // object keeps the value and its timestamp in sync.
+    @Volatile
+    private var anchor: Anchor? = null
 
     /**
      * @param fusedIsf    socle lent (PkPdIntegration.fusedIsf)
@@ -28,15 +35,16 @@ class IsfBlender(
         val wFast = trustFast.coerceIn(0.0, 1.0)
         val wSlow = 1.0 - wFast
         val target = wSlow * fusedIsf + wFast * kalmanIsf
-        val current = lastIsf ?: fusedIsf
-        val safe = rateLimit(target, current, nowMs)
-        lastIsf = safe
-        lastTsMs = nowMs
+        val safe = rateLimit(target, nowMs)
+        anchor = Anchor(safe, nowMs)
         return safe
     }
 
-    private fun rateLimit(target: Double, current: Double, nowMs: Long): Double {
-        val elapsedMs = (nowMs - (lastTsMs ?: nowMs)).coerceAtLeast(0L)
+    /** No anchor yet (first call of the process): the target is returned as is. */
+    private fun rateLimit(target: Double, nowMs: Long): Double {
+        val a = anchor ?: return target
+        val current = a.isf
+        val elapsedMs = (nowMs - a.tsMs).coerceAtLeast(0L)
         val hourlyBudgetPct = maxStepPctPerHour * (elapsedMs / 3600000.0)
         val allowedPct = min(maxStepPctPerLoop, hourlyBudgetPct)
         val maxUp = current * (1 + allowedPct)

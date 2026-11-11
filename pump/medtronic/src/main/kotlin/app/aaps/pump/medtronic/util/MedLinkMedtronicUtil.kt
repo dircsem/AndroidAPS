@@ -39,6 +39,7 @@ class MedLinkMedtronicUtil @Inject constructor(
     private val medlinkUtil: MedLinkUtil,
     private val medtronicPumpStatus: MedLinkMedtronicPumpStatus,
     private val uiInteraction: UiInteraction,
+    private val notificationManager: app.aaps.core.interfaces.notifications.NotificationManager,
 ) {
 
     //private MedtronicDeviceType medtronicPumpModel;
@@ -107,11 +108,7 @@ class MedLinkMedtronicUtil @Inject constructor(
         resourceHelper: ResourceHelper,
         nextCalibration: String?,
     ) {
-        uiInteraction.addNotification(
-            notificationType.notificationType,
-            resourceHelper.gs(notificationType.resourceId, nextCalibration),
-            notificationType.notificationUrgency
-        )
+        notificationManager.post(notificationType.notificationId, resourceHelper.gs(notificationType.resourceId, nextCalibration), level = notificationType.notificationLevel)
         //        Notification notification = new Notification( //
 //                notificationType.getNotificationType(), //
 //                resourceHelper.gs(notificationType.getResourceId(),nextCalibration), //
@@ -125,11 +122,7 @@ class MedLinkMedtronicUtil @Inject constructor(
 //                resourceHelper.gs(notificationType.getResourceId()), //
 //                notificationType.getNotificationUrgency());
 //        rxBus.send(new EventNewNotification(notification));
-        uiInteraction.addNotification(
-            notificationType.notificationType,
-            resourceHelper.gs(notificationType.resourceId),
-            notificationType.notificationUrgency
-        )
+        notificationManager.post(notificationType.notificationId, resourceHelper.gs(notificationType.resourceId), level = notificationType.notificationLevel)
     }
 
     fun sendNotification(notificationType: MedtronicNotificationType, resourceHelper: ResourceHelper, rxBus: RxBus?, vararg parameters: Any?) {
@@ -138,15 +131,11 @@ class MedLinkMedtronicUtil @Inject constructor(
 //                resourceHelper.gs(notificationType.getResourceId(), parameters), //
 //                notificationType.getNotificationUrgency());
 //        rxBus.send(new EventNewNotification(notification));
-        uiInteraction.addNotification(
-            notificationType.notificationType,
-            resourceHelper.gs(notificationType.resourceId, parameters),
-            notificationType.notificationUrgency
-        )
+        notificationManager.post(notificationType.notificationId, resourceHelper.gs(notificationType.resourceId, parameters), level = notificationType.notificationLevel)
     }
 
     fun dismissNotification(notificationType: MedtronicNotificationType, rxBus: RxBus) {
-        rxBus.send(EventDismissNotification(notificationType.notificationType))
+        notificationManager.dismiss(notificationType.notificationId)
     }
 
     //    public byte[] buildCommandPayload(MessageType commandType, byte[] parameters) {

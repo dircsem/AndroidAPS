@@ -250,6 +250,48 @@ sealed class ContextIntent : ContextIntentStrategy {
             require(startTimeMs > 0) { "Invalid start time (Custom): $startTimeMs" }
         }
     }
+
+    /**
+     * Repas lent : riche en graisses / protéines (pizza, frites, chips, fromage…).
+     *
+     * Impact : absorption retardée et prolongée (2–5 h), pic glycémique tardif.
+     * Stratégie : pas de front-loading de SMB rapide ; SMB rapide petit et plafonné en phase précoce,
+     *             puis SMB amorti pendant l'absorption. Anti-hypo retardée. Le basal tourne normalement.
+     */
+    data class SlowCarbMeal(
+        override val startTimeMs: Long,
+        override val durationMs: Long = 5.hours.inWholeMilliseconds,
+        override val intensity: Intensity,
+        override val confidence: Float = 1.0f,
+        /** Délai avant montée des glucides lents : avant ce délai l'insuline rapide dépasserait l'absorption. */
+        val absorptionDelay: Duration = 90.minutes,
+    ) : ContextIntent() {
+        init {
+            require(confidence in 0.0f..1.0f) { "Confidence must be between 0.0 and 1.0: $confidence" }
+            require(durationMs >= 0) { "Duration cannot be negative: $durationMs" }
+            require(startTimeMs > 0) { "Invalid start time (SlowCarbMeal): $startTimeMs" }
+        }
+    }
+
+    /**
+     * Hypoglycémie déclarée / fenêtre de récupération.
+     *
+     * Impact : risque de sur-correction et de rebond (stacking) pendant la remontée.
+     * Stratégie : couper les SMB, privilégier le basal, biaiser la machinerie post-hypo protectrice
+     *             (REBOUND_GUARD / POST_HYPO_RECOVERY). Aucune logique d'exercice.
+     */
+    data class HypoRecovery(
+        override val startTimeMs: Long,
+        override val durationMs: Long = 60.minutes.inWholeMilliseconds,
+        override val intensity: Intensity,
+        override val confidence: Float = 1.0f,
+    ) : ContextIntent() {
+        init {
+            require(confidence in 0.0f..1.0f) { "Confidence must be between 0.0 and 1.0: $confidence" }
+            require(durationMs >= 0) { "Duration cannot be negative: $durationMs" }
+            require(startTimeMs > 0) { "Invalid start time (HypoRecovery): $startTimeMs" }
+        }
+    }
 }
 
 /**
@@ -270,13 +312,17 @@ data class ContextSnapshot(
     val hasMealRisk: Boolean,
     val hasStress: Boolean,
     val hasAlcohol: Boolean,
-    
+    val hasSlowCarbMeal: Boolean = false,
+    val hasHypoRecovery: Boolean = false,
+
     // Intensités max par catégorie
     val activityIntensity: ContextIntent.Intensity?,
     val illnessIntensity: ContextIntent.Intensity?,
     val stressIntensity: ContextIntent.Intensity?,
     val alcoholIntensity: ContextIntent.Intensity?,
-    
+    val slowCarbMealIntensity: ContextIntent.Intensity? = null,
+    val hypoRecoveryIntensity: ContextIntent.Intensity? = null,
+
     // Metadata
     val intentCount: Int = activeIntents.size,
     val avgConfidence: Float = if (activeIntents.isEmpty()) 1.0f 
@@ -291,6 +337,8 @@ data class ContextSnapshot(
             hasMealRisk = false,
             hasStress = false,
             hasAlcohol = false,
+            hasSlowCarbMeal = false,
+            hasHypoRecovery = false,
             activityIntensity = null,
             illnessIntensity = null,
             stressIntensity = null,
@@ -305,7 +353,9 @@ data class ContextSnapshot(
             val stresses = active.filterIsInstance<ContextIntent.Stress>()
             val alcohols = active.filterIsInstance<ContextIntent.Alcohol>()
             val mealRisks = active.filterIsInstance<ContextIntent.UnannouncedMealRisk>()
-            
+            val slowCarbMeals = active.filterIsInstance<ContextIntent.SlowCarbMeal>()
+            val hypoRecoveries = active.filterIsInstance<ContextIntent.HypoRecovery>()
+
             return ContextSnapshot(
                 timestampMs = timestampMs,
                 activeIntents = active,
@@ -314,10 +364,14 @@ data class ContextSnapshot(
                 hasStress = stresses.isNotEmpty(),
                 hasAlcohol = alcohols.isNotEmpty(),
                 hasMealRisk = mealRisks.isNotEmpty(),
+                hasSlowCarbMeal = slowCarbMeals.isNotEmpty(),
+                hasHypoRecovery = hypoRecoveries.isNotEmpty(),
                 activityIntensity = activities.maxByOrNull { it.intensity }?.intensity,
                 illnessIntensity = illnesses.maxByOrNull { it.intensity }?.intensity,
                 stressIntensity = stresses.maxByOrNull { it.intensity }?.intensity,
-                alcoholIntensity = alcohols.maxByOrNull { it.intensity }?.intensity
+                alcoholIntensity = alcohols.maxByOrNull { it.intensity }?.intensity,
+                slowCarbMealIntensity = slowCarbMeals.maxByOrNull { it.intensity }?.intensity,
+                hypoRecoveryIntensity = hypoRecoveries.maxByOrNull { it.intensity }?.intensity
             )
         }
     }

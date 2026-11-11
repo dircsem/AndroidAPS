@@ -3,6 +3,7 @@ package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 import app.aaps.core.interfaces.aps.GlucoseStatusAIMI
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.OapsProfileAimi
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.BooleanKey
@@ -10,7 +11,13 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.aps.openAPSAIMI.pkpd.PkPdRuntime
+import app.aaps.plugins.aps.openAPSAIMI.advisor.auditor.ui.AuditorStatusLiveData
 import app.aaps.plugins.aps.openAPSAIMI.model.*
+import app.aaps.plugins.aps.openAPSAIMI.patient.AimiCascadeArbitrationArtifacts
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaHarmonizer
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaProductionDecision
+import app.aaps.plugins.aps.openAPSAIMI.patient.MealCertainty
+import app.aaps.plugins.aps.openAPSAIMI.patient.PatientStateRuntimeRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,6 +50,7 @@ class AuditorOrchestrator @Inject constructor(
     private val preferences: Preferences,
     private val dataCollector: AuditorDataCollector,
     private val aiService: AuditorAIService,
+    private val auditorStatusLiveData: AuditorStatusLiveData,
     private val aapsLogger: AAPSLogger,
     private val physioAdapter: app.aaps.plugins.aps.openAPSAIMI.physio.AIMIInsulinDecisionAdapterMTR
 ) {
@@ -62,6 +70,9 @@ class AuditorOrchestrator @Inject constructor(
     
     // Rate limiting
     private var lastAuditTime: Long = 0L
+
+    /** When the last profile factor request was sent, for `AuditorProfileFactorRateLimit`. */
+    private var lastProfileFactorRequestMs: Long = 0L
     private val MIN_AUDIT_INTERVAL_ROUTINE_MS = 60 * 60 * 1000L // 60 min (Routine)
     private val MIN_AUDIT_INTERVAL_DRIFT_MS = 45 * 60 * 1000L // 45 min (Slow Drift)
     private val MIN_AUDIT_INTERVAL_RISK_MS = 30 * 60 * 1000L // 30 min (High Risk)
@@ -106,8 +117,19 @@ class AuditorOrchestrator @Inject constructor(
      * @param smb30min SMB delivered in last 30min (for trigger logic)
      * @param predictionAvailable Is prediction available
      * @param inPrebolusWindow Is in prebolus window (P1/P2)
+     * @param effectiveProfile When non-null, trajectory history for the auditor uses time-correct IOB samples.
+     * @param levels ISF and target of the tick at every level. Null keeps the old snapshot fields.
+     * @param profileFactorRequest Everything the separate profile check needs. Null skips that
+     *   second request, which is what every old caller and every old test gets.
+     * @param onProfileProposal Called once per profile check, with the validated proposal, so the
+     *   loop can write its one JSONL line. It is called whether the opt-in key is on or off.
      * @param callback Optional callback with verdict and modulated decision
      */
+    /** Last Tier-1 Sentinel advice — coherence-agreement "gendarme" score, exposed for JSONL telemetry. */
+    @Volatile
+    var lastSentinelAdvice: LocalSentinel.SentinelAdvice? = null
+        private set
+
     fun auditDecision(
         bg: Double,
         delta: Double,
@@ -140,14 +162,28 @@ class AuditorOrchestrator @Inject constructor(
         predictedBg: Double?,
         eventualBg: Double?,
         inPrebolusWindow: Boolean,
+        effectiveProfile: EffectiveProfile? = null,
+        mealCertainty: MealCertainty? = null,
+        harmoniaProduction: HarmoniaProductionDecision? = null,
+        harmonizerOutcome: HarmoniaHarmonizer.Outcome? = null,
+        levels: SnapshotIsfTargetLevels? = null,
+        profileFactorRequest: AuditorProfileFactorRequest? = null,
+        onProfileProposal: (AuditorProfileProposal) -> Unit = {},
+        onSyncDisposition: (AuditorJsonlExport.TickDisposition) -> Unit = {},
         callback: ((AuditorVerdict?, DecisionResult) -> Unit)? = null
     ) {
         val now = System.currentTimeMillis()
+        // Reset each tick; set again below only if the Sentinel actually runs, so early-exit dispositions
+        // (DISABLED / SKIPPED_*) don't carry a stale agreement/factor into the JSONL telemetry.
+        lastSentinelAdvice = null
+        AuditorVerdictCache.noteCurrentBg(glucoseStatus?.date)
+        auditorStatusLiveData.notifyUpdate()
         
         // Check if auditor is enabled
         if (!isAuditorEnabled()) {
             aapsLogger.debug(LTag.APS, "AI Auditor: Disabled")
             stateManager.transitionTo(AuditorUIState.Idle, "Auditor preference disabled")
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.DISABLED)
             callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "Auditor disabled"))
             return
         }
@@ -171,6 +207,7 @@ class AuditorOrchestrator @Inject constructor(
         if (!shouldTrigger) {
             aapsLogger.debug(LTag.APS, "AI Auditor: No trigger conditions met")
             stateManager.transitionTo(AuditorUIState.Idle, "Conditions not met")
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.SKIPPED_NO_TRIGGER)
             callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "No trigger"))
             return
         }
@@ -180,6 +217,7 @@ class AuditorOrchestrator @Inject constructor(
         if (dataAgeMs > 15 * 60 * 1000L) {
             aapsLogger.warn(LTag.APS, "AI Auditor: Data too stale (${dataAgeMs / 60000} min)")
             stateManager.transitionTo(AuditorUIState.Error("Stale CGM Data"), "Security: Exceeded 15m threshold")
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.SKIPPED_STALE_DATA)
             callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "Stale data"))
             return
         }
@@ -207,6 +245,7 @@ class AuditorOrchestrator @Inject constructor(
             eventualBg = eventualBg,    // Fixed: Replaced null // TODO Phase 3
             predBgsAvailable = predictionAvailable,
             iobTotal = iob.iob,
+            maxIob = maxIOB,
             iobActivity = iob.activity,
             pkpdStage = pkpdRuntime?.activity?.stage?.name,
             lastBolusAgeMin = lastBolusAge,
@@ -220,8 +259,9 @@ class AuditorOrchestrator @Inject constructor(
             modeActive = modeType != null,
             bgHistory = bgHistory
         )
-        
-        aapsLogger.info(LTag.APS, "🔍 Sentinel: tier=${sentinelAdvice.tier} score=${sentinelAdvice.score} reason=${sentinelAdvice.reason}")
+        lastSentinelAdvice = sentinelAdvice
+
+        aapsLogger.info(LTag.APS, "🔍 Sentinel: tier=${sentinelAdvice.tier} agreement=${"%.2f".format(sentinelAdvice.agreement)} reason=${sentinelAdvice.reason}")
         sentinelAdvice.details.take(3).forEach { aapsLogger.debug(LTag.APS, "  └─ $it") }
         
         // ================================================================
@@ -249,9 +289,14 @@ class AuditorOrchestrator @Inject constructor(
             
             // 🔧 FIX: Update status tracker to reflect Sentinel-only operation
             AuditorStatusTracker.updateStatus(AuditorStatusTracker.Status.OK_CONFIRM)
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.SENTINEL_ONLY)
             
             val combined = DualBrainHelpers.combineAdvice(sentinelAdvice, null)
-            val modulated = combined.toDecisionResult(smbProposed, tbrRate, tbrDuration, intervalMin)
+            // D1: Tier-1 Sentinel is a coherence GENDARME, not a silent modulator — respect the audit mode.
+            // AUDIT_ONLY → observe/log only, deliver the loop's UNMODULATED decision.
+            val modulated = if (getModulationMode() == DecisionModulator.ModulationMode.AUDIT_ONLY)
+                createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "Sentinel audit-only (agreement=${"%.2f".format(sentinelAdvice.agreement)})")
+            else combined.toDecisionResult(smbProposed, tbrRate, tbrDuration, intervalMin)
             aapsLogger.info(LTag.APS, "✅ ${combined.toLogString()}")
             
             callback?.invoke(null, modulated)
@@ -266,6 +311,7 @@ class AuditorOrchestrator @Inject constructor(
         if (triggerType == TriggerType.NONE) {
             aapsLogger.info(LTag.APS, "🌐 External: Skipped (No valid trigger)")
             AuditorStatusTracker.updateStatus(AuditorStatusTracker.Status.SKIPPED_NO_TRIGGER)
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.SKIPPED_NO_TRIGGER)
             callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "No Trigger"))
             return
         }
@@ -273,8 +319,13 @@ class AuditorOrchestrator @Inject constructor(
         if (!checkSmartRateLimit(now, triggerType)) {
             aapsLogger.info(LTag.APS, "🌐 External: Rate limited ($triggerType), using Sentinel only")
             AuditorStatusTracker.updateStatus(AuditorStatusTracker.Status.SKIPPED_RATE_LIMITED)
+            onSyncDisposition(AuditorJsonlExport.TickDisposition.SENTINEL_RATE_LIMITED)
             val combined = DualBrainHelpers.combineAdvice(sentinelAdvice, null)
-            val modulated = combined.toDecisionResult(smbProposed, tbrRate, tbrDuration, intervalMin)
+            // D1: Tier-1 Sentinel is a coherence GENDARME, not a silent modulator — respect the audit mode.
+            // AUDIT_ONLY → observe/log only, deliver the loop's UNMODULATED decision.
+            val modulated = if (getModulationMode() == DecisionModulator.ModulationMode.AUDIT_ONLY)
+                createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "Sentinel audit-only (agreement=${"%.2f".format(sentinelAdvice.agreement)})")
+            else combined.toDecisionResult(smbProposed, tbrRate, tbrDuration, intervalMin)
             aapsLogger.info(LTag.APS, "✅ ${combined.toLogString()}")
             callback?.invoke(null, modulated)
             return
@@ -284,6 +335,9 @@ class AuditorOrchestrator @Inject constructor(
 
         // Get physio snapshot (safe call)
         val physioCtx = try { physioAdapter.getLatestSnapshot().toStartSnapshot() } catch (e: Exception) { null }
+        val harmoniaRuntime = PatientStateRuntimeRepository.getLatest()
+
+        onSyncDisposition(AuditorJsonlExport.TickDisposition.EXTERNAL_PENDING)
 
         // Launch async audit
         scope.launch {
@@ -316,7 +370,16 @@ class AuditorOrchestrator @Inject constructor(
                     wcycleFactor = wcycleFactor,
                     tbrMaxMode = tbrMaxMode,
                     tbrMaxAutoDrive = tbrMaxAutoDrive,
-                    physio = physioCtx
+                    physio = physioCtx,
+                    effectiveProfile = effectiveProfile,
+                    physiologicalTree = harmoniaRuntime?.physiologicalTree,
+                    harmoniaDecision = harmoniaRuntime?.harmoniaDecision,
+                    mealCertainty = mealCertainty,
+                    harmoniaProduction = harmoniaProduction,
+                    harmonizerOutcome = harmonizerOutcome,
+                    physiologicalPatterns = AimiCascadeArbitrationArtifacts.physiologicalPatterns(),
+                    harmoniaSmbAuthority = AimiCascadeArbitrationArtifacts.harmoniaSmbAuthority(),
+                    levels = levels,
                 )
                 
                 // Get provider
@@ -327,58 +390,162 @@ class AuditorOrchestrator @Inject constructor(
                 
                 // Call AI (Pass complexity flag)
                 val useHighPerf = (triggerType == TriggerType.HIGH_RISK || triggerType == TriggerType.MEAL)
-                val verdict = aiService.getVerdict(input, provider, timeoutMs, useHighPerf)
+                val verdict = aiService.getVerdict(
+                    input, provider, timeoutMs, useHighPerf,
+                    profileFactorsArmed = profileFactorRequest?.keyOn == true,
+                )
                 
                 // Update rate limiting
                 updateRateLimit(now, triggerType)
                 
                 if (verdict != null) {
+                    val guardedVerdict = AuditorStableContextGuard.adjustIfNeeded(
+                        verdict = verdict,
+                        bgMgdl = bg,
+                        deltaMgdl5m = delta,
+                        tbrRateUph = tbrRate,
+                        profileBasalUph = profile.current_basal,
+                    )
                     // Security: Validate Confidence Interval (0.0..1.0)
-                    val safeConfidence = verdict.confidence.coerceIn(0.0, 1.0)
+                    val safeConfidence = guardedVerdict.confidence.coerceIn(0.0, 1.0)
                     
-                    aapsLogger.info(LTag.APS, "AI Auditor: Verdict=${verdict.verdict}, Confidence=${String.format("%.2f", safeConfidence)}")
+                    aapsLogger.info(LTag.APS, "AI Auditor: Verdict=${guardedVerdict.verdict}, Confidence=${String.format("%.2f", safeConfidence)}")
                     
                     // Transition to Ready
-                    stateManager.transitionTo(AuditorUIState.Ready(verdict.verdict.name), "Verdict received")
+                    stateManager.transitionTo(AuditorUIState.Ready(guardedVerdict.verdict.name), "Verdict received")
                     
                     // Apply modulation
-                    val modulated = DecisionModulator.applyModulation(
+                    var modulated = DecisionModulator.applyModulation(
                         originalSmb = smbProposed,
                         originalTbrRate = tbrRate,
                         originalTbrMin = tbrDuration,
                         originalIntervalMin = intervalMin,
-                        verdict = verdict,
+                        verdict = guardedVerdict,
                         confidence = preferences.get(IntKey.AimiAuditorMinConfidence) / 100.0,
                         mode = getModulationMode()
                     )
                     
+                    // Finding 2: if the external couldn't act (low-confidence → Rejected) in an acting mode, the
+                    // Tier-1 Sentinel is the net — apply its coherence regression rather than the raw dose.
+                    if (modulated is DecisionResult.Rejected &&
+                        getModulationMode() != DecisionModulator.ModulationMode.AUDIT_ONLY) {
+                        modulated = sentinelFallbackDecision(
+                            sentinelAdvice, smbProposed, tbrRate, tbrDuration, intervalMin,
+                            "External low-confidence → Sentinel floor (agreement=${"%.2f".format(sentinelAdvice.agreement)})",
+                        )
+                    }
+
                     // Clinical Validation for dose changes
                     validateClinicalDoses(modulated)
                     
                     aapsLogger.info(LTag.APS, "AI Auditor: Modulation=${modulated.reason}")
                     
                     // Cache verdict (internal)
-                    lastVerdict = verdict
+                    lastVerdict = guardedVerdict
                     lastVerdictTime = now
                     
                     // Update global cache for RT instrumentation
-                    AuditorVerdictCache.update(verdict, modulated)
+                    AuditorVerdictCache.update(guardedVerdict, modulated, glucoseStatus?.date)
+                    auditorStatusLiveData.notifyUpdate()
                     
-                    callback?.invoke(verdict, modulated)
+                    callback?.invoke(guardedVerdict, modulated)
+
+                    // The profile check runs only AFTER the verdict has been delivered, so it can
+                    // never delay or change the path that already moves doses today.
+                    runProfileFactorRequest(
+                        request = profileFactorRequest,
+                        verdict = guardedVerdict,
+                        provider = provider,
+                        timeoutMs = timeoutMs,
+                        onProfileProposal = onProfileProposal,
+                    )
                 } else {
                     aapsLogger.warn(LTag.APS, "AI Auditor: No verdict received (timeout or error)")
                     stateManager.transitionTo(AuditorUIState.Error("Timeout: No verdict received"), "External timeout")
-                    callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "No verdict"))
+                    callback?.invoke(null, sentinelFallbackDecision(sentinelAdvice, smbProposed, tbrRate, tbrDuration, intervalMin, "No verdict → Sentinel floor (agreement=${"%.2f".format(sentinelAdvice.agreement)})"))
                 }
                 
             } catch (e: Exception) {
                 aapsLogger.error(LTag.APS, "AI Auditor: Exception", e)
                 AuditorStatusTracker.updateStatus(AuditorStatusTracker.Status.ERROR_EXCEPTION)
-                callback?.invoke(null, createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "Exception: ${e.message}"))
+                callback?.invoke(null, sentinelFallbackDecision(sentinelAdvice, smbProposed, tbrRate, tbrDuration, intervalMin, "Exception → Sentinel floor: ${e.message}"))
             }
         }
     }
     
+    /**
+     * The second, separate request: the profile check.
+     *
+     * It is sent whether the opt-in key is on or off. With the key off the answer is still parsed,
+     * still checked, still published and still written to the log, marked `advisory_only`. That
+     * shadow is the whole point: weeks of it are needed before anyone can say whether the factors
+     * are worth applying.
+     *
+     * It is sent at most once every 15 minutes
+     * (`AuditorProfileFactorLimits.REQUEST_MIN_INTERVAL_MS`) and only after a verdict that really
+     * came back. It is a second call on the same provider key as that verdict, and in soft
+     * modulation the verdict moves real doses, so a quota burned by the shadow would reach today's
+     * dosing through a failed verdict. Fifteen minutes is also the shortest life of a factor, so the
+     * limit costs nothing.
+     *
+     * Its own try/catch. Whatever happens here, the main verdict has already been delivered and
+     * nothing can reach it any more.
+     */
+    private suspend fun runProfileFactorRequest(
+        request: AuditorProfileFactorRequest?,
+        verdict: AuditorVerdict,
+        provider: AuditorAIService.Provider,
+        timeoutMs: Long,
+        onProfileProposal: (AuditorProfileProposal) -> Unit,
+    ) {
+        if (request == null) return
+        val now = System.currentTimeMillis()
+        if (!AuditorProfileFactorRateLimit.allow(now, lastProfileFactorRequestMs)) {
+            aapsLogger.info(LTag.APS, "🧪 Profile factors: skipped, one request per 15 minutes")
+            return
+        }
+        lastProfileFactorRequestMs = now
+        try {
+            val context = dataCollector.buildProfileContext30m(
+                ticks = request.ticks,
+                nowMs = request.contextBuiltAtMs,
+                mealCertainty = request.mealCertainty,
+                mealModeName = request.mealModeName,
+                minBg75mMgdl = request.minBg75mMgdl,
+                cgmNoise = request.cgmNoise,
+            )
+            val contextJson = context.toPromptJson().toString()
+            val sentAtMs = System.currentTimeMillis()
+            val output = aiService.getProfileFactorProposal(
+                prompt = AuditorProfileFactorPromptBuilder.buildPrompt(context, verdict),
+                provider = provider,
+                timeoutMs = timeoutMs,
+            )
+            val receivedAtMs = System.currentTimeMillis()
+            val proposal = AuditorProfileFactorValidator.validate(
+                output = output,
+                context = context,
+                minConfidence = preferences.get(IntKey.AimiAuditorMinConfidence) / 100.0,
+                auditId = request.auditEventId,
+                receivedAtMs = receivedAtMs,
+                keyOnAtArrival = request.keyOn,
+                providerName = provider.name,
+                mainVerdictName = verdict.verdict.name,
+                latencyMs = receivedAtMs - sentAtMs,
+                contextJson = contextJson,
+            )
+            AuditorProfileFactorCache.publish(proposal)
+            aapsLogger.info(
+                LTag.APS,
+                "🧪 Profile factors: isf=${proposal.isfFactor} target=${proposal.targetFactor} " +
+                    "dir=${proposal.direction} refused=${proposal.refusedBy} keyOn=${request.keyOn}",
+            )
+            onProfileProposal(proposal)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.APS, "AI Auditor: profile factor request failed", e)
+        }
+    }
+
     /**
      * Check if auditor is enabled in preferences
      */
@@ -403,6 +570,25 @@ class AuditorOrchestrator @Inject constructor(
     /**
      * Get modulation mode from preferences
      */
+    /**
+     * Finding 2 — offline net: when the external LLM yields no actionable verdict on a tier-HIGH tick (timeout,
+     * exception, or low-confidence Rejected), fall back to the Tier-1 Sentinel's mode-gated coherence decision
+     * instead of passing the loop's RAW dose through. AUDIT_ONLY still observes only (unmodulated).
+     */
+    private fun sentinelFallbackDecision(
+        sentinelAdvice: LocalSentinel.SentinelAdvice,
+        smbProposed: Double,
+        tbrRate: Double?,
+        tbrDuration: Int?,
+        intervalMin: Double,
+        note: String,
+    ): DecisionResult =
+        if (getModulationMode() == DecisionModulator.ModulationMode.AUDIT_ONLY)
+            createUnmodulatedDecision(smbProposed, tbrRate, tbrDuration, intervalMin, "$note (audit-only)")
+        else
+            DualBrainHelpers.combineAdvice(sentinelAdvice, null)
+                .toDecisionResult(smbProposed, tbrRate, tbrDuration, intervalMin)
+
     private fun getModulationMode(): DecisionModulator.ModulationMode {
         val modeStr = preferences.get(StringKey.AimiAuditorMode)
         return when (modeStr) {

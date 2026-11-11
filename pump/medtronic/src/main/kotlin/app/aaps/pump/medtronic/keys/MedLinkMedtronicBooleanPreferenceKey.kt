@@ -15,6 +15,7 @@ enum class MedLinkMedtronicBooleanPreferenceKey(
     override val negativeDependency: BooleanPreferenceKey? = null,
     override val exportable: Boolean = true,
     override val hideParentScreenIfHidden: Boolean = false,
+    override val titleResId: Int = 0
 ) : BooleanPreferenceKey {
 
     SetNeutralTemp("set_neutral_temps", true),

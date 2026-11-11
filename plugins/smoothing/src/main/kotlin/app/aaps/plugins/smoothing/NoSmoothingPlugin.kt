@@ -1,5 +1,7 @@
 package app.aaps.plugins.smoothing
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Timeline
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -7,6 +9,7 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.smoothing.Smoothing
+import app.aaps.core.interfaces.smoothing.SmoothingContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,7 +20,7 @@ class NoSmoothingPlugin @Inject constructor(
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.SMOOTHING)
-        .pluginIcon(app.aaps.core.ui.R.drawable.ic_timeline_24)
+        .icon(Icons.Default.Timeline)
         .setDefault(true)
         .pluginName(R.string.no_smoothing_name)
         .shortName(R.string.smoothing_shortname)
@@ -25,5 +28,8 @@ class NoSmoothingPlugin @Inject constructor(
     aapsLogger, rh
 ), Smoothing {
 
-    override fun smooth(data: MutableList<InMemoryGlucoseValue>): MutableList<InMemoryGlucoseValue> = data
+    override suspend fun smooth(
+        data: MutableList<InMemoryGlucoseValue>,
+        @Suppress("UNUSED_PARAMETER") context: SmoothingContext
+    ): MutableList<InMemoryGlucoseValue> = data
 }

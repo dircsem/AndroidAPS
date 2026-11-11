@@ -1,15 +1,17 @@
 package app.aaps.plugins.aps.openAPSAIMI.trajectory
 
-import app.aaps.core.interfaces.aps.GlucoseStatusAIMI
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.plugins.aps.openAPSAIMI.pkpd.InsulinActionProfiler
 import app.aaps.plugins.aps.openAPSAIMI.pkpd.ActivityStage
+import app.aaps.plugins.aps.openAPSAIMI.pkpd.InsulinWeibullCurve
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Trajectory History Provider
@@ -43,9 +45,13 @@ class TrajectoryHistoryProvider @Inject constructor(
      * @param pkpdStage Current PKPD stage
      * @param timeSinceLastBolus Minutes since last bolus
      * @param cobNow Current COB
+     * @param effectiveProfile When non-null, historical samples use [IobCobCalculator.calculateFromTreatmentsAndTemps]
+     * at each BG timestamp (TAP-G / trajectory fidelity); when null, IOB at past samples falls back to current bolus IOB.
+     * @param historicalInsulinPeakMinutes When non-null together with [effectiveProfile], past-sample **stage** and
+     * activity fallback use [InsulinWeibullCurve] (same kernel as [app.aaps.plugins.aps.openAPSAIMI.pkpd.InsulinActionProfiler]) (RFC C.2).
      * @return List of PhaseSpaceState (oldest first)
      */
-    fun buildHistory(
+    suspend fun buildHistory(
         nowMillis: Long,
         historyMinutes: Int = DEFAULT_HISTORY_MINUTES,
         currentBg: Double,
@@ -55,27 +61,30 @@ class TrajectoryHistoryProvider @Inject constructor(
         iobNow: Double,
         pkpdStage: ActivityStage,
         timeSinceLastBolus: Int,
-        cobNow: Double = 0.0
-    ): List<PhaseSpaceState> {
-        
+        cobNow: Double = 0.0,
+        effectiveProfile: EffectiveProfile? = null,
+        historicalInsulinPeakMinutes: Int? = null,
+    ): List<PhaseSpaceState> = withContext(Dispatchers.Default) {
+
         val history = mutableListOf<PhaseSpaceState>()
         val fromMillis = nowMillis - (historyMinutes * 60_000L)
-        
+
         try {
             // Get BG history from iobCobCalculator (bucketed data)
             val bgReadings = iobCobCalculator.ads.getBucketedDataTableCopy() ?: emptyList()
-            
+
             val filteredBgReadings = bgReadings
                 .filter { it.timestamp >= fromMillis }
                 .sortedBy { it.timestamp }
-            
+
             if (filteredBgReadings.isEmpty()) {
                 aapsLogger.warn(LTag.APS, "TrajectoryHistory: No BG readings found in last $historyMinutes min")
-                // Return only current state
-                return listOf(createCurrentState(
-                    nowMillis, currentBg, currentDelta, currentAccel,
-                    insulinActivityNow, iobNow, pkpdStage, timeSinceLastBolus, cobNow
-                ))
+                return@withContext listOf(
+                    createCurrentState(
+                        nowMillis, currentBg, currentDelta, currentAccel,
+                        insulinActivityNow, iobNow, pkpdStage, timeSinceLastBolus, cobNow
+                    )
+                )
             }
             
             // Sample at 5-minute intervals
@@ -86,28 +95,66 @@ class TrajectoryHistoryProvider @Inject constructor(
                 if (bg.timestamp >= lastSampledTime + sampleInterval || 
                     bg.timestamp >= nowMillis - (5 * 60_000L)) { // Always include last 5 min
                     
-                    // Calculate delta and accel at this point
-                    val delta = calculateDeltaAt(bg.timestamp, filteredBgReadings)
-                    val accel = calculateAccelAt(bg.timestamp, filteredBgReadings)
+                    // Calculate delta and accel at this point (shared kernel: RFC C.3 tests)
+                    val delta = TrajectoryBgDerivatives.deltaAt(bg.timestamp, filteredBgReadings)
+                    val accel = TrajectoryBgDerivatives.accelAt(bg.timestamp, filteredBgReadings)
                     
-                    // Get IOB at this time - use current IOB as approximation
-                    val iobResult = try {
-                        iobCobCalculator.calculateIobFromBolus()
-                    } catch (e: Exception) {
-                        aapsLogger.error(LTag.APS, "Error getting IOB for history: ${e.message}")
-                        null
+                    // Get IOB at this time
+                    val iobTotalObj = if (effectiveProfile != null) {
+                        try {
+                            iobCobCalculator.calculateFromTreatmentsAndTemps(bg.timestamp, effectiveProfile)
+                        } catch (e: Exception) {
+                            aapsLogger.error(LTag.APS, "Error getting IOB at t=${bg.timestamp}: ${e.message}")
+                            null
+                        }
+                    } else {
+                        try {
+                            iobCobCalculator.calculateIobFromBolus()
+                        } catch (e: Exception) {
+                            aapsLogger.error(LTag.APS, "Error getting IOB for history: ${e.message}")
+                            null
+                        }
                     }
                     
-                    val iob = iobResult?.iob?.toDouble() ?: 0.0
-                    
-                    // Estimate insulin activity (simplified - would need full PKPD for precision)
-                    val activity = estimateInsulinActivity(iob, delta)
-                    
-                    // Estimate PKPD stage (simplified)
-                    val stage = estimatePkpdStage(iob, delta)
-                    
-                    // Estimate time since last bolus (rough)
-                    val timeSinceBolus = estimateTimeSinceLastBolus(bg.timestamp)
+                    val iob = iobTotalObj?.iob ?: 0.0
+                    val coreActivity = iobTotalObj?.activity ?: 0.0
+                    val minsSinceBolus = estimateTimeSinceLastBolus(bg.timestamp)
+                    val peakHistMin = historicalInsulinPeakMinutes
+                    val useKernelHistory =
+                        peakHistMin != null &&
+                            effectiveProfile != null &&
+                            iob > 0.01
+
+                    val activity = when {
+                        iobTotalObj != null && coreActivity > 1e-6 -> coreActivity
+                        useKernelHistory && peakHistMin != null -> {
+                            val norm = InsulinWeibullCurve.activityNormalized(
+                                minsSinceBolus.toDouble(),
+                                peakHistMin.toDouble(),
+                            )
+                            (iob * norm * 2.5).coerceIn(0.0, 5.0)
+                        }
+                        else -> estimateInsulinActivity(iob, delta)
+                    }
+
+                    val stage = when {
+                        useKernelHistory && peakHistMin != null ->
+                            InsulinWeibullCurve.activityStage(
+                                minsSinceBolus.toDouble(),
+                                peakHistMin.toDouble(),
+                                iob,
+                            )
+                        iobTotalObj != null && coreActivity > 0.0 -> {
+                            when {
+                                iob < 0.1 -> ActivityStage.TAIL
+                                coreActivity > 0.015 -> ActivityStage.PEAK
+                                else -> ActivityStage.TAIL
+                            }
+                        }
+                        else -> estimatePkpdStage(iob, delta)
+                    }
+
+                    val timeSinceBolus = minsSinceBolus
                     
                     // Get COB at this time
                     val cob = try {
@@ -140,15 +187,16 @@ class TrajectoryHistoryProvider @Inject constructor(
             
         } catch (e: Exception) {
             aapsLogger.error(LTag.APS, "Error building trajectory history: ${e.message}")
-            // Return minimal history with just current state
-            return listOf(createCurrentState(
-                nowMillis, currentBg, currentDelta, currentAccel,
-                insulinActivityNow, iobNow, pkpdStage, timeSinceLastBolus, cobNow
-            ))
+            return@withContext listOf(
+                createCurrentState(
+                    nowMillis, currentBg, currentDelta, currentAccel,
+                    insulinActivityNow, iobNow, pkpdStage, timeSinceLastBolus, cobNow
+                )
+            )
         }
-        
+
         aapsLogger.debug(LTag.APS, "TrajectoryHistory: Built ${history.size} states over $historyMinutes min")
-        return history
+        history
     }
     
     /**
@@ -175,57 +223,6 @@ class TrajectoryHistoryProvider @Inject constructor(
         timeSinceLastBolus = timeSinceBolus,
         cob = cob
     )
-    
-    /**
-     * Calculate delta at a specific point using surrounding readings
-     */
-    private fun calculateDeltaAt(
-        timestamp: Long,
-        allReadings: List<app.aaps.core.data.iob.InMemoryGlucoseValue>
-    ): Double {
-        // Find readings around this timestamp
-        val current = allReadings.find { it.timestamp == timestamp } ?: return 0.0
-        val previous = allReadings
-            .filter { it.timestamp < timestamp }
-            .maxByOrNull { it.timestamp }
-        
-        if (previous != null) {
-            val timeDiffMin = (timestamp - previous.timestamp) / 60_000.0
-            if (timeDiffMin > 0 && timeDiffMin <= 10) { // Within 10 minutes
-                // Normalize to per-5-minutes
-                return ((current.recalculated - previous.recalculated) / timeDiffMin) * 5.0
-            }
-        }
-        
-        return 0.0
-    }
-    
-    /**
-     * Calculate acceleration (second derivative) at a specific point
-     */
-    private fun calculateAccelAt(
-        timestamp: Long,
-        allReadings: List<app.aaps.core.data.iob.InMemoryGlucoseValue>
-    ): Double {
-        // Find three consecutive points
-        val idx = allReadings.indexOfFirst { it.timestamp == timestamp }
-        if (idx < 0 || idx >= allReadings.size - 1) return 0.0
-        
-        val prev = if (idx > 0) allReadings[idx - 1] else return 0.0
-        val curr = allReadings[idx]
-        val next = allReadings[idx + 1]
-        
-        val delta1 = calculateDeltaAt(curr.timestamp, allReadings)
-        val delta2 = calculateDeltaAt(next.timestamp, allReadings)
-        
-        val timeDiff = (next.timestamp - curr.timestamp) / 60_000.0 // minutes
-        
-        return if (timeDiff > 0) {
-            ((delta2 - delta1) / timeDiff) * 5.0 // Normalize to per-5-minutes
-        } else {
-            0.0
-        }
-    }
     
     /**
      * Rough estimate of insulin activity from IOB and BG trend
@@ -273,13 +270,13 @@ class TrajectoryHistoryProvider @Inject constructor(
      * 
      * TODO: Use actual bolus history
      */
-    private fun estimateTimeSinceLastBolus(timestamp: Long): Int {
+    private suspend fun estimateTimeSinceLastBolus(timestamp: Long): Int {
         try {
             val boluses = persistenceLayer.getBolusesFromTime(
-                timestamp - (4 * 3600_000L), // Last 4 hours
-                false
-            ).blockingGet()
-            
+                timestamp - (4 * 3600_000L),
+                ascending = false
+            )
+
             val lastBolus = boluses
                 .filter { it.timestamp <= timestamp && it.amount > 0.1 }
                 .maxByOrNull { it.timestamp }

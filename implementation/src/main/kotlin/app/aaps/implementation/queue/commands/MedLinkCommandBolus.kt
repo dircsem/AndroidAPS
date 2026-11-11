@@ -3,68 +3,53 @@ package app.aaps.implementation.queue.commands
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.pump.BolusProgressData.bolusEnded
-
+import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkCallbackBridge
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.resources.ResourceHelper
-import dagger.android.HasAndroidInjector
-import javax.inject.Inject
 import javax.inject.Provider
 
+/** MedLink manual bolus: the driver answers when the MedLink reports the bolus (carbs are stored by the queue after success). */
 class MedLinkCommandBolus(
-    injector: HasAndroidInjector,
+    private val aapsLogger: AAPSLogger,
+    private val rh: ResourceHelper,
+    private val activePlugin: ActivePlugin,
+    override val pumpEnactResultProvider: Provider<PumpEnactResult>,
+    private val bolusProgressData: BolusProgressData,
     private val detailedBolusInfo: DetailedBolusInfo,
-    override val callback: Callback?, val carbsRunnable: Runnable
+    override val callback: Callback?,
+    type: Command.CommandType,
+    private val bolusGeneration: Long,
 ) : Command {
 
-    @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var activePlugin: ActivePlugin
+    override var commandType: Command.CommandType = type
 
-    @Inject lateinit var pumpEnactResultProvider: Provider<PumpEnactResult>
-
-    init {
-        injector.androidInjector().inject(this)
+    override suspend fun execute(): PumpEnactResult {
+        val pump = activePlugin.activePumpInternal
+        aapsLogger.info(LTag.PUMPQUEUE, "Command bolus plugin: $pump")
+        val r = if (pump is MedLinkPumpPluginBase)
+            MedLinkCallbackBridge.awaitResult(
+                onTimeout = { pumpEnactResultProvider.get().enacted(false).success(false).comment("MedLink did not answer the bolus") }
+            ) { done -> pump.deliverTreatment(detailedBolusInfo, done) }
+        else pumpEnactResultProvider.get().enacted(false).success(false).comment("active pump is not MedLink")
+        aapsLogger.info(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
+        if (r.success) bolusProgressData.completeAndAutoClear(bolusGeneration)
+        else bolusProgressData.clear(bolusGeneration)
+        return r
     }
 
-    override val commandType: Command.CommandType=Command.CommandType.BOLUS
+    override fun status(): String =
+        (if (detailedBolusInfo.insulin > 0) rh.gs(app.aaps.core.ui.R.string.bolus_u_min, detailedBolusInfo.insulin) else "") +
+            if (detailedBolusInfo.carbs > 0) rh.gs(app.aaps.core.ui.R.string.carbs_g, detailedBolusInfo.carbs.toInt()) else ""
 
-    override fun execute() {
-        val pump = activePlugin.activePump
-        aapsLogger.info(LTag.PUMPQUEUE, "Command bolus plugin: ${pump} ")
-        val func = { r: PumpEnactResult ->
+    override fun log(): String = "BOLUS"
 
-                bolusEnded = true
-                // rxBus.send(EventDismissBolusProgressIfRunning(r))
-                aapsLogger.info(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
-                callback?.result(r)?.run()
-                carbsRunnable.run()
-                Unit
-        }
-
-        if (pump is MedLinkPumpPluginBase) {
-            pump.deliverTreatment(detailedBolusInfo, func)
-        }
-
-        // val r = activePlugin.activePump
-
-    }
-
-    override fun status(): String {
-        return (if (detailedBolusInfo.insulin > 0) "BOLUS " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, detailedBolusInfo.insulin) else "") +
-            if (detailedBolusInfo.carbs > 0) "CARBS " + rh.gs(app.aaps.core.ui.R.string.format_carbs, detailedBolusInfo.carbs.toInt()) else ""
-    }
-
-    override fun log(): String =  "BOLUS"
-
-    override fun cancel() {
-        aapsLogger.debug(LTag.PUMPQUEUE, "Result cancel")
-        callback?.result(pumpEnactResultProvider.get().success(false).comment(app.aaps.core.ui.R.string.connectiontimedout))?.run()
+    override fun cancel(commentResId: Int, success: Boolean) {
+        super.cancel(commentResId, success)
+        bolusProgressData.clear(bolusGeneration)
     }
 }

@@ -115,7 +115,7 @@ class MedLinkMedtronicHistoryActivity : DaggerActivity() {
             getTypeList(PumpHistoryEntryGroup.Companion.getTranslatedList(resourceHelper!!))
 
         val spinnerAdapter =
-            ArrayAdapter(this, app.aaps.core.ui.R.layout.spinner_centered, typeListFull)
+            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, typeListFull)
         historyTypeSpinner!!.setAdapter(spinnerAdapter)
 
         historyTypeSpinner!!.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {

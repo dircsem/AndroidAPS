@@ -1,5 +1,10 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaDecision
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaHarmonizer
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaProductionDecision
+import app.aaps.plugins.aps.openAPSAIMI.patient.MealCertainty
+import app.aaps.plugins.aps.openAPSAIMI.patient.PhysiologicalTreeSnapshot
 import org.json.JSONArray
 import org.json.JSONObject
 import app.aaps.plugins.aps.openAPSAIMI.model.VerdictType
@@ -69,13 +74,40 @@ data class AuditorInput(
     val snapshot: Snapshot,
     val history: History,
     val stats: Stats7d,
-    val trajectory: TrajectorySnapshot?
+    val trajectory: TrajectorySnapshot?,
+    val physiologicalTree: PhysiologicalTreeSnapshot? = null,
+    val harmoniaDecision: HarmoniaDecision? = null,
+    val mealCertainty: MealCertainty? = null,
+    val harmoniaProduction: HarmoniaProductionDecision? = null,
+    val harmonizerOutcome: HarmoniaHarmonizer.Outcome? = null,
+    /** Pattern catalog soft/hard proposals for this tick (advisory context). */
+    val physiologicalPatterns: JSONObject? = null,
+    /** Harmonia SMB authority decision — Auditor CONFIRM/SOFTEN only, never lift. */
+    val harmoniaSmbAuthority: JSONObject? = null,
 ) {
     fun toJSON(): JSONObject = JSONObject().apply {
         put("snapshot", snapshot.toJSON())
         put("history", history.toJSON())
         put("stats", stats.toJSON())
         if (trajectory != null) put("trajectory", trajectory.toJSON())
+        if (physiologicalTree != null) put("physiological_tree", physiologicalTree.toJsonObject())
+        if (harmoniaDecision != null) put("harmonia_simulation", harmoniaDecision.toJsonObject())
+        if (mealCertainty != null) put("meal_certainty", mealCertainty.toJsonObject())
+        if (harmoniaProduction != null) put("harmonia_production", harmoniaProduction.toJsonObject())
+        if (physiologicalPatterns != null) put("physiological_patterns", physiologicalPatterns)
+        if (harmoniaSmbAuthority != null) put("harmonia_smb_authority", harmoniaSmbAuthority)
+        if (harmonizerOutcome != null) {
+            put(
+                "harmonia_harmonizer",
+                JSONObject().apply {
+                    put("posture", harmonizerOutcome.posture.name)
+                    put("tbr_factor", harmonizerOutcome.tbrFactor)
+                    put("smb_factor", harmonizerOutcome.smbFactor)
+                    put("reasons", JSONArray(harmonizerOutcome.reasons))
+                },
+            )
+        }
+        harmoniaDecision?.decisionBasis?.let { put("decision_basis", it.toJsonObject()) }
     }
 }
 
@@ -121,7 +153,15 @@ data class Snapshot(
     val decisionAimi: DecisionSnapshot,
     
     // Last delivery
-    val lastDelivery: LastDeliverySnapshot
+    val lastDelivery: LastDeliverySnapshot,
+
+    /**
+     * ISF and target at every level the loop really has.
+     *
+     * Null keeps the three old fields `isfProfile`, `isfUsed` and `target`, which hold dynamic
+     * values under profile names. When it is given, those three are replaced by the correct levels.
+     */
+    val levels: SnapshotIsfTargetLevels? = null
 ) {
     fun toJSON(): JSONObject = JSONObject().apply {
         put("bg", bg)
@@ -135,10 +175,23 @@ data class Snapshot(
         put("iob", iob)
         put("iobActivity", iobActivity)
         put("cob", cob)
-        put("isfProfile", isfProfile)
-        put("isfUsed", isfUsed)
-        put("ic", ic)
-        put("target", target)
+        if (levels != null) {
+            // org.json DROPS a key whose value is a null reference, and the prompt tells the model
+            // these fields read `null` when they are not known. Write the explicit JSON null.
+            put("isfProfileStatic", levels.isfProfileStatic ?: JSONObject.NULL)
+            put("isfDynamic", levels.isfDynamic)
+            put("isfCommand", levels.isfCommand)
+            put("isfCommandOverProfile", levels.isfCommandOverProfile ?: JSONObject.NULL)
+            put("isfOnProfileFloor", levels.isfOnProfileFloor)
+            put("ic", ic)
+            put("targetProfile", levels.targetProfile)
+            put("targetWorking", levels.targetWorking ?: JSONObject.NULL)
+        } else {
+            put("isfProfile", isfProfile)
+            put("isfUsed", isfUsed)
+            put("ic", ic)
+            put("target", target)
+        }
         put("pkpd", pkpd.toJSON())
         put("activity", activity.toJSON())
         if (physio != null) put("physio", physio.toJSON())
@@ -273,25 +326,33 @@ data class History(
 /**
  * C) Stats: 7-day summary (compressed)
  */
+/**
+ * The seven-day picture sent to the auditor.
+ *
+ * Every field is `null` when it could not be measured, and it is written to JSON as `null`. A zero
+ * here would read as a real measurement (no time below range, no variability), which is the
+ * opposite of "we do not know", and the auditor reasons on exactly these numbers.
+ */
 data class Stats7d(
-    val tir: Double,
-    val hypoPct: Double,
-    val hyperPct: Double,
-    val meanBG: Double,
-    val cv: Double,
-    val tdd7dAvg: Double,
-    val basalPct: Double,
-    val bolusPct: Double
+    val tir: Double?,
+    val hypoPct: Double?,
+    val hyperPct: Double?,
+    val meanBG: Double?,
+    val cv: Double?,
+    val tdd7dAvg: Double?,
+    val basalPct: Double?,
+    val bolusPct: Double?
 ) {
     fun toJSON(): JSONObject = JSONObject().apply {
-        put("tir", tir)
-        put("hypoPct", hypoPct)
-        put("hyperPct", hyperPct)
-        put("meanBG", meanBG)
-        put("cv", cv)
-        put("tdd7dAvg", tdd7dAvg)
-        put("basalPct", basalPct)
-        put("bolusPct", bolusPct)
+        // `put(name, null)` removes the key in org.json, so a missing value is written as JSON null.
+        put("tir", tir ?: JSONObject.NULL)
+        put("hypoPct", hypoPct ?: JSONObject.NULL)
+        put("hyperPct", hyperPct ?: JSONObject.NULL)
+        put("meanBG", meanBG ?: JSONObject.NULL)
+        put("cv", cv ?: JSONObject.NULL)
+        put("tdd7dAvg", tdd7dAvg ?: JSONObject.NULL)
+        put("basalPct", basalPct ?: JSONObject.NULL)
+        put("bolusPct", bolusPct ?: JSONObject.NULL)
     }
 }
 

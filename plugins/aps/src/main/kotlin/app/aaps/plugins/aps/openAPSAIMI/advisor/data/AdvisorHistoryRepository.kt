@@ -28,7 +28,12 @@ class AdvisorHistoryRepository(context: Context) {
 
     enum class ActionType {
         PREFERENCE_CHANGE,
-        PROFILE_CHANGE
+        PROFILE_CHANGE,
+        /** Multi-key tuning context bundle from Advisor. */
+        TUNING_BUNDLE,
+        TPO_SESSION_START,
+        TPO_SESSION_REVERT,
+        TPO_LLM_VETO,
     }
 
     /**
@@ -72,6 +77,7 @@ class AdvisorHistoryRepository(context: Context) {
 
     private fun saveHistory(list: List<AdvisorActionLog>) {
         val json = gson.toJson(list)
-        prefs.edit().putString(KEY_HISTORY, json).apply()
+        // commit() so a immediate recreate() (e.g. after Apply) sees the new entry before 48h de-dup runs.
+        prefs.edit().putString(KEY_HISTORY, json).commit()
     }
 }

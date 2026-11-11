@@ -643,6 +643,34 @@ As 5 configurações adicionadas (4x, 4y, 4aa) têm um resumo curto embaixo do t
 
 **Testes:** app compila. rileylink 513/513, medtronic 182/182, implementation 201/203 (só `HardLimitsImplTest`, como antes). `plugins:aps` não compila os testes **do próprio master** (`LoopPluginTest`, `BasalPlannerTest`, `CosineTrajectoryGateTest`, iguais ao master; usam APIs do AAPS 3.5): não corrigido.
 
+## 4ah. Merge com origin/dev_OAPSAIMI (AIMI 4.0, AAPS 4.0.0-dev-b) na branch `medlink-v4.0-dev` (2026-11-11) — NÃO TESTADO EM CAMPO
+
+Merge de `origin/dev_OAPSAIMI` (`fd4266437c`, `4.0.0.0-dev.AIMI.211026`, 2617 commits) em `medlink-v4.0-dev` (feita de `medlink-v3.4-dev`). Backup dos APKs anteriores em `~/medlink-apks-backup-2026-11-11/`.
+
+Conflitos: 90 arquivos. Cada arquivo foi refeito como merge de 3 vias com `origin/master` como base (isola só as mudanças do MedLink) e as mudanças do MedLink foram reaplicadas sobre a versão do dev_OAPSAIMI.
+
+O AAPS 4.0 mudou a API por baixo do MedLink:
+- **`activePlugin.activePump` agora é um wrapper** (`PumpWithConcentration`): `activePump is MedLinkPumpPluginBase` daria sempre falso e o MedLink cairia na lógica padrão sem erro de compilação. Todas as checagens do MedLink usam `activePumpInternal` ou `pump.selectedActivePump()` (LoopPlugin, fila, comandos, hard limits do AIMI/AMA/SMB/AutoISF, CommandExecutor, PumpSync, BLE config, broadcast receiver, tela de status).
+- Comandos da bomba, fila e banco viraram `suspend` e devolvem o resultado. O driver MedLink responde por callback: novo `MedLinkCallbackBridge` (core/interfaces) espera o callback **com limite de 10 min** — um callback que nunca vem não trava mais a fila (a trava do 4ae).
+- Os 6 comandos MedLink (`MedLinkCommand*`) foram reescritos no formato novo (parâmetros no construtor, `suspend execute()`); a fila (`CommandQueueImplementation`) continua mandando bomba MedLink para eles.
+  - `MedLinkCommandSMBBolus` mantém a regra do usuário (4q): o `CommandSMBBolus` do upstream recusa SMB com `deliverAt` de mais de 1 min, o que recusava SMBs do MedLink.
+  - **Mudança:** `MedLinkCommandBasalAbsolute/Percent` agora são do tipo `TEMPBASAL` (eram `BASAL_PROFILE`: uma troca de perfil removia uma TBR na fila e um cancelamento de TBR não removia).
+- `QueueWorker` virou `CommandExecutor` no upstream. O conserto do 4ae já está no upstream (e melhor: o comando que falha recebe o callback com erro). A regra de timeout de conexão do MedLink (`connectionStartFor`) foi para o `CommandExecutor`.
+- `LoopPlugin`: versão do dev_OAPSAIMI (sem callbacks) com as regras do MedLink reaplicadas (SMB uma vez antes da TBR, sem SMB de 0 U, intervalo pelo último SMB/bolus manual, bomba suspensa recebe SMB). **Mudança:** como a fila agora espera o comando acabar, a TBR é enviada depois que o comando do SMB responde (antes ficava na fila logo atrás).
+- `DetermineBasalAIMI2` (refeito no upstream): último bolus e intervalo do SMB (`SmbIntervalGate`) ignoram microbolus de TBR (`BS.Type.TBR`); sem bolus TBR na última hora o comportamento é o do upstream.
+- Hilt: módulos MedLink com `@InstallIn(SingletonComponent::class)`; plugin MedLink registrado em `MedtronicModule` (`@IntKey(1091)`), fonte de BG MedLink em `SourcePluginsListModule` (`@IntKey(481)`).
+- Notificações: `NotificationId` (enum) novo; `MEDLINK_CALIBRATION` e `MEDLINK_SUSPEND_LOW_BATTERY` adicionados no fim. Os URGENT antigos do MedLink (mensagem vermelha sem som) viraram `IMPORTANT` (o URGENT novo toca alarme em tela cheia); o alarme sonoro da bomba travada continua pelo `runAlarm`.
+- Progresso do bolus (Compose): `BolusProgressData` injetado; `updateWaiting(texto)` novo para as fases do MedLink (barra em movimento), o diálogo Compose respeita `waiting`.
+- Preferências (Compose): a tela do MedLink virou `getPreferenceScreenContent` com as mesmas chaves; as chaves do MedLink ganharam título/resumo. Perdido: o endereço MAC como resumo do item de configuração do MedLink; as mensagens longas de diálogo dos campos 4x/4y/4aa (o resumo continua).
+- Valores da bomba como `StateFlow` (reservatório, bateria, último bolus, última conexão) lidos do status do MedLink; `baseBasalRate` é `PumpRate` (o MedLink usa `medLinkBaseBasalRate` em Double nas contas da TBR).
+- Telas View do MedLink mantidas (`fragmentClass` ainda existe): layouts, strings, drawables e dimensões que o upstream apagou foram restaurados em arquivos `*_medlink_restored.xml` / mesmos nomes. `UIRunnable` restaurado em core/ui. Arquivos `.java` em `src/main/kotlin` movidos para `src/main/java` (não eram compilados).
+- Gráfico e lista de tratamentos (Compose): microbolus de TBR aparecem como SMB / "TBR".
+- Fonte de BG MedLink: tela Compose do upstream; a tela de preferências XML (`pref_bgsourcemedlink`) foi removida (as chaves não eram lidas no código).
+- Não portado: a linha de bateria do MedLink na aba Ações (a aba virou Compose).
+- Achado, **não mudado**: em `MedLinkBroadcastReceiver` o alarme "bomba inacessível" de bateria LiPo compara `activePlugin` (não a bomba) com o tipo MedLink, então nunca disparou, nem antes do merge; ligar faria alarme em todo erro de conexão (a idade da bateria é comparada com um timestamp).
+
+**Testes:** app compila e gera APK (`-PnoCoverage`). rileylink 516/516, medtronic 189/189, implementation 764/779: as 15 falhas (`KeepAliveWorkerTest`, `LastBgDataImplTest`) falham igual no `dev_OAPSAIMI` sem MedLink (conferido em checkout limpo); o `HardLimitsImplTest` antigo agora passa.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

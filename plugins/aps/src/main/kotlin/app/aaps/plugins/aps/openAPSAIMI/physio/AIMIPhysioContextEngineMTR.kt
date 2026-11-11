@@ -39,6 +39,7 @@ class AIMIPhysioContextEngineMTR @Inject constructor(
         // Feature thresholds
         private const val POOR_SLEEP_THRESHOLD_HOURS = 5.5
         private const val LOW_SLEEP_EFFICIENCY = 0.70 // 70%
+        private const val LOW_SLEEP_QUALITY_SCORE = 0.65 // Composite quality threshold
         private const val HIGH_FRAGMENTATION = 0.30 // 30%
         private const val LOW_HRV_PERCENTILE_THRESHOLD = 0.25 // P25
         private const val HIGH_RHR_PERCENTILE_THRESHOLD = 0.75 // P75
@@ -176,6 +177,7 @@ class AIMIPhysioContextEngineMTR @Inject constructor(
         // Poor sleep detection
         val poorSleep = (features.sleepDurationHours > 0 && features.sleepDurationHours < POOR_SLEEP_THRESHOLD_HOURS) ||
                        (features.sleepEfficiency > 0 && features.sleepEfficiency < LOW_SLEEP_EFFICIENCY) ||
+                       (features.sleepQualityScore > 0 && features.sleepQualityScore < LOW_SLEEP_QUALITY_SCORE) ||
                        (features.sleepFragmentation > HIGH_FRAGMENTATION) ||
                        (deviations.sleepZ < -SIGNIFICANT_DEVIATION_Z)
         if (poorSleep) anomalyCount++

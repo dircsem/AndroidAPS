@@ -72,6 +72,23 @@ class GlucoseStatusCalculatorAimi @Inject constructor(
         return data?.map { it.recalculated.toFloat() } ?: emptyList()
     }
 
+    /** Bucketed glucose within [lookbackMinutes] of the newest sample (newest-first table). */
+    fun getBucketedGlucoseSinceMinutes(lookbackMinutes: Int): List<TimestampedBgSample> {
+        val data = iobCobCalculator.ads.getBucketedDataTableCopy() ?: return emptyList()
+        if (data.isEmpty()) return emptyList()
+        val nowTimestamp = data.first().timestamp
+        val cutoff = nowTimestamp - lookbackMinutes * 60_000L
+        return buildList {
+            for (row in data) {
+                if (row.timestamp < cutoff) continue
+                if (row.value <= 39 || row.filledGap) continue
+                val bg = row.recalculated
+                if (!bg.isFinite() || bg <= 39.0) continue
+                add(TimestampedBgSample(timestampMs = row.timestamp, bgMgdl = bg))
+            }
+        }
+    }
+
     /** Recalcule et renvoie (GS AIMI + features). */
     fun compute(allowOldData: Boolean): Result {
         val data = iobCobCalculator.ads.getBucketedDataTableCopy()
@@ -167,7 +184,8 @@ class GlucoseStatusCalculatorAimi @Inject constructor(
             a0 = features.a0,
             a1 = features.a1,
             a2 = features.a2,
-            corrSqu = features.corrR2
+            corrSqu = features.corrR2,
+            sourceSensor = head.sourceSensor
         ).asRounded()
 
         log.debug(
@@ -180,7 +198,8 @@ class GlucoseStatusCalculatorAimi @Inject constructor(
                 "combΔ=${fmt.to2Decimal(features.combinedDelta)} " +
                 "R2=${fmt.to2Decimal(features.corrR2)} " +
                 "fitMin=${fmt.to1Decimal(features.parabolaMinutes)} " +
-                "NG=$isNg"
+                "NG=$isNg " +
+                "sensor=${head.sourceSensor}"
         )
 
         return storeAndReturn(gsAimi, features)

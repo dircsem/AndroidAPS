@@ -1,31 +1,31 @@
 package app.aaps.pump.medtronic.defs
 
-import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.notifications.NotificationId
+import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.pump.medtronic.R
 
-/**
- * Created by andy on 10/15/18.
- */
-enum class MedtronicNotificationType(var notificationType: Int,
-                                     val resourceId: Int,
-                                     val notificationUrgency: Int) {
-    MedLinkPumpUnreachable(Notification.MEDTRONIC_PUMP_ALARM, R.string.medtronic_pump_status_pump_unreachable, Notification.URGENT),  //
-    CalibrationSuccess(Notification.CALIBRATION_ALARM, R.string.med_link_calibration_success, Notification.URGENT),  //
-    CalibrationFailed(Notification.CALIBRATION_ALARM, R.string.med_link_calibration_failed, Notification.URGENT),  //
-    SecondCalibrationAlarm(Notification.CALIBRATION_ALARM, R.string.med_link_calibrate_alarm, Notification.URGENT),  //
-    FirstCalibrationAlarm(Notification.CALIBRATION_ALARM, R.string.med_link_calibrate_alarm, Notification.NORMAL),  //
-    PumpUnreachable(Notification.RILEYLINK_CONNECTION, R.string.medtronic_pump_status_pump_unreachable, Notification.NORMAL),  //
-    PumpTypeNotSame(R.string.medtronic_error_pump_type_set_differs_from_detected, Notification.NORMAL),  //
-    PumpBasalProfilesNotEnabled(R.string.medtronic_error_pump_basal_profiles_not_enabled, Notification.URGENT),  //
-    PumpIncorrectBasalProfileSelected(R.string.medtronic_error_pump_incorrect_basal_profile_selected, Notification.URGENT),  //
-    PumpWrongTBRTypeSet(R.string.medtronic_error_pump_wrong_tbr_type_set, Notification.URGENT),  //
-    PumpWrongMaxBolusSet(R.string.medtronic_error_pump_wrong_max_bolus_set, Notification.NORMAL),  //
-    PumpWrongMaxBasalSet(R.string.medtronic_error_pump_wrong_max_basal_set, Notification.NORMAL),  //
-    PumpWrongTimeUrgent(R.string.medtronic_notification_check_time_date, Notification.URGENT),
-    PumpWrongTimeNormal(R.string.medtronic_notification_check_time_date, Notification.NORMAL),
-    TimeChangeOver24h(
-        Notification.OVER_24H_TIME_CHANGE_REQUESTED, R.string.medtronic_error_pump_24h_time_change_requested, Notification.URGENT
-    );
+enum class MedtronicNotificationType(
+    val notificationId: NotificationId,
+    val resourceId: Int,
+    val notificationLevel: NotificationLevel
+) {
 
-    constructor(resourceId: Int, notificationUrgency: Int) : this(Notification.MEDTRONIC_PUMP_ALARM, resourceId, notificationUrgency)
+    // MedLink (old Notification.URGENT = red message without sound, so IMPORTANT, not the new URGENT alarm tier)
+    MedLinkPumpUnreachable(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_pump_status_pump_unreachable, NotificationLevel.IMPORTANT),
+    CalibrationSuccess(NotificationId.MEDLINK_CALIBRATION, R.string.med_link_calibration_success, NotificationLevel.IMPORTANT),
+    CalibrationFailed(NotificationId.MEDLINK_CALIBRATION, R.string.med_link_calibration_failed, NotificationLevel.IMPORTANT),
+    SecondCalibrationAlarm(NotificationId.MEDLINK_CALIBRATION, R.string.med_link_calibrate_alarm, NotificationLevel.IMPORTANT),
+    FirstCalibrationAlarm(NotificationId.MEDLINK_CALIBRATION, R.string.med_link_calibrate_alarm, NotificationLevel.NORMAL),
+    PumpUnreachable(NotificationId.RILEYLINK_CONNECTION, app.aaps.core.ui.R.string.pump_unreachable, NotificationLevel.NORMAL),
+    PumpTypeNotSame(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_type_set_differs_from_detected, NotificationLevel.NORMAL),
+    PumpBasalProfilesNotEnabled(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_basal_profiles_not_enabled, NotificationLevel.IMPORTANT),
+    PumpIncorrectBasalProfileSelected(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_incorrect_basal_profile_selected, NotificationLevel.IMPORTANT),
+    PumpWrongTBRTypeSet(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_wrong_tbr_type_set, NotificationLevel.IMPORTANT),
+    PumpWrongMaxBolusSet(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_wrong_max_bolus_set, NotificationLevel.NORMAL),
+    PumpWrongMaxBasalSet(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_error_pump_wrong_max_basal_set, NotificationLevel.NORMAL),
+    PumpWrongTimeUrgent(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_notification_check_time_date, NotificationLevel.IMPORTANT),
+    PumpWrongTimeNormal(NotificationId.MEDTRONIC_PUMP_ALARM, R.string.medtronic_notification_check_time_date, NotificationLevel.NORMAL),
+    TimeChangeOver24h(NotificationId.OVER_24H_TIME_CHANGE_REQUESTED, R.string.medtronic_error_pump_24h_time_change_requested, NotificationLevel.IMPORTANT);
+
+    constructor(resourceId: Int, notificationLevel: NotificationLevel) : this(NotificationId.MEDTRONIC_PUMP_ALARM, resourceId, notificationLevel)
 }

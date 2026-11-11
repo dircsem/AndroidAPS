@@ -11,7 +11,11 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.MedLinkCallbackBridge
+import app.aaps.core.interfaces.pump.PumpProfile
+import app.aaps.core.interfaces.pump.PumpRate
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.pump.MedLinkPumpStatus
 import app.aaps.core.interfaces.pump.Pump
@@ -23,7 +27,6 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAppExit
-import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
@@ -59,7 +62,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     decimalFormatter: DecimalFormatter,
     override var uiInteraction: UiInteraction,
     pumpEnactResultProvider: Provider<PumpEnactResult>,
-
+    bolusProgressData: BolusProgressData,
 ) : PumpPluginAbstract(
     pluginDescription,
     ownPreferences,
@@ -77,7 +80,8 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     app.aaps.pump.common.driver.MedLinkPumpDriverConfiguration(pumpType),
     decimalFormatter,
     dateUtil,
-    pumpEnactResultProvider
+    pumpEnactResultProvider,
+    bolusProgressData
 ), Pump, PumpSyncEntriesCreator, MedLinkPumpPluginBase {
 
     abstract fun  setPumpRunningState(value: PumpRunningState)
@@ -107,7 +111,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     //     return true
     // }
 
-    override fun onStart() {
+    override suspend fun onStart() {
         super.onStart()
         initPumpStatusData()
         serviceConnection?.let { serviceConnection ->
@@ -206,14 +210,14 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     }
 
     // Upload to pump new basal profile
-    override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
+    override suspend fun setNewBasalProfile(profile: PumpProfile): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "setNewBasalProfile [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(
             R.string.pump_operation_not_supported_by_pump_driver
         )
     }
 
-    override fun isThisProfileSet(profile: Profile): Boolean {
+    override fun isThisProfileSet(profile: PumpProfile): Boolean {
         aapsLogger.debug(LTag.PUMP, "isThisProfileSet [PumpPluginAbstract] - Not implemented.")
         return true
     }
@@ -224,20 +228,20 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
 //    }
 
     // base basal rate, not temp basal
-    override val baseBasalRate: Double
+    override val baseBasalRate: PumpRate
         get() {
             aapsLogger.debug(LTag.PUMP, "getBaseBasalRate [PumpPluginAbstract] - Not implemented.")
-            return 0.0
+            return PumpRate(0.0)
         }
 
     override fun stopBolusDelivering() {
         aapsLogger.debug(LTag.PUMP, "stopBolusDelivering [PumpPluginAbstract] - Not implemented.")
     }
 
-    override fun setTempBasalAbsolute(
+    // AAPS 4.0 Pump API (no profile): MedLink TBRs go through MedLinkCommandBasalAbsolute/Percent, which pass the profile
+    override suspend fun setTempBasalAbsolute(
         absoluteRate: Double,
         durationInMinutes: Int,
-        profile: Profile,
         enforceNew: Boolean,
         tbrType: PumpSync.TemporaryBasalType
     ): PumpEnactResult {
@@ -245,10 +249,9 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    override fun setTempBasalPercent(
+    override suspend fun setTempBasalPercent(
         percent: Int,
         durationInMinutes: Int,
-        profile: Profile,
         enforceNew: Boolean,
         tbrType: PumpSync.TemporaryBasalType
     ): PumpEnactResult {
@@ -256,14 +259,14 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    override fun setExtendedBolus(insulin: Double, durationInMinutes: Int): PumpEnactResult {
+    override suspend fun setExtendedBolus(insulin: Double, durationInMinutes: Int): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "setExtendedBolus [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
     // some pumps might set a very short temp close to 100% as cancelling a temp can be noisy
     // when the cancel request is requested by the user (forced), the pump should always do a real cancel
-    override fun cancelTempBasal(enforceNew: Boolean): PumpEnactResult {
+    override suspend fun cancelTempBasal(enforceNew: Boolean): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "cancelTempBasal [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
@@ -273,7 +276,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
 
-    override fun cancelExtendedBolus(): PumpEnactResult {
+    override suspend fun cancelExtendedBolus(): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "cancelExtendedBolus [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
@@ -297,7 +300,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
             return false
         }
 
-    override fun loadTDDs(): PumpEnactResult {
+    override suspend fun loadTDDs(): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "loadTDDs [PumpPluginAbstract] - Not implemented.")
         return getOperationNotSupportedWithCustomText(R.string.pump_operation_not_supported_by_pump_driver)
     }
@@ -410,8 +413,7 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
 
                 // no bolus required, carb only treatment
                 pumpSyncStorage.addBolusWithTempId(detailedBolusInfo, true, this)
-                val bolusingEvent = EventOverviewBolusProgress(rh, 100, detailedBolusInfo.id)
-                rxBus.send(bolusingEvent)
+                bolusProgressData.updateProgress(percent = 100)
 
                 aapsLogger.debug(LTag.PUMP, "deliverTreatment: Carb only treatment.")
                 func.invoke(
@@ -423,6 +425,12 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
             triggerUIChange()
         }
     }
+
+    /** AAPS 4.0 Pump API: waits for the MedLink answer of [deliverTreatment] with a callback (bounded wait). */
+    override suspend fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult =
+        MedLinkCallbackBridge.awaitResult(
+            onTimeout = { pumpEnactResultProvider.get().success(false).enacted(false).comment("MedLink did not answer the bolus") }
+        ) { done -> deliverTreatment(detailedBolusInfo, done) }
 
     // protected override fun refreshCustomActionsList() {
     //     rxBus.send(EventCustomActionsChanged())

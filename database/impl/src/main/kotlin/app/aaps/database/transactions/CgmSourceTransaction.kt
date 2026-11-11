@@ -10,10 +10,11 @@ import app.aaps.database.entities.data.GlucoseUnit
 class CgmSourceTransaction(
     private val glucoseValues: List<GlucoseValue>,
     private val calibrations: List<Calibration>,
-    private val sensorInsertionTime: Long?
+    private val sensorInsertionTime: Long?,
+    private val fromNsClient: Boolean = false
 ) : Transaction<CgmSourceTransaction.TransactionResult>() {
 
-    override fun run(): TransactionResult {
+    override suspend fun run(): TransactionResult {
         val result = TransactionResult()
         glucoseValues.forEach { glucoseValue ->
             val current = database.glucoseValueDao.findByTimestampAndSensor(glucoseValue.timestamp, glucoseValue.sourceSensor)
@@ -22,6 +23,15 @@ class CgmSourceTransaction(
                 current?.let { existing -> glucoseValue.interfaceIDs.nightscoutId = existing.interfaceIDs.nightscoutId }
             // preserve invalidated status (user may delete record in UI)
             current?.let { existing -> glucoseValue.isValid = existing.isValid }
+            // A Nightscout round-trip must never overwrite a reading this app already stored itself:
+            // the app may have uploaded a corrected/smoothed sgv that raced its own recalculation cycle,
+            // and the echo coming back down must not clobber the raw value with that stale correction.
+            if (fromNsClient) current?.let { existing ->
+                glucoseValue.value = existing.value
+                glucoseValue.raw = existing.raw
+                glucoseValue.trendArrow = existing.trendArrow
+                glucoseValue.noise = existing.noise
+            }
             when {
                 // new record, create new
                 current == null                                                                             -> {

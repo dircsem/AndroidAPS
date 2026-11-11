@@ -2,13 +2,17 @@ package app.aaps.plugins.aps.openAPSAIMI.advisor.diag
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.preference.PreferenceManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSSettingsStatus
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.overview.OverviewData
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.plugins.aps.openAPSAIMI.ml.AimiSmbTrainer
+import app.aaps.plugins.aps.openAPSAIMI.tpo.TpoPersistence
+import app.aaps.plugins.aps.openAPSAIMI.tpo.TpoSessionStatus
+import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -51,7 +55,20 @@ class AimiDiagnosticsManager(
         }
     }
 
-    fun generateReport(userMessage: String): String {
+    /**
+     * Builds the support report.
+     *
+     * @param activeProfile the profile the loop is really running, from `ProfileFunction.getProfile()`.
+     *   Pass it whenever it can be read. Without it the report only shows the `LocalProfile_*`
+     *   preferences, which are the profile **editor's** content and can differ from what runs: on the
+     *   2026-09-06 package they read 70 / 30 mg/dL per U while the loop was running 120 / 50.
+     * @param activeProfileName name of that profile, when known.
+     */
+    fun generateReport(
+        userMessage: String,
+        activeProfile: Profile? = null,
+        activeProfileName: String? = null,
+    ): String {
         val sb = StringBuilder()
         val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
@@ -100,9 +117,16 @@ class AimiDiagnosticsManager(
         val nsEnabled = preferences.get(app.aaps.core.keys.BooleanKey.NsClientUploadData)
         sb.append("Upload Enabled: $nsEnabled\n\n")
 
-        // 4. AIMI Core Preferences
+        // 4. The profile the loop is really running
+        sb.append("[ACTIVE PROFILE]\n")
+        appendActiveProfile(sb, activeProfile, activeProfileName)
+        sb.append("\n")
+
+        // 5. AIMI Core Preferences
         sb.append("[AIMI PREFERENCES]\n")
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        sb.append("Note: the LocalProfile_* keys below are the profile editor's content.\n")
+        sb.append("They are not always what the loop runs. See [ACTIVE PROFILE] above.\n")
+        val prefs = context.getSharedPreferences(context.packageName + "_preferences", Context.MODE_PRIVATE)
         val allPrefs = prefs.all
         
         // Liste des clés intéressantes (AIMI, APS, Constraints)
@@ -122,14 +146,29 @@ class AimiDiagnosticsManager(
             if (key.contains("password", true) || key.contains("token", true) || key.contains("secret", true)) {
                  isInteresting = false
             }
+            if (AimiDiagnosticsPrefExportPolicy.isSecretPreferenceKey(key)) {
+                isInteresting = false
+            }
 
             if (isInteresting) {
-                sb.append("$key: $value\n")
+                sb.append(key).append(": ").append(AimiDiagnosticsPrefExportPolicy.formatExportValue(key, value)).append('\n')
             }
         }
         sb.append("\n")
 
-        // 5. Statistics (Simulé ou récupéré si dispo)
+        // 6. What TPO has written to the preferences above
+        sb.append("[TPO SESSION]\n")
+        appendTpoState(sb, allPrefs)
+        sb.append("\n")
+
+        // 6b. The SMB ML trainer's own account of its last attempt: without this, "training does not
+        // work" support tickets had no way to tell "waiting for data" from "a gate keeps rejecting it"
+        // from "never even tried since the last restart".
+        sb.append("[SMB ML TRAINING]\n")
+        appendSmbTrainingState(sb)
+        sb.append("\n")
+
+        // 7. Statistics (Simulé ou récupéré si dispo)
         // Note: Accéder aux vraies stats TDD/TIR nécessite des injections complexes (OverviewData/StatsProvider).
         // Pour cette version V1, on met un placeholder ou on essaie de lire des prefs cachées si elles existent.
         sb.append("[VITAL STATS]\n")
@@ -138,5 +177,153 @@ class AimiDiagnosticsManager(
         sb.append("(Stats deep analysis requires DB access - available in V2)\n")
 
         return sb.toString()
+    }
+
+    /**
+     * Writes what the time-period override (TPO) has done to the preferences printed above.
+     *
+     * TPO writes preference values from inside a loop tick, with no user action, and puts them back
+     * when the session ends. Until this section existed, a support package showed only the value in
+     * force at export time, so a setting that TPO had changed looked exactly like a setting the user
+     * had changed, and a value left behind by a session that never reverted could not be told from a
+     * deliberate choice.
+     *
+     * Three things are printed for every key a session touched: the value the user had
+     * (`baseline`), the value the session wrote (`overlay`), and the value live right now. A key
+     * marked `USER-OWNED` will **never** be put back, because the session saw it change while it was
+     * running — that is the one path by which a TPO value becomes permanent.
+     *
+     * The absence of a session is stated in words rather than left out: an empty section would read
+     * as "TPO did nothing", which is exactly the conclusion this section exists to stop anyone
+     * drawing for free.
+     */
+    private fun appendTpoState(sb: StringBuilder, allPrefs: Map<String, Any?>) {
+        val enabled = preferences.get(app.aaps.core.keys.BooleanKey.OApsAIMITpoEnabled)
+        sb.append("Enabled: ").append(enabled).append(" (default is on)\n")
+        val persistence = try {
+            TpoPersistence(AimiStorageHelper(context, logger))
+        } catch (e: Exception) {
+            logger.error(LTag.CORE, "TPO diagnostics: storage not reachable", e)
+            sb.append("Session store could not be read, so nothing here can be ruled out.\n")
+            return
+        }
+        val reverts = try {
+            persistence.loadLastRevertAtMsByPack()
+        } catch (e: Exception) {
+            logger.error(LTag.CORE, "TPO diagnostics: revert map not readable", e)
+            emptyMap()
+        }
+        if (reverts.isEmpty()) {
+            sb.append("Last revert per pack: none recorded\n")
+        } else {
+            reverts.forEach { (pack, atMs) ->
+                sb.append("Last revert ").append(pack.name).append(": ").append(formatMs(atMs)).append('\n')
+            }
+        }
+        val session = try {
+            persistence.loadSession()
+        } catch (e: Exception) {
+            logger.error(LTag.CORE, "TPO diagnostics: session not readable", e)
+            sb.append("Session file present but unreadable.\n")
+            return
+        }
+        if (session == null) {
+            sb.append("No session stored. Any value above is either the user's own or was left by a\n")
+            sb.append("session whose file is gone - the revert times above are the only trace left.\n")
+            return
+        }
+        sb.append("Session: ").append(session.sessionId).append('\n')
+        sb.append("Pack: ").append(session.packId.name).append("  tier: ").append(session.tier.name).append('\n')
+        sb.append("Status: ").append(session.status.name).append('\n')
+        sb.append("Started: ").append(formatMs(session.startedAtMs)).append('\n')
+        sb.append("Expires: ").append(formatMs(session.expiresAtMs))
+        val live = session.status == TpoSessionStatus.ACTIVE || session.status == TpoSessionStatus.PENDING_LLM
+        if (live && System.currentTimeMillis() > session.expiresAtMs) {
+            sb.append("  PAST ITS EXPIRY AND STILL WRITTEN - the loop has not reverted it")
+        }
+        sb.append('\n')
+        sb.append("Trigger: ").append(session.triggerReasonCodes.joinToString(","))
+            .append("  confidence: ").append(String.format(Locale.US, "%.2f", session.triggerAlgoConfidence)).append('\n')
+        if (session.baseline.isEmpty() && session.overlay.isEmpty()) {
+            sb.append("No key recorded on this session.\n")
+            return
+        }
+        sb.append("Keys (user value -> written value | live now):\n")
+        val keys = (session.baseline.keys + session.overlay.keys).toSortedSet()
+        keys.forEach { key ->
+            val owned = key in session.userOwnedKeys
+            sb.append("  ").append(key).append(": ")
+                .append(session.baseline[key] ?: "?").append(" -> ")
+                .append(session.overlay[key] ?: "?").append(" | ")
+                .append(allPrefs[key] ?: "absent")
+            if (owned) sb.append("  USER-OWNED, will never be put back")
+            sb.append('\n')
+        }
+    }
+
+    /**
+     * Writes the SMB trainer's own record of its last attempt (`AimiSmbTrainer.lastResult`).
+     *
+     * The trainer used to fail silently: a support package showed only whether a weight file existed,
+     * never why it had not been refreshed. This prints the outcome, the row counts, and — for a
+     * rejected candidate or a refused header — the measured value against its threshold, so a support
+     * ticket can be answered from the report alone.
+     */
+    private fun appendSmbTrainingState(sb: StringBuilder) {
+        val result = AimiSmbTrainer.lastResult()
+        if (result == null) {
+            sb.append("No attempt recorded since the app was last started (and none was persisted).\n")
+            return
+        }
+        sb.append("Last attempt: ").append(formatMs(result.atMs)).append('\n')
+        sb.append("Outcome: ").append(result.outcome.name).append('\n')
+        sb.append("CSV rows: ").append(result.totalRows).append('\n')
+        sb.append("Samples after quality filter: ").append(result.samplesAfterFilter)
+            .append("  rejected by filter: ").append(result.rowsRejectedByFilter).append('\n')
+        if (result.gateDetail.isNotBlank()) {
+            sb.append("Detail: ").append(result.gateDetail).append('\n')
+        }
+    }
+
+    /** One date format for every timestamp in this report, so two lines can be compared by eye. */
+    private fun formatMs(atMs: Long): String =
+        if (atMs <= 0L) "not set" else SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(atMs))
+
+    /**
+     * Writes the running profile, block by block, in mg/dL per U so no unit conversion can hide.
+     *
+     * Reads the same accessors the loop reads, so what is printed here is what the engine was
+     * handed. A null profile is stated as such instead of being left out: an absent section would
+     * read as "no profile problem", which is the mistake this whole section exists to stop.
+     */
+    private fun appendActiveProfile(sb: StringBuilder, profile: Profile?, name: String?) {
+        if (profile == null) {
+            sb.append("Not available when the report was built.\n")
+            return
+        }
+        sb.append("Name: ").append(name ?: "unknown").append('\n')
+        sb.append("Display units: ").append(profile.units).append('\n')
+        sb.append("Percentage: ").append(profile.percentage).append("%\n")
+        sb.append("Timeshift: ").append(profile.timeshift).append(" h\n")
+        appendBlocks(sb, "ISF (mg/dL per U)", profile.getIsfsMgdlValues())
+        appendBlocks(sb, "IC (g per U)", profile.getIcsValues())
+        appendBlocks(sb, "Basal (U/h)", profile.getBasalValues())
+        appendBlocks(sb, "Target (mg/dL)", profile.getSingleTargetsMgdl())
+    }
+
+    /** One line per quantity: every block as `hh:mm value`, in the profile's own order. */
+    private fun appendBlocks(sb: StringBuilder, label: String, values: Array<Profile.ProfileValue>) {
+        sb.append(label).append(": ")
+        if (values.isEmpty()) {
+            sb.append("none\n")
+            return
+        }
+        values.forEachIndexed { index, block ->
+            if (index > 0) sb.append(", ")
+            val hours = block.timeAsSeconds / 3600
+            val minutes = (block.timeAsSeconds % 3600) / 60
+            sb.append(String.format(Locale.US, "%02d:%02d %.2f", hours, minutes, block.value))
+        }
+        sb.append('\n')
     }
 }

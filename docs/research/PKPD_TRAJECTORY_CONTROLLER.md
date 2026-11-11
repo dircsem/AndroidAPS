@@ -1,6 +1,8 @@
 # PKPD as Phase-Space Trajectory Controller
 ## AIMI Research Mode - Advanced Control Theory for Type 1 Diabetes
 
+**Related implementation spec**: [TAP_G_PEAK_GOVERNOR_RFC.md](./TAP_G_PEAK_GOVERNOR_RFC.md) (peak governor + checklist).
+
 **Date**: 2026-01-01  
 **Status**: Research & Conceptual Design  
 **Author**: AIMI Research Team  

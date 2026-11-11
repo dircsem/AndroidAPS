@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: resources removed upstream (AAPS 4.0) that MedLink still uses -->
+<resources>
+    <color name="ic_actions_refill">#E93057</color>
+</resources>

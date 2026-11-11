@@ -2,17 +2,19 @@ package app.aaps.plugins.aps.openAPSAIMI.basal
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.PumpInsulin
+import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.plugins.aps.openAPSAIMI.AIMIAdaptiveBasal
 import app.aaps.plugins.aps.openAPSAIMI.model.BgSnapshot
 import app.aaps.plugins.aps.openAPSAIMI.model.LoopContext
 import app.aaps.plugins.aps.openAPSAIMI.model.LoopProfile
 import app.aaps.plugins.aps.openAPSAIMI.model.PumpCaps
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class BasalPlannerTest {
 
@@ -50,7 +52,8 @@ class BasalPlannerTest {
         override fun to3Decimal(value: Double, unit: String): String = "${to3Decimal(value)} $unit"
         override fun toPumpSupportedBolus(value: Double, bolusStep: Double): String = to2Decimal(value)
         override fun toPumpSupportedBolusWithUnits(value: Double, bolusStep: Double): String = to2Decimal(value)
-        override fun pumpSupportedBolusFormat(bolusStep: Double): java.text.DecimalFormat = java.text.DecimalFormat("0.00")
+        override fun toPumpSupportedBolusWithUnits(value: PumpInsulin, bolusStep: Double): String = to2Decimal(value.cU)
+        override fun pumpSupportedBolusFormat(bolusStep: Double): NumberFormat = NumberFormat(minFractionDigits = 2)
     }
 
     private val logger = DummyLogger()
@@ -58,16 +61,20 @@ class BasalPlannerTest {
     private val adaptiveBasal = AIMIAdaptiveBasal(logger, formatter)
     private val planner = BasalPlanner(adaptiveBasal, logger)
 
-    @Before
+    @BeforeEach
     fun setUp() {
         // Reset history provider to empty
         BasalHistoryUtils.installHistoryProvider(BasalHistoryUtils.EmptyProvider)
     }
 
+    // Hypo limits are LGS-derived since the dynamic-limit rework: with lgsThreshold = 65 the
+    // hard limit is max(50, lgs - 15) = 50 and the soft limit is lgs = 65 (the old tests
+    // encoded the pre-rework hardcoded 60/75 thresholds).
+
     @Test
     fun `test plan hard limit`() {
-        // BG = 55 <= 60 -> Suspend
-        val ctx = createLoopContext(bg = 55.0, delta = 0.0)
+        // BG = 45 <= 50 (lgs - 15) -> Suspend
+        val ctx = createLoopContext(bg = 45.0, delta = 0.0)
         val plan = planner.plan(ctx)
         assertNotNull(plan)
         assertEquals(0.0, plan!!.rateUph, 0.01)
@@ -76,8 +83,8 @@ class BasalPlannerTest {
 
     @Test
     fun `test plan soft limit dropping`() {
-        // BG = 70 <= 75, Delta = -2.0 -> Suspend
-        val ctx = createLoopContext(bg = 70.0, delta = -2.0)
+        // BG = 60 <= 65 (lgs), Delta = -2.0 -> Suspend
+        val ctx = createLoopContext(bg = 60.0, delta = -2.0)
         val plan = planner.plan(ctx)
         assertNotNull(plan)
         assertEquals(0.0, plan!!.rateUph, 0.01)
@@ -86,9 +93,9 @@ class BasalPlannerTest {
 
     @Test
     fun `test plan soft limit rising`() {
-        // BG = 70 <= 75, Delta = +2.0 -> Micro-resume (50%)
+        // BG = 60 <= 65 (lgs), Delta = +2.0 -> anti-rebound safety net at 50% profile
         // Profile basal = 1.0 -> 0.5 U/h
-        val ctx = createLoopContext(bg = 70.0, delta = 2.0, profileBasal = 1.0)
+        val ctx = createLoopContext(bg = 60.0, delta = 2.0, profileBasal = 1.0)
         val plan = planner.plan(ctx)
         assertNotNull(plan)
         assertEquals(0.5, plan!!.rateUph, 0.01)
@@ -116,9 +123,21 @@ class BasalPlannerTest {
 
     @Test
     fun `test plan no action`() {
-        val ctx = createLoopContext(bg = 100.0)
+        // Flat BG 100 now triggers the anti-stall branch by design, so "no action" requires a
+        // clearly rising, in-range BG that falls through every priority branch.
+        val ctx = createLoopContext(bg = 100.0, delta = 2.0)
         val plan = planner.plan(ctx)
         assertNull(plan)
+    }
+
+    @Test
+    fun `test plan anti stall on flat in range bg`() {
+        // Flat (|delta| <= 0.75) in-range BG with no IOB -> light anti-stall (+10% profile).
+        val ctx = createLoopContext(bg = 100.0, delta = 0.0, profileBasal = 1.0)
+        val plan = planner.plan(ctx)
+        assertNotNull(plan)
+        assertEquals(1.1, plan!!.rateUph, 0.01)
+        assert(plan.reason.startsWith("Anti-stall"))
     }
 
     private fun createLoopContext(
@@ -140,7 +159,8 @@ class BasalPlannerTest {
         val profile = LoopProfile(
             targetMgdl = 100.0,
             isfMgdlPerU = 50.0,
-            basalProfileUph = profileBasal
+            basalProfileUph = profileBasal,
+            lgsThreshold = 65.0,
         )
         val pump = PumpCaps(
             basalStep = 0.05,

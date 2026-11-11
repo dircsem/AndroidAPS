@@ -6,8 +6,6 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.plugins.aps.openAPSAIMI.steps.AIMIHealthConnectSyncServiceMTR
 import app.aaps.plugins.aps.openAPSAIMI.steps.UnifiedActivityProviderMTR
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,7 +39,7 @@ class AIMIPhysioPipelineWatchdogMTR @Inject constructor(
     /**
      * Runs diagnostics and best-effort recovery (HC sync + physio refresh). Safe on any thread.
      */
-    fun runCheckAndRecover() {
+    suspend fun runCheckAndRecover() {
         val now = System.currentTimeMillis()
         val start = now - DB_LOOKBACK_MS
 
@@ -58,13 +56,11 @@ class AIMIPhysioPipelineWatchdogMTR @Inject constructor(
             -1
         }
 
-        val hcPermsOk = runBlocking(Dispatchers.IO) {
-            try {
-                permissionsHandler.hasAllPermissions()
-            } catch (e: Exception) {
-                aapsLogger.warn(LTag.APS, "[$TAG] HC permission check failed: ${e.message}")
-                false
-            }
+        val hcPermsOk = try {
+            permissionsHandler.hasAllPermissions()
+        } catch (e: Exception) {
+            aapsLogger.warn(LTag.APS, "[$TAG] HC permission check failed: ${e.message}")
+            false
         }
 
         try {

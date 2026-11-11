@@ -4,11 +4,11 @@ import android.content.Context
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.graph.data.AreaGraphSeries
+import app.aaps.core.graph.data.ViewportClampedInRangeAreaSeries
 import app.aaps.core.graph.data.BarGraphSeries
 import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.DataPointWithLabelInterface
-import app.aaps.core.graph.data.DeviationDataPoint
+import app.aaps.core.graph.data.DeviationDataPointLegacy
 import app.aaps.core.graph.data.DoubleDataPoint
 import app.aaps.core.graph.data.EffectiveProfileSwitchDataPoint
 import app.aaps.core.graph.data.FixedLineGraphSeries
@@ -67,16 +67,17 @@ class GraphData @Inject constructor(
         }
     }
 
-    fun addInRangeArea(fromTime: Long, toTime: Long, lowLine: Double, highLine: Double) {
-        val inRangeAreaDataPoints = arrayOf(
-            DoubleDataPoint(fromTime.toDouble(), lowLine, highLine),
-            DoubleDataPoint(toTime.toDouble(), lowLine, highLine)
+    fun addInRangeArea(lowLine: Double, highLine: Double) {
+        addSeries(
+            ViewportClampedInRangeAreaSeries(
+                lowLine = lowLine,
+                highLine = highLine,
+            ).also {
+                it.color = 0
+                it.isDrawBackground = true
+                it.backgroundColor = rh.gac(graph.context, app.aaps.core.ui.R.attr.inRangeBackground)
+            }
         )
-        addSeries(AreaGraphSeries(inRangeAreaDataPoints).also {
-            it.color = 0
-            it.isDrawBackground = true
-            it.backgroundColor = rh.gac(graph.context, app.aaps.core.ui.R.attr.inRangeBackground)
-        })
     }
 
     fun addBasals() {
@@ -103,7 +104,7 @@ class GraphData @Inject constructor(
     }
 
     fun addRunningModes() {
-        addSeries(overviewData.runningModesSeries as PointsWithLabelGraphSeries<DataPoint>)
+        addSeries(overviewData.runningModesSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
     fun addTreatments(context: Context?) {
@@ -184,7 +185,7 @@ class GraphData @Inject constructor(
             minY = -maxY
         }
         overviewData.devScale.multiplier = maxY * scale / overviewData.maxDevValueFound
-        addSeries(overviewData.deviationsSeries as BarGraphSeries<DeviationDataPoint>)
+        addSeries(overviewData.deviationsSeries as BarGraphSeries<DeviationDataPointLegacy>)
     }
 
     // scale in % of vertical size (like 0.3)
@@ -254,17 +255,25 @@ class GraphData @Inject constructor(
         graph.gridLabelRenderer.numVerticalLabels = max(3, if (units == GlucoseUnit.MGDL) (maxY / 40 + 1).toInt() else (maxY / 2 + 1).toInt())
     }
 
-    fun formatAxis(fromTime: Long, endTime: Long) {
-        graph.viewport.setMaxX(endTime.toDouble())
-        graph.viewport.setMinX(fromTime.toDouble())
-        graph.viewport.isXAxisBoundsManual = true
+    fun formatAxis(fromTime: Long, endTime: Long, resetX: Boolean = true) {
+        if (resetX) {
+            graph.viewport.setMaxX(endTime.toDouble())
+            graph.viewport.setMinX(fromTime.toDouble())
+            graph.viewport.isXAxisBoundsManual = true
+        }
         graph.gridLabelRenderer.labelFormatter = TimeAsXAxisLabelFormatter("HH")
         graph.gridLabelRenderer.numHorizontalLabels = 7 // only 7 because of the space
     }
 
     private fun addSeries(s: Series<*>) = series.add(s)
 
-    fun performUpdate() {
+    /**
+     * @param keepViewport If true, [GraphView.onDataChanged] keeps the current X viewport during refresh.
+     *                     Dashboard uses this when the user has panned the glucose graph so the in-range band
+     *                     and series stay aligned; default false preserves legacy behaviour elsewhere.
+     */
+    @JvmOverloads
+    fun performUpdate(keepViewport: Boolean = false) {
         // clear old data - use removeAllSeries() to properly detach GraphView from series
         graph.removeAllSeries()
 
@@ -281,8 +290,7 @@ class GraphData @Inject constructor(
         graph.viewport.setMinY(Round.floorTo(minY, step))
         graph.viewport.isYAxisBoundsManual = true
 
-        // draw it
-        graph.onDataChanged(false, false)
+        graph.onDataChanged(/* keepLabelsSize */ false, /* keepViewport */ keepViewport)
         series.clear()
     }
 

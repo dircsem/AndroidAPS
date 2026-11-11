@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmWorldConservativePreamble
+
 /**
  * ============================================================================
  * AIMI AI Decision Auditor - Prompt Builder
@@ -12,14 +14,24 @@ object AuditorPromptBuilder {
     
     /**
      * Build complete prompt from auditor input
+     *
+     * @param profileFactorsArmed true when the user opted in to the profile factors. It swaps one
+     *   rule line, so the model knows the ISF and the target CAN move a little, but never here.
+     *   With false the built string is exactly the one of before, character for character.
      */
-    fun buildPrompt(input: AuditorInput): String {
+    fun buildPrompt(input: AuditorInput, profileFactorsArmed: Boolean = false): String {
+        // The extra block exists only when the caller gave the ISF and target levels. Without them
+        // the prompt is exactly the one the auditor has always been sent, character for character.
+        val levelsSection =
+            if (input.snapshot.levels != null) "${getIsfTargetLevelsSection()}\n\n" else ""
         return """
-${getSystemPrompt()}
+${getSystemPrompt(profileFactorsArmed)}
+
+${LlmWorldConservativePreamble.FOR_JSON_CONTRACT}
 
 ${getSafetyAssertionsSection()}
 
-${getInputDataSection(input)}
+$levelsSection${getInputDataSection(input)}
 
 ${getInstructionsSection()}
 
@@ -28,9 +40,22 @@ ${getOutputSchemaSection()}
     }
     
     /**
+     * The one rule line that changes when the profile factors are armed.
+     *
+     * The model must still never change a profile here. What changes is that it is told the ISF and
+     * the target CAN move, a little, through the separate profile check, so it does not treat a
+     * moved value as a fault of the loop.
+     */
+    private fun getProfileChangeRuleLine(profileFactorsArmed: Boolean): String =
+        if (profileFactorsArmed)
+            "2. ❌ **Free profile change** : \"Set ISF to 40\" → FORBIDDEN. ISF and target can only move by at most 15 %, through the separate profile check. Never in this verdict."
+        else
+            "2. ❌ **Modification profil** : \"Changer ISF à 40\" → INTERDIT"
+
+    /**
      * System role: Define the auditor's identity and constraints
      */
-    private fun getSystemPrompt(): String = """
+    private fun getSystemPrompt(profileFactorsArmed: Boolean): String = """
 # TU ES DIABY - Le Second Cerveau d'AIMI
 
 ## TON IDENTITÉ
@@ -76,7 +101,7 @@ Tu sais identifier les **Faux Hypos** (Compression Lows) typiques des capteurs D
 
 ### Ce que tu ne PEUX PAS faire (même si tu voulais) :
 1. ❌ **Dosage libre** : "Administrer 1.7U" → INTERDIT
-2. ❌ **Modification profil** : "Changer ISF à 40" → INTERDIT
+${getProfileChangeRuleLine(profileFactorsArmed)}
 3. ❌ **Commande directe pompe** : "Lancer bolus maintenant" → INTERDIT
 4. ❌ **Bloquer P1/P2** : Les prebolus sont sacrés → INTERDIT de réduire
 
@@ -140,11 +165,42 @@ Before verdict, you MUST validate these hard rules. If any rule triggers, it ove
 
 4. **ANTI-HALLUCINATION**:
    - If `Input.steps` is null/0, do NOT mention "sedentary" or "active". State "Activity Unknown".
+   - A `null` field in `stats` (the 7-day summary) was NOT measured. Say "not measured"; never read it as 0 or as a normal value.
    - Do NOT recalculate IOB. Use provided `Input.iob`.
    - Do NOT invent future BG values. Deal only with the present state and trend.
    - If you don't know, state: `riskFlags: ["uncertain_data"]`, `confidence: 0.3`.
     """.trimIndent()
     
+    /**
+     * Explains the ISF and target levels of the snapshot.
+     *
+     * Only added when the snapshot really carries them, so the prompt does not change for a reader
+     * that does not get them. The rule "no profile change" above stays in force: these fields are
+     * there to be read, not to be changed.
+     */
+    private fun getIsfTargetLevelsSection(): String = """
+## ISF AND TARGET LEVELS (read this before you judge the numbers)
+
+The snapshot gives the insulin sensitivity (ISF) at three levels, all in mg/dL per unit:
+- `isfProfileStatic`: the value written in the user profile for this time of day. `null` when it is
+  not known.
+- `isfDynamic`: the value the dynamic sensitivity computed for this tick.
+- `isfCommand`: the value the loop really commands. This is the one the doses are built on.
+
+`isfCommandOverProfile` is `isfCommand / isfProfileStatic`. Under 1.0 means the loop is more
+aggressive than the user profile, over 1.0 means it is more careful.
+`isfOnProfileFloor` is true when a floor raised the commanded value: the chain asked for a lower ISF
+and was not allowed to use it, so more insulin was not possible on this tick.
+
+The glucose target is given at two levels, both in mg/dL:
+- `targetProfile`: the profile target, or the temporary target while one runs.
+- `targetWorking`: the target the engine really aims at on this tick. It can be lower than
+  `targetProfile`. `null` means this tick ended before the engine set it.
+
+Use `isfCommand` and `targetWorking` when you judge the dose, and say which level you used in your
+evidence. You still must not propose any profile change: the rule above stays in force.
+    """.trimIndent()
+
     /**
      * Input data section: The JSON payload
      */
@@ -219,6 +275,20 @@ Use the `trajectory` object to refine your verdict.
 - **CLOSING_CONVERGING**: System is recovering. **CONFIRM** unless hypo risk.
 - **STABLE_ORBIT**: System in equilibrium. Avoid aggressive actions. **CONFIRM** or gentle **SOFTEN**.
 - **Coherence < 0.3**: Insulin is not working as expected (potential resistance/site issue). Be cautious with stacking.
+
+## 8. Harmonia Simulation Branch (cascade Tree → Harmonia → Auditor):
+If `physiological_tree` or `harmonia_simulation` is present, use it as a structured competing hypothesis for your bounded modulation.
+Read `physiological_tree.insulin_intent` / `insulin_urgency` when present — NEED_MORE_INSULIN means the tree asked Harmonia to arbitrate more SMB (already bounded by maxSMBHB).
+Read `physiological_patterns` (soft vs hard catalog caps). Soft meal proposals are context, not a hard mute at 1.20 U.
+If `harmonia_smb_authority` is present, it is the same-tick SMB arbitration (ACCEPT / LIFT_WITHIN_ENVELOPE / REDUCE). Your role is **CONFIRM or SOFTEN only** — never invent a lift above Harmonia's decided SMB.
+Read `physiological_tree.branches` leaves (meal, hypoRisk, insulinEffectiveness, sensorTrust) before CONFIRM on aggressive TBR/SMB in stable BG 95-140 mg/dL.
+Never treat `harmonia_simulation.simulated_smb_u` or `simulated_basal_uph` as a pump command.
+If `harmonia_simulation.applies_to_pump=false`, it is a sandbox branch: you may use it to explain CONFIRM/SOFTEN/SHIFT_TO_TBR, but you must still obey all bounded adjustment limits.
+If `harmonia_production` is present, it is the production basal-first arbitration record. `mode=APPLIED` means Harmonia owned the final basal path for that tick; basal production still has `adds_smb_authority=false` (SMB authority lives in `harmonia_smb_authority`).
+If `meal_certainty.level=HIGH` and `harmonia_simulation.action=MEAL_SUPPORT` with digestion trunk / rise OK, prefer **CONFIRM** (reinforce meal certainty).
+If overcorrection / stacking / high IOB pressure is evident, prefer **SOFTEN**.
+If Harmonia is blocked by sensor, hypo, recovery, or maxIOB pressure, or `harmonia_harmonizer.posture=BLOCK`, prefer SOFTEN or CONFIRM protective behavior — **never reopen** a sync BLOCK with meal escalation.
+Read top-level `decision_basis` / `meal_certainty` when present; they are the cascade language of record.
     """.trimIndent()
     
     /**

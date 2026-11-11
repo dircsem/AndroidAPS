@@ -1,5 +1,6 @@
 package app.aaps.database.transactions
 
+import app.aaps.database.daos.getTemporaryBasalActiveAtLegacyBounded
 import app.aaps.database.entities.TemporaryBasal
 import app.aaps.database.entities.interfaces.end
 
@@ -11,7 +12,7 @@ class SyncPumpTemporaryBasalTransaction(
     private val type: TemporaryBasal.Type? // extra parameter because field is not nullable in TemporaryBasal.class
 ) : Transaction<SyncPumpTemporaryBasalTransaction.TransactionResult>() {
 
-    override fun run(): TransactionResult {
+    override suspend fun run(): TransactionResult {
         temporaryBasal.interfaceIDs.pumpId ?: temporaryBasal.interfaceIDs.pumpType
         ?: temporaryBasal.interfaceIDs.pumpSerial
         ?: throw IllegalStateException("Some pump ID is null")
@@ -33,8 +34,8 @@ class SyncPumpTemporaryBasalTransaction(
                 result.updated.add(Pair(old, existing))
             }
         } else {
-            val running = database.temporaryBasalDao.getTemporaryBasalActiveAtLegacy(temporaryBasal.timestamp)
-            if (running != null) {
+            val running = database.temporaryBasalDao.getTemporaryBasalActiveAtLegacyBounded(temporaryBasal.timestamp)
+            if (running != null && temporaryBasal.timestamp > running.timestamp) {
                 val old = running.copy()
                 running.end = temporaryBasal.timestamp
                 running.interfaceIDs.endId = temporaryBasal.interfaceIDs.pumpId

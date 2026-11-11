@@ -59,7 +59,27 @@ object ContextIntentDeserializer {
                         confidence = obj.getDouble("conf").toFloat()
                     )
                 }
-                
+
+                "SlowCarbMeal", "SlowMeal", "FatMeal" -> {
+                    val start = obj.optLong("start", 0L)
+                    SlowCarbMeal(
+                        startTimeMs = if (start > 0) start else System.currentTimeMillis(),
+                        durationMs = obj.getLong("dur"),
+                        intensity = runCatching { Intensity.valueOf(obj.optString("int", "MEDIUM")) }.getOrDefault(Intensity.MEDIUM),
+                        confidence = obj.getDouble("conf").toFloat()
+                    )
+                }
+
+                "HypoRecovery", "Hypo", "Hypoglycemia" -> {
+                    val start = obj.optLong("start", 0L)
+                    HypoRecovery(
+                        startTimeMs = if (start > 0) start else System.currentTimeMillis(),
+                        durationMs = obj.getLong("dur"),
+                        intensity = runCatching { Intensity.valueOf(obj.optString("int", "MEDIUM")) }.getOrDefault(Intensity.MEDIUM),
+                        confidence = obj.getDouble("conf").toFloat()
+                    )
+                }
+
                 "Alcohol" -> {
                     val start = obj.optLong("start", 0L)
                     Alcohol(

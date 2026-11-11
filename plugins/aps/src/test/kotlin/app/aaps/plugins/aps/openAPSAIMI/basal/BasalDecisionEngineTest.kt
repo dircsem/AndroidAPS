@@ -11,9 +11,11 @@ import app.aaps.plugins.aps.openAPSAIMI.model.PumpCaps
 import app.aaps.plugins.aps.openAPSAIMI.safety.SafetyDecision
 import io.mockk.every
 import io.mockk.mockk
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 class BasalDecisionEngineTest {
 
@@ -112,5 +114,255 @@ class BasalDecisionEngineTest {
         assertNotNull(decision)
         assertEquals(1.2, decision.rate, 0.01)
         assertEquals(30, decision.duration)
+    }
+
+    // ---- Early-meal forced TBR guards (report ②) -------------------------------------------------
+    // glucoseStatus = null so the AIMIAdaptiveBasal delegation (guarded by glucoseStatus?.let) is
+    // skipped and chosenRate enters the forced-TBR branch as null; detectMealOnset is forced true.
+
+    private fun forcedTbrInput(
+        iob: Double = 1.0,
+        maxIob: Double = 10.0,
+        eventualBg: Double = 170.0,
+        lgsThreshold: Double = 75.0,
+        delta: Double = 3.0,
+        nightMode: Boolean = false,
+        forcedBasal: Double = 5.0,
+        variableSensitivity: Double = 50.0,
+        profileSens: Double = 50.0,
+        preFloorCommandedSens: Double? = null,
+        lunchTime: Boolean = false,
+        lunchRuntimeMin: Int = 0,
+    ) = BasalDecisionEngine.Input(
+        bg = 145.0,
+        profileCurrentBasal = 0.8,
+        basalEstimate = 0.8,
+        tdd7P = 40.0,
+        tdd7Days = 40.0,
+        variableSensitivity = variableSensitivity,
+        profileSens = profileSens,
+        preFloorCommandedSens = preFloorCommandedSens,
+        predictedBg = 160.0,
+        targetBg = 100.0,
+        minBg = 70.0,
+        lgsThreshold = lgsThreshold,
+        eventualBg = eventualBg,
+        iob = iob,
+        maxIob = maxIob,
+        allowMealHighIob = false,
+        safetyDecision = mockk<SafetyDecision>(relaxed = true),
+        mealData = mockk<MealData>(relaxed = true),
+        delta = delta,
+        shortAvgDelta = delta,
+        longAvgDelta = delta,
+        combinedDelta = delta,
+        bgAcceleration = 0.5,
+        slopeFromMaxDeviation = 0.1,
+        slopeFromMinDeviation = 0.1,
+        forcedBasal = forcedBasal,
+        forcedMealActive = false,
+        isMealActive = false,
+        runtimeMinValue = 0,
+        snackTime = false,
+        snackRuntimeMin = 0,
+        fastingTime = false,
+        sportTime = false,
+        honeymoon = false,
+        pregnancyEnable = false,
+        mealTime = false,
+        mealRuntimeMin = 0,
+        bfastTime = false,
+        bfastRuntimeMin = 0,
+        lunchTime = lunchTime,
+        lunchRuntimeMin = lunchRuntimeMin,
+        dinnerTime = false,
+        dinnerRuntimeMin = 0,
+        highCarbTime = false,
+        highCarbRuntimeMin = 0,
+        timenow = 12,
+        sixAmHour = 6,
+        recentSteps5Minutes = 0,
+        nightMode = nightMode,
+        modesCondition = true,
+        autodrive = true,
+        currentTemp = mockk<CurrentTemp>(relaxed = true),
+        glucoseStatus = null,
+        featuresCombinedDelta = delta,
+        smbToGive = 0.0,
+        zeroSinceMin = 0,
+        minutesSinceLastChange = 0,
+        pumpCaps = mockk<PumpCaps>(relaxed = true)
+    )
+
+    // ---- Meal-window boost: the numerator must be the PRE-FLOOR commanded sensitivity ------------
+    // The stress ISF floor raises the commanded sensitivity to make doses smaller. This boost divides
+    // by the working sensitivity, so feeding it the floored value made the basal larger - the exact
+    // opposite of what the floor is for. Numbers come from tick 1790021540129 (2026-09-21 22:12):
+    // profile 60, pre-floor 36.6, working 21.6, and the floor had raised the commanded value to 60.
+    // `calculateBasalRate` is stubbed to return the multiplier, and the multiplier is delta x boost,
+    // so with delta 3.0 the rate IS 3 x boost.
+
+    private fun noMealOnsetHelpers() = BasalDecisionEngine.Helpers(
+        calculateRate = { _, _, mult, _ -> 1.0 * mult },
+        calculateBasalRate = { _, _, mult -> 1.0 * mult },
+        detectMealOnset = { _, _, _, _, _ -> false },
+        round = { v, _ -> v }
+    )
+
+    private fun decideMealWindow(preFloor: Double?, working: Double, commanded: Double): Pair<BasalDecisionEngine.Decision, RT> {
+        every { basalPlanner.plan(any()) } returns null
+        val input = forcedTbrInput(
+            variableSensitivity = working,
+            profileSens = commanded,
+            preFloorCommandedSens = preFloor,
+            lunchTime = true,
+            lunchRuntimeMin = 45,
+        )
+        val rt = RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true)
+        return engine.decide(input, rt, noMealOnsetHelpers()) to rt
+    }
+
+    @Test
+    fun `meal-window boost divides the pre-floor sensitivity, not the floored one`() {
+        val (decision, _) = decideMealWindow(preFloor = 36.6, working = 21.6, commanded = 60.0)
+        // 36.6 / 21.6 = 1.69 -> rate 5.08. The floored numerator would have given 60 / 21.6 = 2.78 -> 8.34.
+        assertEquals(5.08, decision.rate, 0.05)
+        assertTrue(decision.rate < 8.0) { "the floor must not inflate the meal-window basal" }
+    }
+
+    @Test
+    fun `meal-window boost is unchanged when the floor raises the commanded sensitivity`() {
+        val floorInactive = decideMealWindow(preFloor = 36.6, working = 21.6, commanded = 36.6).first
+        val floorActive = decideMealWindow(preFloor = 36.6, working = 21.6, commanded = 60.0).first
+        assertEquals(floorInactive.rate, floorActive.rate, 0.001)
+    }
+
+    @Test
+    fun `meal-window boost stands down when the pre-floor sensitivity is missing`() {
+        val (decision, rt) = decideMealWindow(preFloor = null, working = 21.6, commanded = 60.0)
+        // No boost at all: rate is delta x 1.0.
+        assertEquals(3.0, decision.rate, 0.001)
+        assertFalse(rt.reason.toString().contains("boost x")) { rt.reason.toString() }
+    }
+
+    @Test
+    fun `meal-window boost stands down on a non-finite pre-floor sensitivity`() {
+        val (decision, _) = decideMealWindow(preFloor = Double.NaN, working = 21.6, commanded = 60.0)
+        assertEquals(3.0, decision.rate, 0.001)
+    }
+
+    private fun mealOnsetHelpers() = BasalDecisionEngine.Helpers(
+        calculateRate = { _, _, mult, _ -> 1.0 * mult },
+        calculateBasalRate = { _, _, mult -> 1.0 * mult },
+        detectMealOnset = { _, _, _, _, _ -> true },
+        round = { v, _ -> v }
+    )
+
+    private fun decideForcedTbr(input: BasalDecisionEngine.Input): Pair<BasalDecisionEngine.Decision, RT> {
+        every { basalPlanner.plan(any()) } returns null
+        val rt = RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true)
+        val decision = engine.decide(input, rt, mealOnsetHelpers())
+        return decision to rt
+    }
+
+    @Test
+    fun `forced early-meal TBR fires when all guards are clear`() {
+        val (decision, rt) = decideForcedTbr(forcedTbrInput())
+        assertTrue(decision.overrideSafety) { "override should be granted when guards clear" }
+        assertTrue(rt.reason.toString().contains("AD_EARLY_TBR_TRIGGER")) { rt.reason.toString() }
+    }
+
+    @Test
+    fun `forced TBR suppressed when IOB above absolute cap`() {
+        val (decision, rt) = decideForcedTbr(forcedTbrInput(iob = 5.0))
+        assertFalse(decision.overrideSafety) { "forced override must not fire while stacking" }
+        val reason = rt.reason.toString()
+        assertTrue(reason.contains("AD_EARLY_TBR_BLOCKED")) { reason }
+        assertTrue(reason.contains("iob=")) { reason }
+    }
+
+    @Test
+    fun `forced TBR suppressed at night without a steep rise`() {
+        val (decision, rt) = decideForcedTbr(forcedTbrInput(nightMode = true, delta = 3.0))
+        assertFalse(decision.overrideSafety)
+        val reason = rt.reason.toString()
+        assertTrue(reason.contains("AD_EARLY_TBR_BLOCKED")) { reason }
+        assertTrue(reason.contains("nightDelta=")) { reason }
+    }
+
+    @Test
+    fun `forced TBR allowed at night on a genuinely steep rise`() {
+        val (decision, rt) = decideForcedTbr(forcedTbrInput(nightMode = true, delta = 9.0))
+        assertTrue(decision.overrideSafety)
+        assertTrue(rt.reason.toString().contains("AD_EARLY_TBR_TRIGGER")) { rt.reason.toString() }
+    }
+
+    @Test
+    fun `forced TBR suppressed when prediction heads toward the LGS threshold`() {
+        // eventualBg 85 < lgsThreshold 75 + 15 margin → dropping toward a low, do not force a high TBR.
+        val (decision, rt) = decideForcedTbr(forcedTbrInput(eventualBg = 85.0))
+        assertFalse(decision.overrideSafety)
+        val reason = rt.reason.toString()
+        assertTrue(reason.contains("AD_EARLY_TBR_BLOCKED")) { reason }
+        assertTrue(reason.contains("evBG=")) { reason }
+    }
+
+    /** The meal-onset detector gets the real predicted delta when given; the old call passed the delta twice. */
+    @Test
+    fun `forced TBR detector receives the predicted delta, or the delta when none is given`() {
+        var seenPredicted: Float? = null
+        val helpers = BasalDecisionEngine.Helpers(
+            calculateRate = { _, _, mult, _ -> 1.0 * mult },
+            calculateBasalRate = { _, _, mult -> 1.0 * mult },
+            detectMealOnset = { _, predicted, _, _, _ -> seenPredicted = predicted; false },
+            round = { v, _ -> v }
+        )
+        every { basalPlanner.plan(any()) } returns null
+
+        engine.decide(forcedTbrInput(delta = 3.0).copy(predictedDelta = 0.5), RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true), helpers)
+        assertEquals(0.5f, seenPredicted!!, 1e-6f)
+
+        engine.decide(forcedTbrInput(delta = 3.0), RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true), helpers)
+        assertEquals(3.0f, seenPredicted!!, 1e-6f)
+    }
+
+    // ---- Engine hyper bound (shadow first) ---------------------------------------------------------
+    // "Slow rise" multiplies by combinedDelta and has no bound (199 U/h seen on 2026-10-20). The stub
+    // `calculateBasalRate` returns the multiplier, so the raw rate here is combinedDelta = 15.
+    // Bound = profile 0.8 × interpolateBasal(145) = 0.8 × 3.25 = 2.6.
+
+    private fun slowRiseInput(armed: Boolean) = forcedTbrInput(delta = 15.0)
+        .copy(slopeFromMinDeviation = 1.0, bgAcceleration = 2.0, engineHyperBoundArmed = armed)
+
+    @Test
+    fun `slow rise is exported in shadow and keeps its raw rate when disarmed`() {
+        every { basalPlanner.plan(any()) } returns null
+        val decision = engine.decide(slowRiseInput(armed = false), RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true), noMealOnsetHelpers())
+        assertEquals(15.0, decision.rate, 1e-9)
+        val bound = decision.hyperBound
+        assertNotNull(bound)
+        assertEquals(EngineHyperRateBound.Branch.SLOW_RISE, bound!!.branch)
+        assertTrue(bound.wouldBind)
+        assertFalse(bound.applied)
+        assertEquals(2.6, bound.boundUph, 1e-9)
+    }
+
+    @Test
+    fun `slow rise is bound to profile times the glucose factor when armed`() {
+        every { basalPlanner.plan(any()) } returns null
+        val rt = RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true)
+        val decision = engine.decide(slowRiseInput(armed = true), rt, noMealOnsetHelpers())
+        assertEquals(2.6, decision.rate, 1e-9)
+        assertTrue(rt.reason.toString().contains("ENGINE_BOUND")) { rt.reason.toString() }
+    }
+
+    /** "Eventual BG>110" at BG 160: the stub gives the factor itself, 4.0, the bound is 0.8 × 4.0 = 3.2. */
+    @Test
+    fun `eventual branch is bound by a single glucose factor when armed`() {
+        every { basalPlanner.plan(any()) } returns null
+        val input = forcedTbrInput(delta = 3.0).copy(bg = 160.0, engineHyperBoundArmed = true)
+        val decision = engine.decide(input, RT(algorithm = APSResult.Algorithm.AIMI, runningDynamicIsf = true), noMealOnsetHelpers())
+        assertEquals(EngineHyperRateBound.Branch.EVENTUAL_BG_110, decision.hyperBound?.branch)
+        assertEquals(3.2, decision.rate, 1e-9)
     }
 }

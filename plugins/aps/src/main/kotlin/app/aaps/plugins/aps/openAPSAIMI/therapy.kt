@@ -1,14 +1,20 @@
 package app.aaps.plugins.aps.openAPSAIMI
 
-import android.annotation.SuppressLint
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.db.PersistenceLayer
-import io.reactivex.rxjava3.core.Single
+import app.aaps.plugins.aps.openAPSAIMI.basal.CoffeeRiseMode
+import app.aaps.plugins.aps.openAPSAIMI.ml.AimiCorpusPruner
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
-class Therapy (private val persistenceLayer: PersistenceLayer){
+class Therapy(private val persistenceLayer: PersistenceLayer) {
 
     var sleepTime = false
     var sportTime = false
@@ -16,255 +22,413 @@ class Therapy (private val persistenceLayer: PersistenceLayer){
     var lowCarbTime = false
     var highCarbTime = false
     var mealTime = false
+    /**
+     * A meal the person has declared before it shows on the sensor. Unlike [mealTime] it carries no
+     * prebolus: it only tells the loop the meal is a fact, so a bounded anticipation can be spent
+     * without waiting for the rise to confirm anything. Keyword "anticip", window carried by the
+     * note's own duration.
+     */
+    var anticipTime = false
+    /**
+     * The FCL mode: a declared meal that forces the meal basal ceiling for as long as a low temp
+     * target is set, and sends no prebolus. Keyword "fcl". Unlike every other keyword the window is
+     * at least [FCL_MIN_WINDOW_MS], because the temp target is what ends the mode and a scenario
+     * usually writes the note with no duration of its own. See
+     * `app.aaps.plugins.aps.openAPSAIMI.basal.FclMealBasal`.
+     */
+    var fclTime = false
     var bfastTime = false
     var lunchTime = false
     var dinnerTime = false
     var fastingTime = false
     var stopTime = false
     var calibrationTime = false
-    var deleteEventDate: String? = null
-    var deleteTime = false
+    /**
+     * The newest active note that asks to remove rows from the training corpus, or `null`.
+     *
+     * The note must START with "delete" (any case, see [AimiCorpusPruner.isDeleteNote]) and still be
+     * inside its duration. "delete" alone means yesterday; "delete 25/10/2026" names the day
+     * (see [AimiCorpusPruner.deleteNoteDay]). The caller acts once per note, keyed on
+     * [CorpusDeleteNote.timestamp]; this class only reports the note.
+     */
+    var deleteNote: CorpusDeleteNote? = null
 
-    @SuppressLint("CheckResult")
-    fun updateStatesBasedOnTherapyEvents() {
-        stopTime = findActivestopEvents(System.currentTimeMillis()).blockingGet()
-        if (!stopTime) {
-            sleepTime = findActiveSleepEvents(System.currentTimeMillis()).blockingGet()
-            sportTime = findActiveSportEvents(System.currentTimeMillis()).blockingGet()
-            snackTime = findActiveSnackEvents(System.currentTimeMillis()).blockingGet()
-            lowCarbTime = findActiveLowCarbEvents(System.currentTimeMillis()).blockingGet()
-            highCarbTime = findActiveHighCarbEvents(System.currentTimeMillis()).blockingGet()
-            mealTime = findActiveMealEvents(System.currentTimeMillis()).blockingGet()
-            bfastTime = findActivebfastEvents(System.currentTimeMillis()).blockingGet()
-            lunchTime = findActiveLunchEvents(System.currentTimeMillis()).blockingGet()
-            dinnerTime = findActiveDinnerEvents(System.currentTimeMillis()).blockingGet()
-            fastingTime = findActiveFastingEvents(System.currentTimeMillis()).blockingGet()
-            calibrationTime = isCalibrationEvent(System.currentTimeMillis()).blockingGet()
+    /** True while a corpus delete note is active. See [deleteNote]. */
+    val deleteTime: Boolean
+        get() = deleteNote != null
+    private var latestNoteEvents: List<TE> = emptyList()
 
-            // Mettre à jour deleteTime en vérifiant la présence de l'événement "delete"
-            deleteTime = findActivedeleteEvents(System.currentTimeMillis()).blockingGet()
-            // Extraire la date de l'événement "delete"
-            deleteEventDate = persistenceLayer.getTherapyEventDataFromTime(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1), true)
-                .map { events ->
-                    val note = events.find { it.type == TE.Type.NOTE && it.note?.contains("delete", ignoreCase = true) == true }?.note
-                    extractDateFromDeleteEvent(note).toString() // Extraire la date de l'événement "delete"
-                }
-                .blockingGet()
-        } else {
-            resetAllStates()
-            clearActiveEvent("sleep")
-            clearActiveEvent("sport")
-            clearActiveEvent("snack")
-            clearActiveEvent("lowcarb")
-            clearActiveEvent("highcarb")
-            clearActiveEvent("meal")
-            clearActiveEvent("bfast")
-            clearActiveEvent("lunch")
-            clearActiveEvent("dinner")
-            clearActiveEvent("fasting")
-            clearActiveEvent("delete")
+    fun updateStatesBasedOnTherapyEvents(forceRefresh: Boolean = false) {
+        if (forceRefresh) {
+            refreshBlocking()
+            return
+        }
+        snapshotRef.get()?.let { applySnapshot(it) }
+        refreshIfNeededAsync()
+    }
+
+    private fun refreshBlocking() {
+        runCatching {
+            runBlocking(Dispatchers.IO) { buildSnapshot() }
+        }.onSuccess { snapshot ->
+            snapshotRef.set(snapshot)
+            applySnapshot(snapshot)
+        }.onFailure {
+            snapshotRef.get()?.let { applySnapshot(it) } ?: resetAllStates()
         }
     }
-    private fun clearActiveEvent(noteKeyword: String) {
-       persistenceLayer.deleteLastEventMatchingKeyword(noteKeyword)
+
+    private fun refreshIfNeededAsync() {
+        val now = System.currentTimeMillis()
+        val current = snapshotRef.get()
+        if (current != null && now - current.generatedAtMs < SNAPSHOT_TTL_MS) return
+        if (!refreshInFlight.compareAndSet(false, true)) return
+
+        ioScope.launch {
+            try {
+                val snapshot = buildSnapshot()
+                snapshotRef.set(snapshot)
+                applySnapshot(snapshot)
+            } finally {
+                refreshInFlight.set(false)
+            }
+        }
     }
 
-    // Implémenter la méthode
+    private suspend fun buildSnapshot(): TherapySnapshot {
+        val now = System.currentTimeMillis()
+        val fromTime = now - TimeUnit.DAYS.toMillis(1)
+        // Context intents are stored as notes too ("AIMI_CONTEXT:<id>:{json}"). Their JSON holds words
+        // like "Meal" or "SPORT_INTENSE", so every keyword below would read them as a mode the person
+        // set: on 2026-08-02 a SlowCarbMeal intent fired the meal-mode prebolus and 7 U/h. Drop them once
+        // here; every matcher, the runtimes, lastDeclaredMeal and activeCoffee read only what is left.
+        val events = persistenceLayer.getTherapyEventDataFromTime(fromTime, ascending = true)
+            .filterNot { it.isAimiContextNote() }
+        val noteEvents = events.filter { it.type == TE.Type.NOTE }
+        val stop = findActivestopEvents(events, now)
+        if (!stop) {
+            return TherapySnapshot(
+                sleepTime = findActiveSleepEvents(events, now),
+                sportTime = findActiveSportEvents(events, now),
+                snackTime = findActiveSnackEvents(events, now),
+                lowCarbTime = findActiveLowCarbEvents(events, now),
+                highCarbTime = findActiveHighCarbEvents(events, now),
+                mealTime = findActiveMealEvents(events, now),
+                anticipTime = findActiveAnticipEvents(events, now),
+                fclTime = findActiveFclEvents(events, now),
+                bfastTime = findActivebfastEvents(events, now),
+                lunchTime = findActiveLunchEvents(events, now),
+                dinnerTime = findActiveDinnerEvents(events, now),
+                fastingTime = findActiveFastingEvents(events, now),
+                stopTime = false,
+                calibrationTime = isCalibrationEvent(events, now),
+                deleteNote = findActiveDeleteNote(events, now),
+                latestNoteEvents = noteEvents,
+                generatedAtMs = now
+            )
+        }
 
+        clearActiveEventsOnStop()
+        return TherapySnapshot(
+            sleepTime = false,
+            sportTime = false,
+            snackTime = false,
+            lowCarbTime = false,
+            highCarbTime = false,
+            mealTime = false,
+            anticipTime = false,
+            fclTime = false,
+            bfastTime = false,
+            lunchTime = false,
+            dinnerTime = false,
+            fastingTime = false,
+            stopTime = true,
+            calibrationTime = false,
+            deleteNote = null,
+            latestNoteEvents = noteEvents,
+            generatedAtMs = now
+        )
+    }
+
+    private suspend fun clearActiveEventsOnStop() {
+        persistenceLayer.deleteLastEventMatchingKeyword("sleep")
+        persistenceLayer.deleteLastEventMatchingKeyword("sport")
+        persistenceLayer.deleteLastEventMatchingKeyword("snack")
+        persistenceLayer.deleteLastEventMatchingKeyword("lowcarb")
+        persistenceLayer.deleteLastEventMatchingKeyword("highcarb")
+        persistenceLayer.deleteLastEventMatchingKeyword("meal")
+        persistenceLayer.deleteLastEventMatchingKeyword("anticip")
+        persistenceLayer.deleteLastEventMatchingKeyword("fcl")
+        persistenceLayer.deleteLastEventMatchingKeyword("bfast")
+        persistenceLayer.deleteLastEventMatchingKeyword("lunch")
+        persistenceLayer.deleteLastEventMatchingKeyword("dinner")
+        persistenceLayer.deleteLastEventMatchingKeyword("fasting")
+        persistenceLayer.deleteLastEventMatchingKeyword("delete")
+        for (keyword in CoffeeRiseMode.KEYWORDS) persistenceLayer.deleteLastEventMatchingKeyword(keyword)
+    }
+
+    private fun applySnapshot(snapshot: TherapySnapshot) {
+        sleepTime = snapshot.sleepTime
+        sportTime = snapshot.sportTime
+        snackTime = snapshot.snackTime
+        lowCarbTime = snapshot.lowCarbTime
+        highCarbTime = snapshot.highCarbTime
+        mealTime = snapshot.mealTime
+        anticipTime = snapshot.anticipTime
+        fclTime = snapshot.fclTime
+        bfastTime = snapshot.bfastTime
+        lunchTime = snapshot.lunchTime
+        dinnerTime = snapshot.dinnerTime
+        fastingTime = snapshot.fastingTime
+        stopTime = snapshot.stopTime
+        calibrationTime = snapshot.calibrationTime
+        deleteNote = snapshot.deleteNote
+        latestNoteEvents = snapshot.latestNoteEvents
+    }
 
     private fun resetAllStates() {
-        sleepTime = false;
-        sportTime = false;
-        snackTime = false;
-        lowCarbTime = false;
-        highCarbTime = false;
-        mealTime = false;
-        bfastTime = false;
-        lunchTime = false;
-        dinnerTime = false;
-        fastingTime = false;
-        deleteTime = false;
-    }
-    private fun findActiveSleepEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        // Utiliser la méthode getTherapyEventDataFromTime avec le timestamp et l'ordre de tri
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE } // Filtrer les événements par type
-                    .any { event ->
-                        event.note?.contains("sleep", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
-            }
+        sleepTime = false
+        sportTime = false
+        snackTime = false
+        lowCarbTime = false
+        highCarbTime = false
+        mealTime = false
+        anticipTime = false
+        fclTime = false
+        bfastTime = false
+        lunchTime = false
+        dinnerTime = false
+        fastingTime = false
+        deleteNote = null
     }
 
-    private fun isCalibrationEvent(timestamp: Long): Single<Boolean> {
-        val tenMinutesAgo = timestamp - TimeUnit.MINUTES.toMillis(15)
-        return persistenceLayer.getTherapyEventDataFromTime(tenMinutesAgo, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.FINGER_STICK_BG_VALUE }
-                    .any { event ->
-                        System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+    private fun findActiveSleepEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("sleep", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
+
+    private fun isCalibrationEvent(events: List<TE>, now: Long): Boolean {
+        val cutoff = now - TimeUnit.MINUTES.toMillis(15)
+        return events.filter { it.type == TE.Type.FINGER_STICK_BG_VALUE && it.timestamp >= cutoff }
+            .any { event -> now <= (event.timestamp + event.duration) }
     }
 
-    private fun extractDateFromDeleteEvent(note: String?): String? {
-        val deletePattern = Pattern.compile("delete (\\d{2}/\\d{2}/\\d{4})", Pattern.CASE_INSENSITIVE)
-        val matcher = deletePattern.matcher(note ?: "")
-        return if (matcher.find()) {
-            matcher.group(1) // Retourne la date sous forme de chaîne "dd/mm/aaaa"
-        } else {
-            null
-        }
-    }
-    private fun findActiveSportEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        // Utiliser la méthode getTherapyEventDataFromTime avec le timestamp et l'ordre de tri
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE } // Filtrer les événements par type
-                    .any { event ->
-                        val note = event.note?.lowercase() ?: ""
-                        // ✅ FIX: Exclure "marche" de la détection sport
-                        // Une simple marche ne devrait pas bloquer SMB pendant 1h+
-                        // Seuls les VRAIS sports (cardio, vélo, course, natation) déclenchent la sécurité
-                        val containsSport = note.contains("sport", ignoreCase = true)
-                        val isWalking = note.contains("marche", ignoreCase = true) || note.contains("walk", ignoreCase = true)
-                        
-                        (containsSport && !isWalking) &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+    private fun findActiveSportEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                val note = event.note?.lowercase() ?: ""
+                val containsSport = note.contains("sport", ignoreCase = true)
+                val isWalking = note.contains("marche", ignoreCase = true) || note.contains("walk", ignoreCase = true)
+                (containsSport && !isWalking) &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
 
-    private fun findActiveSnackEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        // Utiliser la méthode getTherapyEventDataFromTime avec le timestamp et l'ordre de tri
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE } // Filtrer les événements par type
-                    .any { event ->
-                        event.note?.contains("snack", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+    private fun findActiveSnackEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("snack", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
 
-    private fun findActiveLowCarbEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        // Utiliser la méthode getTherapyEventDataFromTime avec le timestamp et l'ordre de tri
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE } // Filtrer les événements par type
-                    .any { event ->
-                        event.note?.contains("lowcarb", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+    private fun findActiveLowCarbEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("lowcarb", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActiveHighCarbEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        val note = event.note ?: ""
-                        (note.contains("highcarb", ignoreCase = true) || note.contains("high carb", ignoreCase = true)) &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActiveHighCarbEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                val note = event.note ?: ""
+                (note.contains("highcarb", ignoreCase = true) || note.contains("high carb", ignoreCase = true)) &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActiveMealEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("meal", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActiveMealEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("meal", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActivebfastEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        val note = event.note ?: ""
-                        (note.contains("bfast", ignoreCase = true) || note.contains("breakfast", ignoreCase = true)) &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    /**
+     * A declared meal, with no prebolus attached. The keyword is deliberately not a word containing
+     * "meal": `findActiveMealEvents` matches any note holding "meal", so "premeal" would switch the
+     * meal mode on as well and fire its prebolus, which is the one thing this mode exists to avoid.
+     */
+    private fun findActiveAnticipEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("anticip", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActiveLunchEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("lunch", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    /**
+     * The FCL mode. The window is the note's own duration, but never shorter than
+     * [FCL_MIN_WINDOW_MS]: a scenario that posts the note next to a temp target normally gives it no
+     * duration, and with the plain duration test such a note would arm nothing. What really ends the
+     * mode is the temp target, checked by
+     * `app.aaps.plugins.aps.openAPSAIMI.basal.FclMealBasal`, so the note only has to be recent.
+     */
+    private fun findActiveFclEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("fcl", ignoreCase = true) == true &&
+                    now <= (event.timestamp + maxOf(event.duration, FCL_MIN_WINDOW_MS))
             }
-    }
-    private fun findActivedeleteEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("delete", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActivebfastEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                val note = event.note ?: ""
+                (note.contains("bfast", ignoreCase = true) || note.contains("breakfast", ignoreCase = true)) &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActiveDinnerEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("dinner", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActiveLunchEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("lunch", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActiveFastingEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("fasting", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActiveDeleteNote(events: List<TE>, now: Long): CorpusDeleteNote? =
+        events.filter { it.type == TE.Type.NOTE }
+            .filter { event -> AimiCorpusPruner.isDeleteNote(event.note) && now <= (event.timestamp + event.duration) }
+            .maxByOrNull { it.timestamp }
+            ?.let { event -> CorpusDeleteNote(timestamp = event.timestamp, note = event.note.orEmpty().trim()) }
+
+    private fun findActiveDinnerEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("dinner", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
-    private fun findActivestopEvents(timestamp: Long): Single<Boolean> {
-        val fromTime = timestamp - TimeUnit.DAYS.toMillis(1) // les dernières 24 heures
-        return persistenceLayer.getTherapyEventDataFromTime(fromTime, true)
-            .map { events ->
-                events.filter { it.type == TE.Type.NOTE }
-                    .any { event ->
-                        event.note?.contains("stop", ignoreCase = true) == true &&
-                            System.currentTimeMillis() <= (event.timestamp + event.duration)
-                    }
+
+    private fun findActiveFastingEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("fasting", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
             }
-    }
+
+    private fun findActivestopEvents(events: List<TE>, now: Long): Boolean =
+        events.filter { it.type == TE.Type.NOTE }
+            .any { event ->
+                event.note?.contains("stop", ignoreCase = true) == true &&
+                    now <= (event.timestamp + event.duration)
+            }
 
     fun getTimeElapsedSinceLastEvent(keyword: String): Long {
-        val fromTime = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(60)
-        val events = persistenceLayer.getTherapyEventDataFromTime(fromTime, TE.Type.NOTE, true)
-
-        val lastEvent = events.filter { it.note?.contains(keyword, ignoreCase = true) == true }
+        val now = System.currentTimeMillis()
+        val fromTime = now - TimeUnit.MINUTES.toMillis(60)
+        val lastEvent = latestNoteEvents
+            .asSequence()
+            .filter { it.timestamp >= fromTime && it.note?.contains(keyword, ignoreCase = true) == true }
             .maxByOrNull { it.timestamp }
-        lastEvent?.let {
-            // Calculer et retourner le temps écoulé en minutes depuis l'événement
-            return (System.currentTimeMillis() - it.timestamp) / 60000  // Convertir en minutes
-        }
-        return -1  // Retourner -1 si aucun événement n'a été trouvé
+        return lastEvent?.let { (now - it.timestamp) / 60000 } ?: -1L
     }
 
+    /** A live "coffee" note: its age and its window, both in minutes. See [CoffeeRiseMode]. */
+    data class CoffeeNote(val ageMin: Long, val windowMin: Long)
+
+    /**
+     * The most recent coffee note whose window is still open, or `null`. The window is the note's own
+     * duration, 90 min without one, never more than 150 min ([CoffeeRiseMode.windowMin]). A stop note
+     * clears it like the other modes.
+     */
+    fun activeCoffee(nowMs: Long): CoffeeNote? {
+        if (stopTime) return null
+        val event = latestNoteEvents
+            .asSequence()
+            .filter { it.timestamp <= nowMs && CoffeeRiseMode.isCoffeeNote(it.note) }
+            .maxByOrNull { it.timestamp }
+            ?: return null
+        val windowMin = CoffeeRiseMode.windowMin(event.duration / 60_000L)
+        val ageMin = (nowMs - event.timestamp) / 60_000L
+        return if (ageMin < windowMin) CoffeeNote(ageMin, windowMin) else null
+    }
+
+    /**
+     * The last declared meal: how long ago, whether it was a high-carb one, and the keyword that matched
+     * (the first one of [DECLARED_MEAL_KEYWORDS] found in the note).
+     */
+    data class DeclaredMeal(val ageMin: Long, val highCarb: Boolean, val keyword: String)
+
+    /**
+     * The most recent declared-meal note within [lookbackMin], or `null`.
+     *
+     * [getTimeElapsedSinceLastEvent] only looks back 60 min, which is too short for the PK/PD learning
+     * gate: a meal still acts on glucose 3 h later. The notes are kept for 24 h, so a wider lookback
+     * costs nothing. Every meal keyword counts, "anticip" too: it is a meal the person declared.
+     */
+    fun lastDeclaredMeal(nowMs: Long, lookbackMin: Long = DECLARED_MEAL_LOOKBACK_MIN): DeclaredMeal? {
+        val fromTime = nowMs - TimeUnit.MINUTES.toMillis(lookbackMin)
+        val event = latestNoteEvents
+            .asSequence()
+            .filter { it.timestamp in fromTime..nowMs }
+            .filter { event -> DECLARED_MEAL_KEYWORDS.any { event.note?.contains(it, ignoreCase = true) == true } }
+            .maxByOrNull { it.timestamp }
+            ?: return null
+        val note = event.note.orEmpty()
+        return DeclaredMeal(
+            ageMin = (nowMs - event.timestamp) / 60_000L,
+            highCarb = note.contains("highcarb", ignoreCase = true),
+            keyword = DECLARED_MEAL_KEYWORDS.first { note.contains(it, ignoreCase = true) },
+        )
+    }
+
+    private data class TherapySnapshot(
+        val sleepTime: Boolean,
+        val sportTime: Boolean,
+        val snackTime: Boolean,
+        val lowCarbTime: Boolean,
+        val highCarbTime: Boolean,
+        val mealTime: Boolean,
+        val anticipTime: Boolean,
+        val fclTime: Boolean,
+        val bfastTime: Boolean,
+        val lunchTime: Boolean,
+        val dinnerTime: Boolean,
+        val fastingTime: Boolean,
+        val stopTime: Boolean,
+        val calibrationTime: Boolean,
+        val deleteNote: CorpusDeleteNote?,
+        val latestNoteEvents: List<TE>,
+        val generatedAtMs: Long
+    )
+
+    companion object {
+
+        /**
+         * Shortest time an "fcl" note stays live, whatever duration it carries.
+         *
+         * One hour, the same lookback [getTimeElapsedSinceLastEvent] already uses, so a note cannot
+         * arm the mode on the far side of the day. The temp target is the real leash and it is
+         * normally much shorter than this.
+         */
+        const val FCL_MIN_WINDOW_MS = 60 * 60_000L
+
+        /** Note keywords that mean "the person declared a meal". */
+        val DECLARED_MEAL_KEYWORDS = listOf("fcl", "meal", "bfast", "lunch", "dinner", "highcarb", "snack", "anticip")
+
+        /** How far [lastDeclaredMeal] looks back by default: longer than the longest learning block. */
+        const val DECLARED_MEAL_LOOKBACK_MIN = 300L
+        private const val SNAPSHOT_TTL_MS = 30_000L
+        private val snapshotRef = AtomicReference<TherapySnapshot?>(null)
+        private val refreshInFlight = AtomicBoolean(false)
+        private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
 }
+
+/**
+ * A therapy note that asks to remove rows from the training corpus.
+ *
+ * @property timestamp when the note was written. It is the key that makes the removal happen
+ *   once per note.
+ * @property note the note text, trimmed, for example "delete" or "delete 25/10/2026".
+ */
+data class CorpusDeleteNote(val timestamp: Long, val note: String)

@@ -1,5 +1,6 @@
 package app.aaps.pump.medtronic
 
+import kotlinx.coroutines.runBlocking
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
@@ -33,11 +34,12 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
-import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
 import app.aaps.core.interfaces.rx.events.EventQueueChanged
 import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
-import app.aaps.core.interfaces.rx.events.EventTempBasalChange
+import app.aaps.core.interfaces.rx.events.EventRefreshOverview
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.IntKey
@@ -159,13 +161,10 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             } else {
                 binding.refresh.isEnabled = false
                 medLinkMedtronicPumpPlugin.resetStatusState()
-                commandQueue.readStatus(rh.gs(R.string.clicked_refresh), object : Callback() {
-                    override fun run() {
-                        activity?.runOnUiThread {
-                            if (_binding != null) binding.refresh.isEnabled = true
-                        }
-                    }
-                })
+                viewLifecycleOwner.lifecycleScope.launch {
+                    commandQueue.readStatus(rh.gs(R.string.clicked_refresh))
+                    if (_binding != null) binding.refresh.isEnabled = true
+                }
             }
         }
 
@@ -197,12 +196,9 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             .toObservable(EventMedtronicPumpValuesChanged::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe({ updateGUI() }, fabricPrivacy::logException)
+        // AAPS 4.0 removed EventTempBasalChange / EventExtendedBolusChange: the overview refresh follows TBR changes
         disposable += rxBus
-            .toObservable(EventExtendedBolusChange::class.java)
-            .observeOn(aapsSchedulers.main)
-            .subscribe({ updateGUI() }, fabricPrivacy::logException)
-        disposable += rxBus
-            .toObservable(EventTempBasalChange::class.java)
+            .toObservable(EventRefreshOverview::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe({ updateGUI() }, fabricPrivacy::logException)
         disposable += rxBus
@@ -401,7 +397,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         val now = System.currentTimeMillis()
         val hourStart = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault())
             .truncatedTo(java.time.temporal.ChronoUnit.HOURS).toInstant().toEpochMilli()
-        val tbrBoluses = persistenceLayer.getBolusesFromTimeToTime(hourStart, now, true)
+        val tbrBoluses = runBlocking { persistenceLayer.getBolusesFromTimeToTime(hourStart, now, true) }
             .filter { it.isValid && it.type == BS.Type.TBR }.map { it.timestamp to it.amount }
         val (pumpPct, planPct, hourPct) = medLinkMedtronicPumpPlugin.basalPercents(now, hourStart, tbrBoluses)
         fun pct(v: Int?) = v?.let { "$it%" } ?: "--"
@@ -415,11 +411,11 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             // Red (0 %) shows the empty icon, yellow (up to 25 %) the quarter icon.
             val now = System.currentTimeMillis()
             val changedAt = medLinkMedtronicPumpPlugin.medLinkPumpStatus.batteryAge.takeIf { it > 0L }
-                ?: persistenceLayer.getLastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)?.timestamp
+                ?: runBlocking { persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.PUMP_BATTERY_CHANGE) }?.timestamp
             val percent = changedAt?.let {
                 app.aaps.pump.medtronic.data.MedLinkBatteryAge.percentLeft(now - it, preferences.get(IntKey.OverviewBageCritical))
             }
-            val iconLevel = percent?.let { app.aaps.pump.medtronic.data.MedLinkBatteryAge.iconLevel(it) } ?: ((medLinkMedtronicPumpPlugin.batteryLevel ?: 75) / 25)
+            val iconLevel = percent?.let { app.aaps.pump.medtronic.data.MedLinkBatteryAge.iconLevel(it) } ?: ((medLinkMedtronicPumpPlugin.batteryLevel.value ?: 75) / 25)
             binding.medtronicPumpstateBattery.text = buildString {
                 append("{fa-battery-")
                 append(iconLevel)
@@ -472,7 +468,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
         binding.medtronicErrors.text = medLinkMedtronicPumpPlugin.medLinkPumpStatus.errorInfo
 
         // next command
-        val pump = activePlugin.activePump
+        val pump = activePlugin.activePumpInternal
         if (pump is MedLinkMedtronicPumpPlugin) {
             if (pump.temporaryBasal != null) {
                 ("${

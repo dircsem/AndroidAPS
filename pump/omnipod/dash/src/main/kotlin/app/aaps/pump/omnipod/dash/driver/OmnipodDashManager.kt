@@ -39,6 +39,9 @@ interface OmnipodDashManager {
 
     fun deactivatePod(): Observable<PodEvent>
 
+    /** Disconnect BLE, remove bond if possible, and clear persisted pod state. */
+    fun teardownPodSession()
+
     fun disconnect(closeGatt: Boolean = false)
 
     fun connect(stop: CountDownLatch): Observable<PodEvent>

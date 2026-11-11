@@ -1,5 +1,8 @@
 package app.aaps.pump.common.di
 
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+
 import app.aaps.pump.common.dialog.MedLinkBLEConfigActivity
 import app.aaps.pump.common.hw.medlink.MedLinkCommunicationManager
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
@@ -22,6 +25,7 @@ import dagger.Module
 import dagger.android.ContributesAndroidInjector
 
 @Module
+@InstallIn(SingletonComponent::class)
 @Suppress("unused")
 abstract class MedLinkModule {
     // @ContributesAndroidInjector abstract fun serviceTaskProvider(): ServiceTask

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Pompos klaida</string>
+    <string name="medtronic_error_pump_frequency_not_set">Nenustatytas pompos dažnis.</string>
+    <string name="medtronic_errors">Klaidos</string>
+    <string name="medtronic_error_serial_not_set">Serijos Nr. nenustatytas.</string>
+    <string name="medtronic_history_type">Tipas:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pompa nepasiekiama</string>
+    <string name="medtronic_warning">Perspėjimas</string>
+    <string name="medtronic_pump_history">Medtronic pompos istorija</string>
+</resources>

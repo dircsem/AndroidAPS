@@ -38,17 +38,7 @@ class WCycleAdjuster(
         var basal = 1.0 + (b0 - 1.0) * amp
         var smb   = 1.0 + (s0 - 1.0) * amp
         // Verneuil & Thyroid logic moved to InflammationAdjuster (Decoupling)
-        
-        // 🔮 FCL 11.0: Deep Endo - Luteal Dawn Phenomenon
-        // Cortisol Awakening Response + Progesterone = High Resistance at 4am-8am
-        var dawnBoost = 1.0
-        if (phase0 == CyclePhase.LUTEAL) {
-             val hour = java.time.LocalTime.now().hour
-             if (hour in 4..7) {
-                 dawnBoost = 1.10 // +10% Basal
-                 basal *= dawnBoost
-             }
-        }
+        // Luteal dawn boost owned by EndocrineAmplitudeGovernor (production hypo-dampen).
 
         val baseBasal = basal.coerceIn(profile.clampMin, profile.clampMax)
         val baseSmb = smb.coerceIn(profile.clampMin, profile.clampMax)
@@ -73,7 +63,7 @@ class WCycleAdjuster(
         
         val finalIc = if (apply) ic else 1.0
 
-        val reason = "♀️ ${phase0} J${day + 1} | amp=${fmt(amp)} | base=(${fmt(baseBasal)},${fmt(baseSmb)}) ic=${fmt(finalIc)} learn=(${fmt(bLearn)},${fmt(sLearn)}) dawn=${if(dawnBoost>1.0)"🌅" else "-"} ${guardReason}"
+        val reason = "♀️ ${phase0} J${day + 1} | amp=${fmt(amp)} | base=(${fmt(baseBasal)},${fmt(baseSmb)}) ic=${fmt(finalIc)} learn=(${fmt(bLearn)},${fmt(sLearn)}) dawn=gov ${guardReason}"
         return WCycleInfo(
             enabled = true,
             dayInCycle = day,

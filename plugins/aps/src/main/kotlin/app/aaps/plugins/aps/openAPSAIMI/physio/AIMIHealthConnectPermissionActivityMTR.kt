@@ -12,10 +12,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.HeartRateRecord
-import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
-import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.lifecycle.lifecycleScope
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -38,9 +34,10 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
     companion object {
         private const val TAG = "AIMI_HC_Activity"
 
-        // USE CENTRALIZED PERMISSIONS (Single Source of Truth)
-        val REQUIRED_PERMISSIONS = AIMIHealthConnectPermissions.ALL_REQUIRED_PERMISSIONS
+        val CORE_PERMISSIONS = AIMIHealthConnectPermissions.ALL_REQUIRED_PERMISSIONS
     }
+
+    private var requestPermissions: Set<String> = CORE_PERMISSIONS
 
     private val healthConnectClient by lazy {
         try {
@@ -62,7 +59,7 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
      */
     private val requestPermissionLauncher: ActivityResultLauncher<Set<String>> =
         registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { grantedFromUi ->
-            Log.i(TAG, "HC: permission result callback grantedFromUi=${grantedFromUi.size}/${REQUIRED_PERMISSIONS.size}")
+            Log.i(TAG, "HC: permission result callback grantedFromUi=${grantedFromUi.size}/${requestPermissions.size}")
 
             val client = healthConnectClient
             if (client == null) {
@@ -71,8 +68,9 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
+                requestPermissions = AIMIHealthConnectPermissions.resolveRequestPermissions(client)
                 val nowGranted = client.permissionController.getGrantedPermissions()
-                Log.i(TAG, "HC: nowGranted=${nowGranted.size}/${REQUIRED_PERMISSIONS.size} -> $nowGranted")
+                Log.i(TAG, "HC: nowGranted=${nowGranted.size}/${requestPermissions.size} -> $nowGranted")
                 updateStatus(nowGranted)
             }
         }
@@ -99,7 +97,7 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
         btnRequestPerms.setOnClickListener {
             // B2) Harden grant access
             val sdkStatus = HealthConnectClient.getSdkStatus(this)
-            Log.i(TAG, "HC: Requesting EXACT permissions: $REQUIRED_PERMISSIONS")
+            Log.i(TAG, "HC: Requesting permissions: $requestPermissions")
             Log.i(TAG, "HC: grant click sdkStatus=$sdkStatus thread=${Thread.currentThread().name} pkg=$packageName")
 
             if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
@@ -127,17 +125,20 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
             }
 
             tvStatus.append("\n⬇️ Requesting access...")
-            try {
-                requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
-            } catch (e: Exception) {
-                Log.e(TAG, "HC: launch error", e)
-                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                tvStatus.append("\n❌ Launch error: ${e.message}")
+            lifecycleScope.launch {
+                requestPermissions = AIMIHealthConnectPermissions.resolveRequestPermissions(client)
+                try {
+                    requestPermissionLauncher.launch(requestPermissions)
+                } catch (e: Exception) {
+                    Log.e(TAG, "HC: launch error", e)
+                    Toast.makeText(this@AIMIHealthConnectPermissionActivityMTR, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    tvStatus.append("\n❌ Launch error: ${e.message}")
+                }
             }
+            return@setOnClickListener
         }
 
         btnOpenSettings.setOnClickListener {
-            // Explicitly trigger the fallback logic
             openHealthConnectSettings()
         }
     }
@@ -147,10 +148,17 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
      * Uses official Jetpack action (works on Android 14 framework & Android 13 APK)
      */
     private fun openHealthConnectSettings() {
-        val action = HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS
-        Log.i(TAG, "HC: Opening settings with action='$action'")
+        val intent = if (android.os.Build.VERSION.SDK_INT >= 34) {
+            // Android 14+: jump directly to this app's Health Connect permissions page.
+            Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS").apply {
+                putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
+            }
+        } else {
+            Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+        }
+        Log.i(TAG, "HC: Opening settings with action='${intent.action}' sdk=${android.os.Build.VERSION.SDK_INT}")
         try {
-            startActivity(Intent(action))
+            startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "HC: API settings intent failed, falling back to App Details", e)
             try {
@@ -177,8 +185,9 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                requestPermissions = AIMIHealthConnectPermissions.resolveRequestPermissions(client)
                 val granted = client.permissionController.getGrantedPermissions()
-                Log.i(TAG, "HC: Initial Status: ${granted.size}/${REQUIRED_PERMISSIONS.size} granted")
+                Log.i(TAG, "HC: Initial Status: ${granted.size}/${requestPermissions.size} granted")
                 updateStatus(granted)
             } catch (e: CancellationException) {
                 throw e
@@ -190,32 +199,47 @@ class AIMIHealthConnectPermissionActivityMTR : AppCompatActivity() {
     }
 
     private fun updateStatus(granted: Set<String>) {
-        val hasAll = granted.containsAll(REQUIRED_PERMISSIONS)
-        val missing = REQUIRED_PERMISSIONS - granted
-        val missingCount = missing.size
+        val missingCore = AIMIHealthConnectPermissions.getMissingPermissions(granted)
+        val missingThermal = AIMIHealthConnectPermissions.getMissingOptionalThermalPermissions(granted)
+        val hasCore = missingCore.isEmpty()
 
-        // B4) Pure HC status (no checkSelfPermission)
-        tvStatus.append("\n\n📊 Status Update:")
-        Log.i(TAG, "HC: updateStatus granted=${granted.size} missing=$missingCount")
-        
-        val sb = StringBuilder()
-        REQUIRED_PERMISSIONS.forEach { perm ->
-            val isGranted = granted.contains(perm)
-            val icon = if (isGranted) "✅" else "❌"
-            sb.append("\n $icon $perm")
+        tvStatus.text = buildString {
+            append("Health Connect permissions for AIMI\n")
+            append("\nRequired:")
+            CORE_PERMISSIONS.forEach { perm ->
+                append('\n')
+                append(if (granted.contains(perm)) "✅ " else "❌ ")
+                append(AIMIHealthConnectPermissions.displayName(perm))
+            }
+            append("\n\nOptional (thermal rhythm — Garmin / Oura):")
+            AIMIHealthConnectPermissions.THERMAL_OPTIONAL_PERMISSIONS.forEach { perm ->
+                append('\n')
+                append(if (granted.contains(perm)) "✅ " else "◻️ ")
+                append(AIMIHealthConnectPermissions.displayName(perm))
+            }
+            if (missingThermal.isNotEmpty()) {
+                append("\n\nIf skin temperature is not listed in Health Connect, your device may not expose it yet. AIMI still works without thermal.")
+            }
         }
-        Log.i(TAG, sb.toString())
 
-        if (hasAll) {
+        Log.i(TAG, "HC: updateStatus coreMissing=${missingCore.size} thermalMissing=${missingThermal.size}")
+
+        if (hasCore) {
             performTestRead()
-            tvStatus.append("\n✅ All permissions confirmed!")
-            btnRequestPerms.text = "Permissions Granted"
-            btnRequestPerms.isEnabled = false
-            Toast.makeText(this, "Success!", Toast.LENGTH_SHORT).show()
-            android.os.Handler(mainLooper).postDelayed({ finish() }, 1500)
+            btnRequestPerms.text = if (missingThermal.isEmpty()) {
+                "Core permissions granted"
+            } else {
+                "Core OK — grant optional thermal in settings"
+            }
+            btnRequestPerms.isEnabled = missingThermal.isNotEmpty()
+            if (missingThermal.isEmpty()) {
+                Toast.makeText(this, "Success!", Toast.LENGTH_SHORT).show()
+                android.os.Handler(mainLooper).postDelayed({ finish() }, 1500)
+            }
         } else {
-            tvStatus.append("\n⚠️ Missing $missingCount permissions")
-            btnRequestPerms.text = "GRANT ACCESS ($missingCount MISSING)"
+            tvStatus.append("\n\n⚠️ Missing: ")
+            tvStatus.append(missingCore.joinToString(", ") { AIMIHealthConnectPermissions.displayName(it) })
+            btnRequestPerms.text = "GRANT ACCESS (${missingCore.size} REQUIRED)"
             btnRequestPerms.isEnabled = true
         }
     }

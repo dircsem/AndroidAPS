@@ -24,7 +24,8 @@ class SafetyNetTest {
         maxSmbHigh: Double = high,
         isExplicitUserAction: Boolean = false,
         auditorConfidence: Double? = null,
-        mealPriorityContext: Boolean = false
+        mealPriorityContext: Boolean = false,
+        allowAuditorSoftLanding: Boolean = true,
     ): Double = SafetyNet.calculateSafeSmbLimit(
         bg = bg,
         targetBg = targetBg,
@@ -35,7 +36,8 @@ class SafetyNetTest {
         maxSmbHigh = maxSmbHigh,
         isExplicitUserAction = isExplicitUserAction,
         auditorConfidence = auditorConfidence,
-        mealPriorityContext = mealPriorityContext
+        mealPriorityContext = mealPriorityContext,
+        allowAuditorSoftLanding = allowAuditorSoftLanding,
     )
 
     @Test
@@ -128,6 +130,35 @@ class SafetyNetTest {
                 shortAvgDelta = 0.5,
                 auditorConfidence = 0.4
             ),
+            1e-9
+        )
+    }
+
+    @Test
+    fun `harmonizer block veto removes soft landing boost even with high auditor confidence`() {
+        assertEquals(
+            low,
+            limit(
+                bg = 110.0,
+                targetBg = 100.0,
+                eventualBg = 105.0,
+                delta = 0.5,
+                shortAvgDelta = 0.5,
+                auditorConfidence = 0.9,
+                allowAuditorSoftLanding = false,
+            ),
+            1e-9
+        )
+    }
+
+    @Test
+    fun `pathological eventual above 300 does not distort buffer limit versus same sane eventual`() {
+        val bg = 150.0
+        val target = 100.0
+        val saneProxy = SafetyNet.sanitizeEventualMgdlForSmbZones(bg, target, 401.0)
+        assertEquals(
+            limit(bg = bg, targetBg = target, eventualBg = 401.0),
+            limit(bg = bg, targetBg = target, eventualBg = saneProxy),
             1e-9
         )
     }

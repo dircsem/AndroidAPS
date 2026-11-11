@@ -1,5 +1,8 @@
 package app.aaps.pump.common.hw.medlink.service
 
+import app.aaps.core.interfaces.notifications.NotificationId
+import app.aaps.core.interfaces.notifications.NotificationManager
+import kotlinx.coroutines.runBlocking
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
@@ -35,6 +38,8 @@ import javax.inject.Provider
  * Created by Dirceu on 29/09/20.
  */
 class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroadcastReceiver() {
+
+    @Inject lateinit var notificationManager: NotificationManager
 
     @Inject
     lateinit var medLinkServiceData: MedLinkServiceData
@@ -75,7 +80,7 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
     }
 
     fun getServiceInstance(): MedLinkService? {
-        val pump = activePlugin.activePump
+        val pump = activePlugin.activePumpInternal
         return if (pump is MedLinkPumpDevice) {
             val pumpDevice = pump as MedLinkPumpDevice
             pumpDevice.medLinkService
@@ -167,8 +172,8 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
 //            aapsLogger.debug(LTag.PUMPCOMM, "RfSpy version (BLE113): " + bleVersion);
             if (message.getIntExtra("BatteryLevel", 0) != 0) {
                 val medLinkService = getServiceInstance()
-                if (medLinkService!!.activePlugin.activePump is MedLinkPumpPluginBase) {
-                    val pump = medLinkService.activePlugin.activePump as MedLinkPumpPluginBase
+                if (medLinkService!!.activePlugin.activePumpInternal is MedLinkPumpPluginBase) {
+                    val pump = medLinkService.activePlugin.activePumpInternal as MedLinkPumpPluginBase
                     pump.setBatteryLevel(message.getIntExtra("BatteryLevel", 0))
                 }
                 medLinkService.medLinkServiceData.versionBLE113 = message.getStringExtra("FirmwareVersion")
@@ -212,15 +217,15 @@ class MedLinkBroadcastReceiver(val medLinkService: MedLinkService) : DaggerBroad
         val pumpPlugin = activePlugin
 
         if (pumpPlugin is MedLinkPumpPluginBase) {
-            val batteryEvent = pumpPlugin.pumpSync.lastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE)
+            val batteryEvent = runBlocking { pumpPlugin.pumpSync.lastTherapyEvent(TE.Type.PUMP_BATTERY_CHANGE) }
             batteryEvent.map {
                 if (it > 4 * 24 * 60.0 && pumpPlugin.getBatteryType() == "LiPo") {
                     aapsLogger?.info(LTag.PUMP,"pump unreachable")
-                    pumpPlugin.uiInteraction.addNotificationWithSound(
-                        Notification.PUMP_UNREACHABLE,
+                    notificationManager.post(
+                        NotificationId.PUMP_UNREACHABLE,
                         pumpPlugin.rh.gs(app.aaps.core.ui.R.string.pump_unreachable),
-                        Notification.URGENT,
-                        app.aaps.core.ui.R.raw.alarm)
+                        soundRes = app.aaps.core.ui.R.raw.alarm
+                    )
                 }
                 }
         }

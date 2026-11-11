@@ -34,12 +34,19 @@ data class PkPdLogRow(
 )
 
 object PkPdCsvLogger {
-    private val externalDir = File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
-    private val PATH = File(externalDir, "oapsaimi_pkpd_records.csv")
+    private val defaultDir = File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
     private const val TAG = "PkPdCsvLogger"
+    @Volatile private var storageDirectoryOverride: File? = null
+
+    fun configureStorageDirectory(directory: File?) {
+        storageDirectoryOverride = directory
+    }
+
+    private fun currentPath(): File = File(storageDirectoryOverride ?: defaultDir, "oapsaimi_pkpd_records.csv")
 
     @JvmStatic
     fun append(row: PkPdLogRow) {
+        val target = currentPath()
         val appendResult = runCatching {
             val line = listOf(
                 row.dateStr,
@@ -69,17 +76,16 @@ object PkPdCsvLogger {
                 row.anticipation
             ).joinToString(",")
 
-            //val file = File(PATH)
-            PATH.parentFile?.let { parent ->
+            target.parentFile?.let { parent ->
                 if (!parent.exists() && !parent.mkdirs()) {
                     error("Unable to create directory ${parent.absolutePath}")
                 }
             }
-            PATH.appendText(line + "\n")
+            target.appendText(line + "\n")
         }
 
         appendResult.exceptionOrNull()?.let { throwable ->
-            Log.w(TAG, "Unable to append PK/PD log row to $PATH", throwable)
+            Log.w(TAG, "Unable to append PK/PD log row to $target", throwable)
         }
     }
 }

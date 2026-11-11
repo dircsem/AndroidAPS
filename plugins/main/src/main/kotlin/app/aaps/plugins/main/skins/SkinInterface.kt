@@ -6,9 +6,9 @@ import android.widget.LinearLayout
 import androidx.annotation.StringRes
 import androidx.constraintlayout.widget.ConstraintLayout
 import app.aaps.plugins.main.R
-import app.aaps.plugins.main.databinding.ActionsFragmentBinding
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 
+@Deprecated("remove")
 interface SkinInterface {
 
     @get:StringRes val description: Int
@@ -16,9 +16,8 @@ interface SkinInterface {
     val mainGraphHeight: Int // in dp
     val secondaryGraphHeight: Int // in dp
 
-    // no pre processing by default
-    fun preProcessLandscapeActionsLayout(isLandscape: Boolean, binding: ActionsFragmentBinding) {
-    }
+    /** Home renderer selected by this skin in the Compose main shell. */
+    val dashboardHomeVariant: DashboardHomeVariant get() = DashboardHomeVariant.OVERVIEW
 
     fun preProcessLandscapeOverviewLayout(binding: OverviewFragmentBinding, isLandscape: Boolean, isTablet: Boolean, isSmallHeight: Boolean) {
         if (isLandscape) {

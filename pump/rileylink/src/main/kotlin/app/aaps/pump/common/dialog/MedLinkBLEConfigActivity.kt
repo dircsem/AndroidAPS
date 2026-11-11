@@ -85,7 +85,7 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
             val deviceName = view.findViewById<TextView>(R.id.med_link_ble_config_scan_item_device_name).text.toString()
             preferences.put(MedLinkStringPreferenceKey.MacAddress, bleAddress)
             preferences.put(MedLinkStringKey.Name, deviceName)
-            val medLinkPump = activePlugin.activePump as MedLinkPumpDevice
+            val medLinkPump = activePlugin.activePumpInternal as MedLinkPumpDevice
             medLinkPump.medLinkService?.verifyConfiguration() // force reloading of address to assure that the RL gets reconnected (even if the address didn't change)
             medLinkPump.triggerPumpConfigurationChangedEvent()
             finish()
@@ -111,7 +111,7 @@ class MedLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
                     preferences.remove(MedLinkStringPreferenceKey.MacAddress)
                      preferences.remove(MedLinkStringKey.Name)
                     updateCurrentlySelectedRileyLink()
-                })
+                }, {})
             // AlertDialog.Builder(this)
             //     .setIcon(android.R.drawable.ic_dialog_alert)
             //     .setTitle(getString(R.string.med_link_ble_config_remove_med_link_confirmation_title))

@@ -4,10 +4,18 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.keys.StringKey
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmHttpRetry
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmWorldConservativePreamble
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import app.aaps.plugins.aps.openAPSAIMI.llm.claude.ClaudeModelResolver
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -41,10 +49,28 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val context: android.content.Context
 ) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lastNarrativeRef = AtomicReference("")
+    private val analysisInFlight = AtomicBoolean(false)
     
     companion object {
         private const val TAG = "LLMPhysioAnalyzer"
         private const val TIMEOUT_MS = 10_000L
+
+        // Claude and Gemini Pro think before they answer. This takes more time, so they get a longer limit.
+        // The call runs in the background, so a longer wait does not block the loop.
+        private const val THINKING_TIMEOUT_MS = 60_000L
+
+        private fun timeoutFor(provider: String): Long =
+            if (provider == "claude" || provider == "gemini") THINKING_TIMEOUT_MS else TIMEOUT_MS
+
+        private val SYSTEM_ROLE_NARRATIVE: String = buildString {
+            append(
+                "You are an expert diabetes physiologist analyzing sleep, HRV, and activity data. ",
+            )
+            append("Provide brief, clinically astute insights in 2-3 sentences maximum.\n\n")
+            append(LlmWorldConservativePreamble.FOR_NARRATIVE)
+        }
         
         // API endpoints
         private const val OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
@@ -65,18 +91,17 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     ): String {
         val prompt = buildPrompt(features, baseline, context)
         
-        // 1. Try Preferred Model
-        val primaryModel = geminiResolver.resolveGenerateContentModel(apiKey, "gemini-3-pro")
+        // 1. Try Preferred Model (pro tier for reasoning; durable *-latest alias tracks current GA)
+        val primaryModel = geminiResolver.resolveGenerateContentModel(apiKey, "gemini-pro-latest")
         
         try {
-            return executeGeminiRequest(apiKey, prompt, primaryModel)
+            return LlmHttpRetry.withTransientRetry { executeGeminiRequest(apiKey, prompt, primaryModel) }
         } catch (e: Exception) {
-            // 2. Fallback on Quota Exceeded (429)
-            val msg = e.message?.lowercase() ?: ""
-            if (msg.contains("429") || msg.contains("quota") || msg.contains("resource_exhausted")) {
-                val fallbackModel = "gemini-3-flash-preview"
-                android.util.Log.w(TAG, "Physio Quota Exceeded. Fallback to $fallbackModel")
-                return executeGeminiRequest(apiKey, prompt, fallbackModel)
+            // 2. Quota (429) OR still-overloaded (503) after retries → flash fallback (also retried).
+            if (LlmHttpRetry.isQuota(e) || LlmHttpRetry.isTransient(e)) {
+                val fallbackModel = "gemini-flash-latest"
+                android.util.Log.w(TAG, "Physio: $primaryModel failed (${e.message?.take(80)}). Fallback to $fallbackModel")
+                return LlmHttpRetry.withTransientRetry { executeGeminiRequest(apiKey, prompt, fallbackModel) }
             }
             throw e
         }
@@ -85,10 +110,10 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     private fun executeGeminiRequest(apiKey: String, prompt: String, modelId: String): String {
         val url = geminiResolver.getGenerateContentUrl(modelId, apiKey)
         val requestBody = JSONObject().apply {
-            put("contents", org.json.JSONArray().apply {
+            put("contents", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("parts", org.json.JSONArray().apply {
+                    put("parts", JSONArray().apply {
                         put(JSONObject().apply {
                             put("text", prompt)
                         })
@@ -96,14 +121,14 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
                 })
             })
             put("generationConfig", JSONObject().apply {
-                put("maxOutputTokens", 150)
+                put("maxOutputTokens", 2000) // Gemini Pro always thinks; thinking tokens count in this limit
                 put("temperature", 0.3)
             })
         }
         
         val response = makeAPICall(url, requestBody.toString(), mapOf(
             "Content-Type" to "application/json"
-        ))
+        ), THINKING_TIMEOUT_MS)
         
         return parseGeminiResponse(response)
     }
@@ -131,9 +156,21 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
             return ""
         }
         
-        return try {
-            runBlocking {
-                withTimeout(TIMEOUT_MS) {
+        refreshNarrativeAsync(provider, apiKey, features, baseline, context)
+        return lastNarrativeRef.get()
+    }
+
+    private fun refreshNarrativeAsync(
+        provider: String,
+        apiKey: String,
+        features: PhysioFeaturesMTR,
+        baseline: PhysioBaselineMTR,
+        context: PhysioContextMTR
+    ) {
+        if (!analysisInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                val result = withTimeout(timeoutFor(provider)) {
                     withContext(Dispatchers.IO) {
                         when (provider) {
                             "gpt4" -> analyzeWithGPT(features, baseline, context, apiKey)
@@ -147,10 +184,13 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
                         }
                     }
                 }
+                lastNarrativeRef.set(result)
+            } catch (e: Exception) {
+                aapsLogger.warn(LTag.APS, "[$TAG] LLM analysis failed", e)
+                lastNarrativeRef.set("")
+            } finally {
+                analysisInFlight.set(false)
             }
-        } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "[$TAG] LLM analysis failed", e)
-            "" // Return empty - not critical
         }
     }
     
@@ -169,10 +209,10 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
         
         val requestBody = JSONObject().apply {
             put("model", "gpt-4")
-            put("messages", org.json.JSONArray().apply {
+            put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
-                    put("content", "You are an expert diabetes physiologist analyzing sleep, HRV, and activity data. Provide brief, actionable insights in 2-3 sentences.")
+                    put("content", SYSTEM_ROLE_NARRATIVE)
                 })
                 put(JSONObject().apply {
                     put("role", "user")
@@ -228,7 +268,7 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     }
     
     // ═══════════════════════════════════════════════════════════════════════
-    // CLAUDE 3.5 INTEGRATION
+    // CLAUDE INTEGRATION
     // ═══════════════════════════════════════════════════════════════════════
     
     private fun analyzeWithClaude(
@@ -240,10 +280,17 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
         
         val prompt = buildPrompt(features, baseline, context)
         
+        val model = ClaudeModelResolver.current()
         val requestBody = JSONObject().apply {
-            put("model", "claude-3-5-sonnet-20241022")
-            put("max_tokens", 150)
-            put("messages", org.json.JSONArray().apply {
+            put("model", model)
+            // Thinking tokens count in this limit on newer Claude models.
+            // The prompt keeps the text short, not this limit.
+            put("max_tokens", 2000)
+            // Low effort: a short text does not need deep thinking. Haiku 4.5 rejects this field.
+            if (ClaudeModelResolver.supportsEffort(model)) {
+                put("output_config", JSONObject().apply { put("effort", "low") })
+            }
+            put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", prompt)
@@ -255,7 +302,7 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
             "x-api-key" to apiKey,
             "anthropic-version" to "2023-06-01",
             "Content-Type" to "application/json"
-        ))
+        ), THINKING_TIMEOUT_MS)
         
         return parseClaudeResponse(response)
     }
@@ -263,10 +310,7 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     private fun parseClaudeResponse(response: String): String {
         return try {
             val json = JSONObject(response)
-            json.getJSONArray("content")
-                .getJSONObject(0)
-                .getString("text")
-                .trim()
+            ClaudeModelResolver.extractText(json)
         } catch (e: Exception) {
             aapsLogger.warn(LTag.APS, "[$TAG] Failed to parse Claude response", e)
             ""
@@ -288,10 +332,10 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
         
         val requestBody = JSONObject().apply {
             put("model", "deepseek-chat")
-            put("messages", org.json.JSONArray().apply {
+            put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
-                    put("content", "You are an expert diabetes physiologist. Provide brief insights.")
+                    put("content", SYSTEM_ROLE_NARRATIVE)
                 })
                 put(JSONObject().apply {
                     put("role", "user")
@@ -323,6 +367,8 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
         # SYSTEM ROLE:
         You are **Diaby**, AIMI's Physiological Analyst.
         Your role is to interpret complex physiological data (Sleep, HRV, Activity) for a T1D patient.
+
+        ${LlmWorldConservativePreamble.FOR_NARRATIVE}
         
         # TASK:
         Analyze the following metrics provided below.
@@ -359,14 +405,14 @@ class AIMILLMPhysioAnalyzerMTR @Inject constructor(
     // HTTP CLIENT
     // ═══════════════════════════════════════════════════════════════════════
     
-    private fun makeAPICall(url: String, body: String, headers: Map<String, String>): String {
+    private fun makeAPICall(url: String, body: String, headers: Map<String, String>, timeoutMs: Long = TIMEOUT_MS): String {
         val connection = URL(url).openConnection() as HttpURLConnection
         
         try {
             connection.requestMethod = "POST"
             connection.doOutput = true
-            connection.connectTimeout = TIMEOUT_MS.toInt()
-            connection.readTimeout = TIMEOUT_MS.toInt()
+            connection.connectTimeout = timeoutMs.toInt()
+            connection.readTimeout = timeoutMs.toInt()
             
             headers.forEach { (key, value) ->
                 connection.setRequestProperty(key, value)

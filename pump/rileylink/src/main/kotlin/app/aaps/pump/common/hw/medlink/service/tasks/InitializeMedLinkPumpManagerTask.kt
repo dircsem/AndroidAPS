@@ -40,7 +40,7 @@ class InitializeMedLinkPumpManagerTask@Inject constructor(
 //        } else {
 //            lastGoodFrequency = medLinkServiceData.lastGoodFrequency;
 //        }
-        val medLinkCommunicationManager = (activePlugin.activePump as MedLinkPumpDevice).medLinkService?.deviceCommunicationManager
+        val medLinkCommunicationManager = (activePlugin.activePumpInternal as MedLinkPumpDevice).medLinkService?.deviceCommunicationManager
         aapsLogger.info(LTag.PUMPBTCOMM, activePlugin.activePump.manufacturer().description)
         if (activePlugin.activePump.manufacturer() === ManufacturerType.Medtronic) {
 

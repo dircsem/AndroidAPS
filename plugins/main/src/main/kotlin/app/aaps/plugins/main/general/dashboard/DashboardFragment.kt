@@ -1,174 +1,26 @@
 package app.aaps.plugins.main.general.dashboard
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.annotation.RequiresApi
 import androidx.fragment.app.viewModels
-import app.aaps.core.interfaces.automation.Automation
-import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.aps.Loop
-import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.db.ProcessedTbrEbData
-import app.aaps.core.interfaces.iob.IobCobCalculator
-import app.aaps.core.interfaces.iob.GlucoseStatusProvider
-import app.aaps.core.interfaces.overview.LastBgData
-import app.aaps.core.interfaces.overview.OverviewData
-import app.aaps.core.interfaces.overview.OverviewMenus
-import app.aaps.core.interfaces.overview.OverviewMenus.CharType
-import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.profile.ProfileUtil
-import app.aaps.core.interfaces.protection.ProtectionCheck
-import app.aaps.core.interfaces.ui.UiInteraction
-import app.aaps.core.interfaces.source.DexcomBoyda
-import app.aaps.core.interfaces.source.XDripSource
-import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.plugin.PluginBase
-import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.AapsSchedulers
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventPreferenceChange
-import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.interfaces.utils.TrendCalculator
-import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import app.aaps.core.keys.BooleanNonKey
-import app.aaps.core.keys.IntNonKey
-import app.aaps.core.keys.UnitDoubleKey
-import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.ui.UIRunnable
-import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.FragmentDashboardBinding
-import app.aaps.plugins.main.general.dashboard.viewmodel.AdjustmentCardState
 import app.aaps.plugins.main.general.dashboard.viewmodel.OverviewViewModel
-import app.aaps.plugins.main.general.overview.graphData.GraphData
-import app.aaps.plugins.main.general.overview.notifications.NotificationUiBinder
-import androidx.core.widget.NestedScrollView
-import androidx.recyclerview.widget.LinearLayoutManager
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.kotlin.plusAssign
 import dagger.android.support.DaggerFragment
-import app.aaps.plugins.aps.openAPSAIMI.advisor.auditor.ui.AuditorStatusLiveData
-import app.aaps.plugins.aps.openAPSAIMI.advisor.auditor.ui.AuditorNotificationManager
-import app.aaps.plugins.aps.openAPSAIMI.advisor.auditor.ui.AuditorStatusIndicator
 import javax.inject.Inject
-import javax.inject.Provider
-import app.aaps.plugins.main.general.dashboard.views.CircleTopActionListener
-import app.aaps.plugins.aps.openAPSAIMI.advisor.AimiProfileAdvisorActivity
 
 class DashboardFragment : DaggerFragment() {
 
-    @Inject lateinit var lastBgData: LastBgData
-    @Inject lateinit var trendCalculator: TrendCalculator
-    @Inject lateinit var iobCobCalculator: IobCobCalculator
-    @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
-    @Inject lateinit var profileUtil: ProfileUtil
-    @Inject lateinit var profileFunction: ProfileFunction
-    @Inject lateinit var resourceHelper: ResourceHelper
-    @Inject lateinit var preferences: Preferences
-    @Inject lateinit var dateUtil: DateUtil
-    @Inject lateinit var loop: Loop
-    @Inject lateinit var processedTbrEbData: ProcessedTbrEbData
-    @Inject lateinit var persistenceLayer: PersistenceLayer
-    @Inject lateinit var decimalFormatter: DecimalFormatter
-    @Inject lateinit var activePlugin: ActivePlugin
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var aapsSchedulers: AapsSchedulers
-    @Inject lateinit var fabricPrivacy: FabricPrivacy
-    @Inject lateinit var overviewData: OverviewData
-    @Inject lateinit var overviewMenus: OverviewMenus
-    @Inject lateinit var graphDataProvider: Provider<GraphData>
-    @Inject lateinit var config: Config
-    @Inject lateinit var protectionCheck: ProtectionCheck
-    @Inject lateinit var uiInteraction: UiInteraction
-    @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var automation: Automation
-    @Inject lateinit var xDripSource: XDripSource
-    @Inject lateinit var dexcomBoyda: DexcomBoyda
-    @Inject lateinit var notificationUiBinder: NotificationUiBinder
-    @Inject lateinit var auditorStatusLiveData: AuditorStatusLiveData
-    @Inject lateinit var auditorNotificationManager: AuditorNotificationManager
-    @Inject lateinit var trajectoryGuard: app.aaps.plugins.aps.openAPSAIMI.trajectory.TrajectoryGuard // 🌀 Trajectory Injection
-    @Inject lateinit var autodriveEngine: app.aaps.plugins.aps.openAPSAIMI.autodrive.AutodriveEngine // 🧠 Engine Injection
+    @Inject lateinit var dashboardShellDeps: DashboardShellDeps
 
-    private val disposables = CompositeDisposable()
     private var _binding: FragmentDashboardBinding? = null
     private val binding get() = _binding!!
-    private var currentRange = 0
-    private var auditorIndicator: AuditorStatusIndicator? = null
-    private var graphViewportLayoutListener: View.OnLayoutChangeListener? = null
-    private fun sensor(): Boolean {
-        val ctx = context ?: return false
 
-        // BG source actuellement utilisée dans AAPS
-        val bgSource = activePlugin.activeBgSource as? PluginBase
+    private lateinit var shellHost: DashboardShellHost
+    private lateinit var shellController: DashboardShellController
 
-        // On force en String pour pouvoir utiliser contains(ignoreCase = true)
-        val pluginName = bgSource
-            ?.pluginDescription
-            ?.pluginName
-            ?.toString()
-            .orEmpty()
-
-        return when {
-            pluginName.contains("dexcom", ignoreCase = true) -> {
-                // Essaye d’ouvrir l’appli Dexcom
-                launchPackageIfExists(ctx, "com.dexcom.g6") ||   // à adapter selon ta config
-                    launchPackageIfExists(ctx, "com.dexcom.one") ||  // ex. Dexcom One
-                    openSettings()                                   // fallback
-            }
-            pluginName.contains("xdrip", ignoreCase = true) -> {
-                // Essaye d’ouvrir xDrip
-                launchPackageIfExists(ctx, "com.eveningoutpost.dexdrip") || openSettings()
-            }
-            else -> {
-                // Ni Dexcom ni xDrip détecté → on ouvre les prefs
-                openSettings()
-            }
-        }
-    }
-    private fun launchPackageIfExists(ctx: android.content.Context, packageName: String): Boolean {
-        val pm = ctx.packageManager
-        val intent = pm.getLaunchIntentForPackage(packageName)
-        return if (intent != null) {
-            startActivity(intent)
-            true
-        } else {
-            false
-        }
-    }
-
-    private val viewModel: OverviewViewModel by viewModels {
-        OverviewViewModel.Factory(
-            requireContext(),
-            lastBgData,
-            trendCalculator,
-            iobCobCalculator,
-            glucoseStatusProvider,
-            profileUtil,
-            profileFunction,
-            resourceHelper,
-            dateUtil,
-            loop,
-            processedTbrEbData,
-            persistenceLayer,
-            decimalFormatter,
-            activePlugin,
-            rxBus,
-            aapsSchedulers,
-            fabricPrivacy,
-            preferences,
-            overviewData,
-            trajectoryGuard, // 🌀 Pass to Factory
-            autodriveEngine  // 🧠 Pass to Factory
-        )
-    }
+    private val viewModel: OverviewViewModel by viewModels { dashboardShellDeps.overviewViewModelFactory }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDashboardBinding.inflate(inflater, container, false)
@@ -177,437 +29,44 @@ class DashboardFragment : DaggerFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.bottomNavigation.selectedItemId = R.id.dashboard_nav_home
-        binding.bottomNavigation.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.dashboard_nav_home -> {
-                    true
-                }
-                R.id.dashboard_nav_history -> {
-                    openHistory()
-                }
-                R.id.dashboard_nav_bolus -> {
-                    openBolus()
-                }
-                R.id.dashboard_nav_adjustments -> {
-                    openModes()
-                }
-                R.id.dashboard_nav_settings -> {
-                    openSensorApp()
-                }
-                else -> true
-            }
+        shellHost = DashboardFragmentShellHost(this)
+        shellController = DashboardShellController(shellHost, dashboardShellDeps, viewModel, "DashboardFragment")
+        shellController.attach(binding)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (::shellController.isInitialized) {
+            shellController.start()
         }
-
-        binding.overviewNotifications.layoutManager = LinearLayoutManager(context)
-
-        syncGraphRange(preferences.get(IntNonKey.RangeToDisplay), false)
-
-        viewModel.statusCardState.observe(viewLifecycleOwner) { binding.statusCard.updateWithState(it) }
-        viewModel.adjustmentState.observe(viewLifecycleOwner) { state ->
-            state?.let {
-                binding.adjustmentStatus.update(it)
-                if (it.isHypoRisk) {
-                    showHypoRiskDialog()
-                }
-            }
-        }
-        viewModel.graphMessage.observe(viewLifecycleOwner) {
-            binding.glucoseGraph.setUpdateMessage(it)
-            updateGraph()
-        }
-
-        binding.adjustmentStatus.setOnClickListener {
-            openAdjustmentDetails()
-        }
-        binding.adjustmentStatus.setOnRunLoopClickListener {
-            app.aaps.core.ui.toast.ToastUtils.infoToast(context, resourceHelper.gs(R.string.dashboard_loop_run_requested))
-            Thread {
-                try {
-                    loop.invoke("Dashboard", true)
-                } catch (e: Exception) {
-                    aapsLogger.error(app.aaps.core.interfaces.logging.LTag.APS, "Error invoking loop from dashboard", e)
-                }
-            }.start()
-        }
-
-        binding.statusCard.isClickable = true
-        binding.statusCard.isFocusable = true
-        
-        // Setup Action Listeners (Advisor, Adjust, Prefs, Stats)
-        binding.statusCard.setActionListener(object : CircleTopActionListener {
-            override fun onAimiAdvisorClicked() {
-                try {
-                    val intent = Intent(requireContext(), AimiProfileAdvisorActivity::class.java)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    aapsLogger.error(LTag.CORE, "Failed to launch Advisor: ${e.message}")
-                }
-            }
-            override fun onAdjustClicked() { openAdjustmentDetails() }
-            override fun onAimiPreferencesClicked() {
-                try {
-                    val intent = Intent(requireContext(), app.aaps.plugins.aps.openAPSAIMI.advisor.meal.MealAdvisorActivity::class.java)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    aapsLogger.error(LTag.CORE, "Failed to launch Meal Advisor: ${e.message}")
-                }
-            }
-            override fun onStatsClicked() {
-                try {
-                    val intent = Intent().setClassName(requireContext(), "app.aaps.plugins.aps.openAPSAIMI.context.ui.ContextActivity")
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    aapsLogger.error(LTag.CORE, "Failed to launch ContextActivity: ${e.message}")
-                }
-            }
-
-            override fun onAimiPulseClicked() {
-                openAdjustmentDetails()
-            }
-        })
-
-        // Loop Dialog on general click or specific indicator
-        binding.statusCard.setOnClickListener { openLoopDialog() }
-        binding.statusCard.getLoopIndicator().setOnClickListener { openLoopDialog() }
-
-        // Context Indicator Click
-        binding.statusCard.getContextIndicator().setOnClickListener {
-            try {
-                val intent = Intent().setClassName(requireContext(), "app.aaps.plugins.aps.openAPSAIMI.context.ui.ContextActivity")
-                startActivity(intent)
-            } catch (e: Exception) {
-                aapsLogger.error(LTag.CORE, "Failed to launch ContextActivity: ${e.message}")
-            }
-        }
-        setupDashboardGraphChrome()
-        binding.glucoseGraph.graph.viewport.isScrollable = true
-        binding.glucoseGraph.graph.viewport.isScalable = true
-
-        val gestureDetector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
-            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                val nextRange = when (overviewData.rangeToDisplay) {
-                    6    -> 9
-                    9    -> 12
-                    12   -> 18
-                    18   -> 24
-                    else -> 6
-                }
-                syncGraphRange(nextRange)
-                return true
-            }
-
-            override fun onLongPress(e: android.view.MotionEvent) {
-                syncGraphRange(6)
-            }
-        })
-
-        binding.glucoseGraph.graph.setOnTouchListener { v, event ->
-            gestureDetector.onTouchEvent(event)
-            v.parent.requestDisallowInterceptTouchEvent(true)
-            false
-        }
-
-        // Setup range selection button
-        bindDashboardGraphHeightToViewport()
-
-        binding.glucoseGraph.rangeButton.setOnClickListener {
-            val popup = androidx.appcompat.widget.PopupMenu(requireContext(), it)
-            popup.menu.add(android.view.Menu.NONE, 6, android.view.Menu.NONE, getString(R.string.graph_long_scale_6h))
-            popup.menu.add(android.view.Menu.NONE, 9, android.view.Menu.NONE, getString(R.string.graph_long_scale_9h))
-            popup.menu.add(android.view.Menu.NONE, 12, android.view.Menu.NONE, getString(R.string.graph_long_scale_12h))
-            popup.menu.add(android.view.Menu.NONE, 18, android.view.Menu.NONE, getString(R.string.graph_long_scale_18h))
-            popup.menu.add(android.view.Menu.NONE, 24, android.view.Menu.NONE, getString(R.string.graph_long_scale_24h))
-            popup.setOnMenuItemClickListener { item ->
-                syncGraphRange(item.itemId)
-                true
-            }
-            popup.show()
-        }
-        
-        // 🔍 Setup Auditor badge
-        setupAuditorIndicator()
     }
 
     override fun onResume() {
         super.onResume()
-        updateContextBadge()
-        viewModel.start()
-        notificationUiBinder.bind(
-            overviewBus = activePlugin.activeOverview.overviewBus,
-            notificationsView = binding.overviewNotifications,
-            disposable = disposables,
-        )
-        disposables += rxBus
-            .toObservable(EventPreferenceChange::class.java)
-            .observeOn(aapsSchedulers.main)
-            .subscribe({ event ->
-                if (event.isChanged(IntNonKey.RangeToDisplay.key)) {
-                    syncGraphRange(preferences.get(IntNonKey.RangeToDisplay), false)
-                }
-                if (event.isChanged(app.aaps.core.keys.StringKey.OApsAIMIContextStorage.key)) {
-                    updateContextBadge()
-                }
-            }, fabricPrivacy::logException)
-    }
-
-    private fun updateContextBadge() {
-        try {
-            val jsonStr = preferences.get(app.aaps.core.keys.StringKey.OApsAIMIContextStorage)
-            val hasContext = jsonStr.length > 5 // "[]" length is 2
-            binding.statusCard.getContextIndicator().visibility = if (hasContext) View.VISIBLE else View.GONE
-        } catch (e: Exception) {
-            aapsLogger.error(LTag.CORE, "Failed to update context badge: ${e.message}")
+        if (::shellController.isInitialized) {
+            shellController.resume()
         }
     }
 
     override fun onPause() {
+        if (::shellController.isInitialized) {
+            shellController.pause()
+        }
         super.onPause()
-        viewModel.stop()
-        disposables.clear()
+    }
+
+    override fun onStop() {
+        if (::shellController.isInitialized) {
+            shellController.stop()
+        }
+        super.onStop()
     }
 
     override fun onDestroyView() {
-        graphViewportLayoutListener?.let { listener ->
-            _binding?.root?.getChildAt(0)?.let { child ->
-                (child as? NestedScrollView)?.removeOnLayoutChangeListener(listener)
-            }
+        if (::shellController.isInitialized) {
+            shellController.destroyView()
         }
-        graphViewportLayoutListener = null
         super.onDestroyView()
-        auditorIndicator?.stopAnimations()
-        auditorIndicator = null
         _binding = null
-    }
-
-    /** Same Y-axis gutter logic as [app.aaps.plugins.main.general.overview.OverviewFragment] so labels are not cramped. */
-    private fun graphAxisWidthPx(): Int = when {
-        resources.displayMetrics.densityDpi <= 120 -> 3
-        resources.displayMetrics.densityDpi <= 160 -> 10
-        resources.displayMetrics.densityDpi <= 320 -> 35
-        resources.displayMetrics.densityDpi <= 420 -> 50
-        resources.displayMetrics.densityDpi <= 560 -> 70
-        else -> 80
-    }
-
-    private fun setupDashboardGraphChrome() {
-        val ctx = context ?: return
-        val graph = binding.glucoseGraph.graph
-        graph.gridLabelRenderer?.labelVerticalWidth = graphAxisWidthPx()
-        graph.gridLabelRenderer?.gridColor = resourceHelper.gac(ctx, app.aaps.core.ui.R.attr.graphGrid)
-        graph.viewport.backgroundColor = resourceHelper.gac(ctx, app.aaps.core.ui.R.attr.viewPortBackgroundColor)
-        graph.gridLabelRenderer?.reloadStyles()
-    }
-
-    /**
-     * Graph height scales with the visible scroll viewport (rotation, split-screen, different tallies),
-     * clamped between [R.dimen.dashboard_graph_height_min] and [R.dimen.dashboard_graph_height_max].
-     */
-    private fun bindDashboardGraphHeightToViewport() {
-        val sv = binding.root.getChildAt(0) as? NestedScrollView ?: return
-        val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            applyDashboardGraphHeight(sv)
-        }
-        graphViewportLayoutListener = listener
-        sv.addOnLayoutChangeListener(listener)
-        sv.post { applyDashboardGraphHeight(sv) }
-    }
-
-    private fun applyDashboardGraphHeight(scrollView: NestedScrollView) {
-        if (_binding == null) return
-        val viewportH = scrollView.height
-        if (viewportH <= 0) return
-        val minPx = resources.getDimensionPixelSize(R.dimen.dashboard_graph_height_min)
-        val maxPx = resources.getDimensionPixelSize(R.dimen.dashboard_graph_height_max)
-        val fraction = resources.getFraction(R.fraction.dashboard_graph_viewport_fraction, 1, 1)
-        val raw = (viewportH * fraction).toInt()
-        // Cap below full viewport so the status block can scroll; slightly relaxed vs 50% to fit X-axis labels.
-        val viewportCapPx = (viewportH * 0.50f).toInt()
-        val effectiveMaxPx = minOf(maxPx, viewportCapPx)
-        val effectiveMinPx = minOf(minPx, effectiveMaxPx)
-        val target = raw.coerceIn(effectiveMinPx, effectiveMaxPx)
-        val lp = binding.glucoseGraph.layoutParams
-        if (lp.height == target) return
-        lp.height = target
-        binding.glucoseGraph.layoutParams = lp
-        binding.glucoseGraph.requestLayout()
-        binding.root.post {
-            if (_binding != null) {
-                setupDashboardGraphChrome()
-                updateGraph()
-            }
-        }
-    }
-
-    private fun setupAuditorIndicator() {
-        try {
-            aapsLogger.debug(LTag.CORE, "🔍 [Dashboard] Searching for Auditor badge...")
-            
-            val container = binding.statusCard.getAuditorContainer()
-            
-            aapsLogger.debug(LTag.CORE, "✅ [Dashboard] Badge container found!")
-            
-            auditorIndicator = AuditorStatusIndicator(requireContext())
-            container.removeAllViews()
-            container.addView(auditorIndicator)
-            
-            auditorIndicator?.setOnClickListener {
-                aapsLogger.debug(LTag.CORE, "Auditor badge clicked")
-            }
-            
-            auditorStatusLiveData.uiState.observe(viewLifecycleOwner) { uiState ->
-                auditorIndicator?.setState(uiState)
-                if (uiState.shouldNotify) {
-                    auditorNotificationManager.showInsightAvailable(uiState)
-                }
-                container.visibility = android.view.View.VISIBLE
-                aapsLogger.debug(LTag.CORE, "[Dashboard] Badge state: ${uiState.type}")
-            }
-            
-            auditorStatusLiveData.forceUpdate()
-            
-        } catch (e: Exception) {
-            aapsLogger.error(LTag.CORE, "[Dashboard] Badge setup error: ${e.message}", e)
-        }
-    }
-
-    private fun openHistory(): Boolean {
-        startActivity(Intent(requireContext(), app.aaps.plugins.main.general.manual.UserManualActivity::class.java))
-        return true
-    }
-
-    private fun openBolus(): Boolean {
-        activity?.let { activity ->
-            protectionCheck.queryProtection(activity, ProtectionCheck.Protection.BOLUS, UIRunnable {
-                uiInteraction.runInsulinDialog(childFragmentManager)
-            })
-        }
-        return true
-    }
-
-    private fun openModes(): Boolean {
-        val context = context ?: return false
-        startActivity(Intent(context, DashboardModesActivity::class.java))
-        return true
-    }
-
-    private fun openLoopDialog() {
-        activity?.let { activity ->
-            protectionCheck.queryProtection(activity, ProtectionCheck.Protection.BOLUS, UIRunnable {
-                if (isAdded) uiInteraction.runLoopDialog(childFragmentManager, 1)
-            })
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.CUPCAKE)
-    private fun openSensorApp(): Boolean {
-        if (xDripSource.isEnabled()) return openCgmApp("com.eveningoutpost.dexdrip")
-        if (dexcomBoyda.isEnabled()) {
-            dexcomBoyda.dexcomPackages().forEach { if (openCgmApp(it)) return true }
-        }
-        return openModes()
-    }
-
-    @RequiresApi(Build.VERSION_CODES.CUPCAKE)
-    private fun openCgmApp(packageName: String): Boolean {
-        val context = context ?: return false
-        val packageManager = context.packageManager
-        return try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName) ?: throw ActivityNotFoundException()
-            intent.addCategory(Intent.CATEGORY_LAUNCHER)
-            context.startActivity(intent)
-            true
-        } catch (_: ActivityNotFoundException) {
-            aapsLogger.debug(LTag.CORE, "Error opening CGM app")
-            false
-        }
-    }
-
-    private fun openAdjustmentDetails(): Boolean {
-        val context = context ?: return false
-        val state: AdjustmentCardState = viewModel.adjustmentState.value ?: return false
-        val intent = Intent(context, AdjustmentDetailsActivity::class.java)
-            .putExtra(AdjustmentDetailsActivity.EXTRA_ADJUSTMENT_STATE, state)
-        startActivity(intent)
-        return true
-    }
-
-    private fun openSettings(): Boolean {
-        val intent = Intent(requireContext(), uiInteraction.preferencesActivity)
-            .putExtra(UiInteraction.PLUGIN_NAME, resourceHelper.gs(app.aaps.core.ui.R.string.nav_plugin_preferences))
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        startActivity(intent)
-        return true
-    }
-
-    private fun syncGraphRange(hours: Int, userInitiated: Boolean = true) {
-        val clampedHours = when (hours) {
-            6, 9, 12, 18, 24 -> hours
-            else             -> 6
-        }
-        if (!userInitiated && clampedHours == currentRange) {
-            binding.glucoseGraph.rangeButton.text = overviewMenus.scaleString(clampedHours)
-            return
-        }
-
-        currentRange = clampedHours
-        overviewData.rangeToDisplay = clampedHours
-        overviewData.initRange()
-        binding.glucoseGraph.rangeButton.text = overviewMenus.scaleString(clampedHours)
-        preferences.put(IntNonKey.RangeToDisplay, clampedHours)
-        preferences.put(BooleanNonKey.ObjectivesScaleUsed, true)
-        rxBus.send(EventPreferenceChange(IntNonKey.RangeToDisplay.key))
-        if (userInitiated) {
-            app.aaps.core.ui.toast.ToastUtils.infoToast(context, getString(R.string.graph_range_updated, clampedHours))
-        }
-    }
-
-    private fun updateGraph() {
-        if (_binding == null) return
-        val menuChartSettings = overviewMenus.setting
-        if (menuChartSettings.isEmpty()) return
-        val graphData = graphDataProvider.get().with(binding.glucoseGraph.graph, overviewData)
-        val now = dateUtil.now()
-
-        val hasBgData = overviewData.bgReadingsArray.isNotEmpty()
-        binding.glucoseGraph.showPlaceholder(!hasBgData)
-        if (!hasBgData) {
-            aapsLogger.debug(LTag.CORE, "Dashboard graph skipped: no BG data")
-            return
-        }
-
-        graphData.addInRangeArea(
-            overviewData.fromTime,
-            overviewData.endTime,
-            preferences.get(UnitDoubleKey.OverviewLowMark),
-            preferences.get(UnitDoubleKey.OverviewHighMark)
-        )
-        graphData.addBgReadings(menuChartSettings[0][CharType.PRE.ordinal], context)
-        graphData.addBucketedData()
-        graphData.addTreatments(context)
-        if ((config.AAPSCLIENT || activePlugin.activePump.pumpDescription.isTempBasalCapable) && menuChartSettings[0][CharType.BAS.ordinal]) {
-            graphData.addBasals()
-        }
-        graphData.addTargetLine()
-        graphData.addRunningModes()
-        graphData.addNowLine(now)
-        graphData.setNumVerticalLabels()
-        graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
-        graphData.performUpdate()
-    }
-
-    private var isHypoRiskDialogShowing = false
-
-    private fun showHypoRiskDialog() {
-        if (isHypoRiskDialogShowing) return
-        isHypoRiskDialogShowing = true
-        app.aaps.core.ui.dialogs.OKDialog.show(
-            requireContext(),
-            getString(R.string.hypo_risk_notification_title),
-            getString(R.string.hypo_risk_notification_text),
-            runOnDismiss = true
-        ) {
-            isHypoRiskDialogShowing = false
-        }
     }
 }

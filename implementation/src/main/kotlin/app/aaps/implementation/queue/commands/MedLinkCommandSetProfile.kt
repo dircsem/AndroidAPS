@@ -1,91 +1,45 @@
 package app.aaps.implementation.queue.commands
 
-import app.aaps.core.interfaces.configuration.Config
+import kotlinx.coroutines.runBlocking
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
-import dagger.android.HasAndroidInjector
-import javax.inject.Inject
 import javax.inject.Provider
 
+/**
+ * 4v: MedLink cannot write the basal profile to the Veo (setNewBasalProfile stays off): the profile is accepted in
+ * AAPS only, so the profile switch becomes effective (EffectiveProfileSwitch). The pump plugin warns when the pump
+ * basal profile differs; the user changes it on the pump.
+ */
 class MedLinkCommandSetProfile(
-    injector: HasAndroidInjector,
-    private val profile: Profile,
-    private val hasNsId: Boolean,
+    private val aapsLogger: AAPSLogger,
+    private val rh: ResourceHelper,
+    private val dateUtil: DateUtil,
+    private val commandQueue: CommandQueue,
+    private val persistenceLayer: PersistenceLayer,
+    override val pumpEnactResultProvider: Provider<PumpEnactResult>,
+    private val profile: EffectiveProfile,
     override val callback: Callback?,
 ) : Command {
 
-    @Inject
-    lateinit var aapsLogger: AAPSLogger
-    @Inject
-    lateinit var rh: ResourceHelper
-    @Inject
-    lateinit var smsCommunicator: SmsCommunicator
-    @Inject
-    lateinit var activePlugin: ActivePlugin
-    @Inject
-    lateinit var dateUtil: DateUtil
-    @Inject
-    lateinit var commandQueue: CommandQueue
-    @Inject
-    lateinit var config: Config
-    @Inject
-    lateinit var persistenceLayer: PersistenceLayer
-    @Inject
-    lateinit var pumpEnactResultProvider: Provider<PumpEnactResult>
-
-
-    init {
-        injector.androidInjector().inject(this)
-    }
-
     override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE
 
-    override fun execute() {
-        if (commandQueue.isThisProfileSet(profile) && persistenceLayer.getEffectiveProfileSwitchActiveAt(
-                dateUtil.now()
-            ) != null
-        ) {
+    override suspend fun execute(): PumpEnactResult {
+        if (runBlocking { commandQueue.isThisProfileSet(profile) } && runBlocking { persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now()) } != null) {
             aapsLogger.debug(LTag.PUMPQUEUE, "Correct profile already set. profile: $profile")
-            callback?.result(pumpEnactResultProvider.get().success(true).enacted(false))?.run()
-
-            return
+            return pumpEnactResultProvider.get().success(true).enacted(false)
         }
-        // 4v: MedLink cannot write the basal profile to the Veo (setNewBasalProfile stays off): the profile is accepted
-        // in AAPS only, so the profile switch becomes effective (EffectiveProfileSwitch). The pump plugin warns when the
-        // pump basal profile differs; the user changes it on the pump. Before, no result was sent at all.
         aapsLogger.info(LTag.PUMPQUEUE, "MedLink: basal profile not written to the pump, accepted in AAPS only. profile: $profile")
-        callback?.result(
-            pumpEnactResultProvider.get().success(true).enacted(false)
-        )?.run()
-        // val r = activePlugin.activePump.setNewBasalProfile(profile)
-        // aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted} profile: $profile")
-        // callback?.result(r)?.run()
-        // Send SMS notification if ProfileSwitch is coming from NS
-        val profileSwitch = persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())
-        // if (profileSwitch != null && r.enacted && hasNsId && !config.NSCLIENT) {
-        //     if (smsCommunicator.isEnabled())
-        //         smsCommunicator.sendNotificationToAllNumbers(rh.gs(app.aaps.core.ui.R.string.profile_set_ok))
-        // }
+        return pumpEnactResultProvider.get().success(true).enacted(false)
     }
 
     override fun status(): String = rh.gs(app.aaps.core.ui.R.string.set_profile)
-
     override fun log(): String = "SET PROFILE"
-    override fun cancel() {
-        aapsLogger.debug(LTag.PUMPQUEUE, "Result cancel")
-        callback?.result(
-            pumpEnactResultProvider.get().success(false)
-                .comment(app.aaps.core.ui.R.string.connectiontimedout)
-        )?.run()
-    }
 }

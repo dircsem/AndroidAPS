@@ -5,6 +5,7 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -287,6 +288,8 @@ class DefaultNightGrowthResistanceMonitor(
 class NightGrowthResistanceMode(
     private val monitor: NightGrowthResistanceMonitor = DefaultNightGrowthResistanceMonitor()
 ) {
+    private val latestResultRef = AtomicReference<NGRResult?>(null)
+
     fun evaluate(
         now: Instant,
         bg: Double,
@@ -300,18 +303,24 @@ class NightGrowthResistanceMode(
         react: Double,
         isMealActive: Boolean,
         config: NGRConfig
-    ): NGRResult = monitor.evaluate(
-        now = now,
-        bg = bg,
-        delta = delta,
-        shortAvgDelta = shortAvgDelta,
-        longAvgDelta = longAvgDelta,
-        eventualBG = eventualBG,
-        targetBG = targetBG,
-        iob = iob,
-        cob = cob,
-        react = react,
-        isMealActive = isMealActive,
-        config = config
-    )
+    ): NGRResult {
+        val result = monitor.evaluate(
+            now = now,
+            bg = bg,
+            delta = delta,
+            shortAvgDelta = shortAvgDelta,
+            longAvgDelta = longAvgDelta,
+            eventualBG = eventualBG,
+            targetBG = targetBG,
+            iob = iob,
+            cob = cob,
+            react = react,
+            isMealActive = isMealActive,
+            config = config
+        )
+        latestResultRef.set(result)
+        return result
+    }
+
+    fun latestResult(): NGRResult? = latestResultRef.get()?.copy()
 }

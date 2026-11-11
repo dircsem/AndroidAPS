@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="medtronic_error_pump_frequency_not_set">Frekvencija pumpe nije postavljena.</string>
+    <string name="medtronic_errors">Greške</string>
+    <string name="medtronic_error_serial_not_set">Serijski broj nije unesen.</string>
+    <string name="medtronic_history_type">Tip:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pumpa nedostupna</string>
+    <string name="medtronic_pump_history">Povijest Medtronic pumpe</string>
+</resources>

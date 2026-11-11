@@ -10,6 +10,7 @@ import app.aaps.wear.interaction.actions.BackgroundActionActivity
 import app.aaps.wear.interaction.actions.BolusActivity
 import app.aaps.wear.interaction.actions.CarbActivity
 import app.aaps.wear.interaction.actions.ECarbActivity
+import app.aaps.wear.interaction.actions.AfrezzaActivity
 import app.aaps.wear.interaction.actions.TempTargetActivity
 import app.aaps.wear.interaction.actions.TreatmentActivity
 import app.aaps.wear.interaction.actions.WizardActivity
@@ -26,12 +27,14 @@ class ActionSource @Inject constructor(context: Context, sp: SP, aapsLogger: AAP
             StaticAction(
                 settingName = "wizard",
                 buttonText = resources.getString(R.string.menu_wizard_short),
+                settingLabel = resources.getString(R.string.menu_wizard),
                 iconRes = R.drawable.ic_calculator,
                 activityClass = WizardActivity::class.java.name,
             ),
             StaticAction(
                 settingName = "treatment",
                 buttonText = resources.getString(R.string.menu_treatment_short),
+                settingLabel = resources.getString(R.string.menu_treatment),
                 iconRes = R.drawable.ic_bolus_carbs,
                 activityClass = TreatmentActivity::class.java.name,
             ),
@@ -40,6 +43,13 @@ class ActionSource @Inject constructor(context: Context, sp: SP, aapsLogger: AAP
                 buttonText = resources.getString(R.string.action_insulin),
                 iconRes = R.drawable.ic_bolus,
                 activityClass = BolusActivity::class.java.name,
+            ),
+            StaticAction(
+                settingName = "afrezza",
+                buttonText = resources.getString(R.string.action_afrezza_short),
+                settingLabel = resources.getString(R.string.action_afrezza),
+                iconRes = R.drawable.ic_afrezza,
+                activityClass = AfrezzaActivity::class.java.name,
             ),
             StaticAction(
                 settingName = "carbs",
@@ -56,6 +66,7 @@ class ActionSource @Inject constructor(context: Context, sp: SP, aapsLogger: AAP
             StaticAction(
                 settingName = "temp_target",
                 buttonText = resources.getString(R.string.menu_tempt),
+                settingLabel = resources.getString(R.string.menu_tempt_long),
                 iconRes = R.drawable.ic_temptarget_flat,
                 activityClass = TempTargetActivity::class.java.name,
             ),

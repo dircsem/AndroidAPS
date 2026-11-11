@@ -54,7 +54,9 @@ data class LoopContext(
     val settings: AimiSettings,
     val tdd24hU: Double,
     val eventualBg: Double,
-    val nowEpochMillis: Long
+    val nowEpochMillis: Long,
+    /** Minutes since last bolus for PKPD learning window; null → adapter uses neutral default (not SMB interval). */
+    val pkpdWindowMin: Int? = null,
 )
 
 data class BasalPlan(val rateUph: Double, val durationMin: Int, val reason: String)

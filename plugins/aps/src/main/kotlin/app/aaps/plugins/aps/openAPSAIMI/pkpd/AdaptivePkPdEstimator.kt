@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.openAPSAIMI.pkpd
 
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
@@ -15,16 +16,72 @@ data class PkPdLearningConfig(
     val minIOBForLearningU: Double = 0.3,
     val maxRateChangeScale: Double = 1.0,
     val lr: Double = 0.02,
-    val tailWeight: Double = 1.5
+    val tailWeight: Double = 1.5,
+    /** Soft regularization target for learned DIA (hours). */
+    val anchorDiaHrs: Double = 4.0,
+    /** Soft regularization target for learned peak (minutes). */
+    val anchorPeakMin: Double = 75.0,
+)
+
+enum class PkPdUpdateReason {
+    NOT_UPDATED,
+    ACCEPTED,
+    WINDOW_OUT_OF_RANGE,
+    IOB_TOO_LOW,
+    CARBS_ACTIVE,
+    EXERCISE,
+    RISE_TOO_FAST,
+    HYPO,
+    NEAR_HYPO_FALLING,
+    FAST_FALL,
+}
+
+data class AdaptivePkPdStatusSnapshot(
+    val params: PkPdParams,
+    val acceptedUpdateCount: Long,
+    val latestReason: PkPdUpdateReason,
+    val lastAcceptedUpdateAt: Long?,
+    val updatedAt: Long?,
+    /** Last raw DIA learning step, in hours, before the anchor pull and before any clamp. */
+    val lastDiaLearnStepH: Double = 0.0,
+    /** Last DIA pull back toward the anchor, in hours. Negative means "pull DIA down". */
+    val lastDiaRegPullH: Double = 0.0,
 )
 
 class AdaptivePkPdEstimator(
-    private val kernel: Kernel = LogNormalKernel(),
+    private val kernel: Kernel = ExponentialKernel(),
     private val cfg: PkPdLearningConfig = PkPdLearningConfig(),
     initial: PkPdParams = PkPdParams(diaHrs = 4.0, peakMin = 75.0)
 ) {
+
+    companion object {
+        /** Must match [PkPdLearningConfig.minWindowMin] / [PkPdIntegration] learning clamp. */
+        const val LEARNING_WINDOW_MIN_MIN = 20
+        /** Must match [PkPdLearningConfig.maxWindowMin]. */
+        const val LEARNING_WINDOW_MAX_MIN = 180
+
+        /** Skip learning below this BG — insulin/glucose dynamics are dominated by hypo recovery. */
+        const val HYPO_LEARN_SKIP_BG_MGDL = 75.0
+
+        /** Skip learning when BG is still near hypo and falling. */
+        const val HYPO_CAUTION_BG_MGDL = 90.0
+
+        /** Skip learning on fast falls — observed drop is not a reliable PK/PD signal. */
+        const val FAST_FALL_DELTA_MGDL5 = -3.0
+    }
+
     private val state = AtomicReference(initial)
     private var lastUpdateEpochMin: Long = 0
+    private val acceptedUpdateCount = AtomicLong(0L)
+    private val statusRef = AtomicReference(
+        AdaptivePkPdStatusSnapshot(
+            params = initial,
+            acceptedUpdateCount = 0L,
+            latestReason = PkPdUpdateReason.NOT_UPDATED,
+            lastAcceptedUpdateAt = null,
+            updatedAt = null,
+        )
+    )
 
     fun params(): PkPdParams = state.get()
 
@@ -37,13 +94,40 @@ class AdaptivePkPdEstimator(
         windowMin: Int,
         exerciseFlag: Boolean
     ) {
-        if (windowMin < cfg.minWindowMin || windowMin > cfg.maxWindowMin) return
-        if (iobU < cfg.minIOBForLearningU) return
+        if (windowMin < cfg.minWindowMin || windowMin > cfg.maxWindowMin) {
+            recordSkipped(epochMin, PkPdUpdateReason.WINDOW_OUT_OF_RANGE)
+            return
+        }
+        if (iobU < cfg.minIOBForLearningU) {
+            recordSkipped(epochMin, PkPdUpdateReason.IOB_TOO_LOW)
+            return
+        }
         // RELAXED: Allow learning with moderate carbs (was 5g, now 15g)
-        if (carbsActiveG > 15.0) return
-        if (exerciseFlag) return
+        if (carbsActiveG > 15.0) {
+            recordSkipped(epochMin, PkPdUpdateReason.CARBS_ACTIVE)
+            return
+        }
+        if (exerciseFlag) {
+            recordSkipped(epochMin, PkPdUpdateReason.EXERCISE)
+            return
+        }
         // RELAXED: Allow learning during slower rises (was 3.0, now 5.0)
-        if (deltaMgDlPer5 > 5.0) return
+        if (deltaMgDlPer5 > 5.0) {
+            recordSkipped(epochMin, PkPdUpdateReason.RISE_TOO_FAST)
+            return
+        }
+        if (bg < HYPO_LEARN_SKIP_BG_MGDL) {
+            recordSkipped(epochMin, PkPdUpdateReason.HYPO)
+            return
+        }
+        if (bg < HYPO_CAUTION_BG_MGDL && deltaMgDlPer5 < -1.0) {
+            recordSkipped(epochMin, PkPdUpdateReason.NEAR_HYPO_FALLING)
+            return
+        }
+        if (deltaMgDlPer5 <= FAST_FALL_DELTA_MGDL5) {
+            recordSkipped(epochMin, PkPdUpdateReason.FAST_FALL)
+            return
+        }
 
         val p0 = state.get()
         val isfTddMgDlPerU = IsfTddProvider.isfTdd()
@@ -54,16 +138,23 @@ class AdaptivePkPdEstimator(
         val err = (-deltaMgDlPer5) - expectedDropPer5
         val tailFactor = 1.0 + cfg.tailWeight * max(0.0, (windowMin - p0.peakMin) / max(1.0, p0.peakMin))
         val diaAdj = cfg.lr * tailFactor * sign(err) * min(1.0, abs(err) / 10.0)
-        val tpAdj = cfg.lr * 0.5 * sign(err) * min(1.0, abs(err) / 10.0)
-        val anchorDia = 4.0
-        val anchorTp  = 75.0
-        val reg = 0.002   // régularisation très faible
+        // Wave3 F2: drop ×0.5 so NORMAL 5 min/day rate cap can bind on clean ticks.
+        val tpAdj = cfg.lr * sign(err) * min(1.0, abs(err) / 10.0)
+        val diaReg = 0.002
+        // Peak soft-reg weaker so sustained |peak−anchor| can reach ~±20 (was ±5 at reg=0.002).
+        val peakReg = 0.001
 
-        val diaAdjReg = diaAdj - reg * (p0.diaHrs - anchorDia)
-        val tpAdjReg  = tpAdj  - reg * (p0.peakMin - anchorTp)
+        val diaRegPull = -diaReg * (p0.diaHrs - cfg.anchorDiaHrs)
+        val diaAdjReg = diaAdj + diaRegPull
+        val tpAdjReg = tpAdj - peakReg * (p0.peakMin - cfg.anchorPeakMin)
 
         val now = epochMin
-        val dtDays = if (lastUpdateEpochMin == 0L) 1.0 else max(1.0, (now - lastUpdateEpochMin) / (60.0 * 24.0))
+        val minutesPerDay = 60.0 * 24.0
+        val dtDays = if (lastUpdateEpochMin == 0L) {
+            min(1.0, 5.0 / minutesPerDay)
+        } else {
+            min(1.0, (now - lastUpdateEpochMin) / minutesPerDay)
+        }
         lastUpdateEpochMin = now
         val bounds = cfg.bounds
         val maxDiaStep = bounds.maxDiaChangePerDayH * cfg.maxRateChangeScale * dtDays
@@ -74,7 +165,38 @@ class AdaptivePkPdEstimator(
         val newTp = (p0.peakMin + tpAdjReg)
             .coerceIn(p0.peakMin - maxTpStep, p0.peakMin + maxTpStep)
             .coerceIn(bounds.peakMinMin, bounds.peakMinMax)
-        state.set(PkPdParams(newDia, newTp))
+        val newParams = PkPdParams(newDia, newTp)
+        state.set(newParams)
+        val acceptedCount = acceptedUpdateCount.incrementAndGet()
+        val updateAt = epochMin * 60_000L
+        statusRef.set(
+            AdaptivePkPdStatusSnapshot(
+                params = newParams,
+                acceptedUpdateCount = acceptedCount,
+                latestReason = PkPdUpdateReason.ACCEPTED,
+                lastAcceptedUpdateAt = updateAt,
+                updatedAt = updateAt,
+                lastDiaLearnStepH = diaAdj,
+                lastDiaRegPullH = diaRegPull,
+            )
+        )
+    }
+
+    fun statusSnapshot(): AdaptivePkPdStatusSnapshot = statusRef.get().copy()
+
+    private fun recordSkipped(epochMin: Long, reason: PkPdUpdateReason) {
+        val previous = statusRef.get()
+        statusRef.set(
+            AdaptivePkPdStatusSnapshot(
+                params = state.get(),
+                acceptedUpdateCount = acceptedUpdateCount.get(),
+                latestReason = reason,
+                lastAcceptedUpdateAt = previous.lastAcceptedUpdateAt,
+                updatedAt = epochMin * 60_000L,
+                lastDiaLearnStepH = previous.lastDiaLearnStepH,
+                lastDiaRegPullH = previous.lastDiaRegPullH,
+            )
+        )
     }
 
     private fun approximateAction(iobU: Double, p: PkPdParams): Double {

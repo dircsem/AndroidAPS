@@ -5,15 +5,18 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.*
+import app.aaps.plugins.aps.openAPSAIMI.keys.AimiStringKey
+import app.aaps.plugins.aps.openAPSAIMI.patient.PatientStateRuntimeRefresher
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
-import io.reactivex.rxjava3.kotlin.plusAssign
-import io.reactivex.rxjava3.disposables.CompositeDisposable
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Singleton
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
@@ -51,9 +54,10 @@ class ContextManager @Inject constructor(
     private val sp: SP,
     internal val aapsLogger: AAPSLogger,  // Internal for inline functions
     private val persistenceLayer: PersistenceLayer,  // For NS sync
-    private val dateUtil: DateUtil,
-    private val aapsSchedulers: AapsSchedulers
+    private val dateUtil: DateUtil
 ) {
+
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     // Thread-safe storage (internal for inline functions)
     internal val activeIntents = ConcurrentHashMap<String, ContextIntent>()
@@ -74,7 +78,11 @@ class ContextManager @Inject constructor(
      * @param forceLLM Force LLM even if disabled (for testing)
      * @return List of added intent IDs
      */
-    suspend fun addIntent(userText: String, forceLLM: Boolean = false): List<String> {
+    suspend fun addIntent(
+        userText: String,
+        forceLLM: Boolean = false,
+        remotePin: String? = null
+    ): List<String> {
         if (userText.isBlank()) {
             aapsLogger.warn(LTag.APS, "[ContextManager] Empty text, ignoring")
             return emptyList()
@@ -113,7 +121,7 @@ class ContextManager @Inject constructor(
             aapsLogger.debug(LTag.APS, "[ContextManager] Stored intent $id: $intent")
             
             // Sync to Nightscout via TherapyEvent wrapper
-            syncContextToNS(id, intent)
+            syncContextToNS(id, intent, remotePin)
         }
         
         if (ids.isEmpty()) {
@@ -123,6 +131,7 @@ class ContextManager @Inject constructor(
         // Cleanup expired and SAVE
         cleanupExpired(System.currentTimeMillis())
         saveToStorage()
+        notifyPatientStateChanged()
         
         return ids
     }
@@ -155,10 +164,12 @@ class ContextManager @Inject constructor(
                 is Alcohol -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
                 is Travel -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
                 is MenstrualCycle -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
+                is SlowCarbMeal -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
+                is HypoRecovery -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
                 is Custom -> intent.copy(durationMs = customDuration.inWholeMilliseconds)
             }
         }
-        
+
         // Override intensity if provided
         if (customIntensity != null) {
             intent = when (intent) {
@@ -169,6 +180,8 @@ class ContextManager @Inject constructor(
                 is Alcohol -> intent.copy(intensity = customIntensity)
                 is Travel -> intent.copy(intensity = customIntensity)
                 is MenstrualCycle -> intent.copy(intensity = customIntensity)
+                is SlowCarbMeal -> intent.copy(intensity = customIntensity)
+                is HypoRecovery -> intent.copy(intensity = customIntensity)
                 is Custom -> intent.copy(intensity = customIntensity)
             }
         }
@@ -181,6 +194,7 @@ class ContextManager @Inject constructor(
         // Cleanup expired and SAVE
         cleanupExpired(System.currentTimeMillis())
         saveToStorage()
+        notifyPatientStateChanged()
         
         return id
     }
@@ -198,15 +212,16 @@ class ContextManager @Inject constructor(
             aapsLogger.info(LTag.APS, "[ContextManager] Removed intent $id")
             saveToStorage()
             
-            // Invalidate sync record in local DB and Nightscout
-            val disposable = CompositeDisposable()
-            disposable += persistenceLayer.invalidateTherapyEventsWithNote("AIMI_CONTEXT:$id", Action.TREATMENT, Sources.Aaps)
-                .subscribeOn(aapsSchedulers.io)
-                .subscribe(
-                    { aapsLogger.debug(LTag.APS, "[ContextManager] Synced invalidation for $id") },
-                    { e -> aapsLogger.error(LTag.APS, "[ContextManager] Failed to invalidate sync record for $id: ${e.message}") }
-                )
-            
+            ioScope.launch {
+                try {
+                    persistenceLayer.invalidateTherapyEventsWithNote("AIMI_CONTEXT:$id", Action.TREATMENT, Sources.Aaps)
+                    aapsLogger.debug(LTag.APS, "[ContextManager] Synced invalidation for $id")
+                } catch (e: Exception) {
+                    aapsLogger.error(LTag.APS, "[ContextManager] Failed to invalidate sync record for $id: ${e.message}", e)
+                }
+            }
+            notifyPatientStateChanged()
+
             return true
         }
         aapsLogger.warn(LTag.APS, "[ContextManager] Intent $id not found")
@@ -227,6 +242,7 @@ class ContextManager @Inject constructor(
         if (toRemove.isNotEmpty()) {
             aapsLogger.info(LTag.APS, "[ContextManager] Removed ${toRemove.size} intent(s) of type ${intentClass.simpleName}")
             saveToStorage()
+            notifyPatientStateChanged()
         }
         
         return toRemove.size
@@ -241,15 +257,16 @@ class ContextManager @Inject constructor(
         activeIntents.clear()
         aapsLogger.info(LTag.APS, "[ContextManager] Cleared all intents (removed $count)")
         saveToStorage()
+        notifyPatientStateChanged()
         
-        // Invalidate ALL AIMI context sync records
-        val disposable = CompositeDisposable()
-        disposable += persistenceLayer.invalidateTherapyEventsWithNote("AIMI_CONTEXT:", Action.TREATMENT, Sources.Aaps)
-            .subscribeOn(aapsSchedulers.io)
-            .subscribe(
-                { aapsLogger.debug(LTag.APS, "[ContextManager] Synced invalidation for all contexts") },
-                { e -> aapsLogger.error(LTag.APS, "[ContextManager] Failed to invalidate all sync records: ${e.message}") }
-            )
+        ioScope.launch {
+            try {
+                persistenceLayer.invalidateTherapyEventsWithNote("AIMI_CONTEXT:", Action.TREATMENT, Sources.Aaps)
+                aapsLogger.debug(LTag.APS, "[ContextManager] Synced invalidation for all contexts")
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.APS, "[ContextManager] Failed to invalidate all sync records: ${e.message}", e)
+            }
+        }
     }
     
     /**
@@ -315,13 +332,16 @@ class ContextManager @Inject constructor(
             is Alcohol -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
             is Travel -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
             is MenstrualCycle -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
+            is SlowCarbMeal -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
+            is HypoRecovery -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
             is Custom -> intent.copy(durationMs = intent.durationMs + additionalDuration.inWholeMilliseconds)
         }
-        
+
         activeIntents[id] = extended
         
         aapsLogger.info(LTag.APS, "[ContextManager] Extended intent $id by ${additionalDuration.inWholeMinutes}min")
         saveToStorage()
+        notifyPatientStateChanged()
         
         return true
     }
@@ -395,6 +415,8 @@ class ContextManager @Inject constructor(
                     is UnannouncedMealRisk -> obj.put("riskWindow", intent.riskWindow.inWholeMinutes)
                     is Travel -> obj.put("tz", intent.timezoneShiftHours)
                     is MenstrualCycle -> obj.put("phase", intent.phase.name)
+                    is SlowCarbMeal -> obj.put("absorptionDelay", intent.absorptionDelay.inWholeMinutes)
+                    is HypoRecovery -> { /* no type-specific field */ }
                     is Custom -> {
                          obj.put("desc", intent.description)
                          obj.put("strat", intent.suggestedStrategy)
@@ -481,6 +503,19 @@ class ContextManager @Inject constructor(
                             confidence = confidence,
                             phase = MenstrualCycle.CyclePhase.valueOf(obj.getString("phase"))
                         )
+                        "SlowCarbMeal" -> SlowCarbMeal(
+                            startTimeMs = if (startTimeMs > 0) startTimeMs else System.currentTimeMillis(),
+                            durationMs = durationMs,
+                            intensity = intensity,
+                            confidence = confidence,
+                            absorptionDelay = obj.optLong("absorptionDelay", 90L).minutes
+                        )
+                        "HypoRecovery" -> HypoRecovery(
+                            startTimeMs = if (startTimeMs > 0) startTimeMs else System.currentTimeMillis(),
+                            durationMs = durationMs,
+                            intensity = intensity,
+                            confidence = confidence
+                        )
                         "Custom" -> Custom(
                             startTimeMs = if (startTimeMs > 0) startTimeMs else System.currentTimeMillis(),
                             durationMs = durationMs,
@@ -521,34 +556,33 @@ class ContextManager @Inject constructor(
      * Sync ContextIntent to Nightscout via TherapyEvent wrapper.
      * Creates a NOTE TherapyEvent with AIMI_CONTEXT prefix.
      */
-    private fun syncContextToNS(intentId: String, intent: ContextIntent) {
+    private fun syncContextToNS(intentId: String, intent: ContextIntent, remotePin: String? = null) {
         try {
             val intentJson = serializeContextIntent(intent)
+            val note = if (!remotePin.isNullOrBlank()) {
+                "AIMI_CONTEXT:$intentId:PIN:${remotePin.trim()}:$intentJson"
+            } else {
+                "AIMI_CONTEXT:$intentId:$intentJson"
+            }
             
             val therapyEvent = TE(
                 timestamp = intent.startTimeMs,
                 type = TE.Type.NOTE,
                 glucoseUnit = GlucoseUnit.MGDL,
-                note = "AIMI_CONTEXT:$intentId:$intentJson",
+                note = note,
                 duration = intent.durationMs
             )
             
             aapsLogger.debug(LTag.APS, "[ContextManager] Syncing context $intentId to NS")
-            
-            val disposable = CompositeDisposable()
-            disposable += persistenceLayer.insertOrUpdateTherapyEvent(therapyEvent)
-                .subscribeOn(aapsSchedulers.io)
-                .subscribe(
-                    {
-                        aapsLogger.info(LTag.APS, "[ContextManager] ✅ Context $intentId synced to NS")
-                        disposable.clear()
-                    },
-                    { error ->
-                        aapsLogger.error(LTag.APS, "[ContextManager] ❌ Failed to sync context $intentId: $error")
-                        disposable.clear()
-                    }
-                )
-                
+
+            ioScope.launch {
+                try {
+                    persistenceLayer.insertOrUpdateTherapyEvent(therapyEvent)
+                    aapsLogger.info(LTag.APS, "[ContextManager] ✅ Context $intentId synced to NS")
+                } catch (e: Exception) {
+                    aapsLogger.error(LTag.APS, "[ContextManager] ❌ Failed to sync context $intentId: ${e.message}", e)
+                }
+            }
         } catch (e: Exception) {
             aapsLogger.error(LTag.APS, "[ContextManager] Exception syncing context $intentId", e)
         }
@@ -563,6 +597,8 @@ class ContextManager @Inject constructor(
             is Alcohol -> """{"type":"Alcohol","units":${intent.units},"dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
             is Travel -> """{"type":"Travel","tz":${intent.timezoneShiftHours},"dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
             is MenstrualCycle -> """{"type":"MenstrualCycle","phase":"${intent.phase}","int":"${intent.intensity}","dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
+            is SlowCarbMeal -> """{"type":"SlowCarbMeal","int":"${intent.intensity}","dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
+            is HypoRecovery -> """{"type":"HypoRecovery","int":"${intent.intensity}","dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
             is Custom -> """{"type":"Custom","desc":"${intent.description}","strat":"${intent.suggestedStrategy}","int":"${intent.intensity}","dur":${intent.durationMs},"start":${intent.startTimeMs},"conf":${intent.confidence}}"""
         }
     }
@@ -572,7 +608,18 @@ class ContextManager @Inject constructor(
      * Skips local parsing, direct injection.
      */
     @Synchronized
-    fun injectContextFromNS(intentId: String, intent: ContextIntent) {
+    fun injectContextFromNS(intentId: String, intent: ContextIntent, receivedPin: String? = null) {
+        val configuredPin = sp.getString(AimiStringKey.RemoteControlPin.key, "").trim()
+        val incomingPin = receivedPin?.trim().orEmpty()
+        if (configuredPin.isBlank()) {
+            aapsLogger.warn(LTag.APS, "[ContextManager] Rejecting NS context $intentId: AIMI remote PIN not configured")
+            return
+        }
+        if (incomingPin != configuredPin) {
+            aapsLogger.warn(LTag.APS, "[ContextManager] Rejecting NS context $intentId: invalid or missing PIN")
+            return
+        }
+
         // Check if already exists (deduplication)
         if (activeIntents.containsKey(intentId)) {
             aapsLogger.debug(LTag.APS, "[ContextManager] Context $intentId already exists, skipping NS injection")
@@ -583,5 +630,18 @@ class ContextManager @Inject constructor(
         aapsLogger.info(LTag.APS, "[ContextManager] ✅ Injected context from NS: $intentId -> $intent")
         
         saveToStorage()
+        notifyPatientStateChanged()
+    }
+
+    private fun notifyPatientStateChanged() {
+        val snapshot = try {
+            getSnapshot(dateUtil.now())
+        } catch (_: Exception) {
+            null
+        }
+        PatientStateRuntimeRefresher.refreshFromContextIntents(
+            contextSnapshot = snapshot,
+            nowMs = dateUtil.now(),
+        )
     }
 }

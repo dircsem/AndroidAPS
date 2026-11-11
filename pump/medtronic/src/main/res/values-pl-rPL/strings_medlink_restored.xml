@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Błąd pompy</string>
+    <string name="medtronic_error_pump_frequency_not_set">Częstotliwość pompy nie ustawiona.</string>
+    <string name="medtronic_errors">Błędy</string>
+    <string name="medtronic_error_serial_not_set">Numer seryjny # nie ustawiony.</string>
+    <string name="medtronic_history_type">Typ:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pompa nieosiągalna</string>
+    <string name="medtronic_warning">Ostrzeżenie</string>
+    <string name="medtronic_pump_history">Historia pompy Medtronic</string>
+</resources>

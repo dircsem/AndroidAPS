@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Pompa hatası</string>
+    <string name="medtronic_error_pump_frequency_not_set">Pompa Frekansı ayarlanmadı.</string>
+    <string name="medtronic_errors">Hatalar</string>
+    <string name="medtronic_error_serial_not_set">Seri no # ayarlanmadı.</string>
+    <string name="medtronic_history_type">Tip:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pompa\'ya ulaşılamıyor</string>
+    <string name="medtronic_warning">Uyarı</string>
+    <string name="medtronic_pump_history">Medtronic Pompa Geçmişi</string>
+</resources>

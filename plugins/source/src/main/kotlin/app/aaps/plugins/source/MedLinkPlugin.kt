@@ -1,5 +1,8 @@
 package app.aaps.plugins.source
 
+import app.aaps.core.ui.compose.icons.IcPluginMM640G
+import app.aaps.plugins.source.compose.BgSourceComposeContent
+import kotlinx.coroutines.runBlocking
 import android.content.Context
 import android.os.Bundle
 import androidx.work.Worker
@@ -49,11 +52,10 @@ class MedLinkPlugin @Inject constructor(
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
-        .fragmentClass(BGSourceFragment::class.java.name)
-        .pluginIcon(app.aaps.core.ui.R.drawable.ic_minilink)
+        .composeContent { _ -> BgSourceComposeContent(title = rh.gs(R.string.medlink_app_patched)) }
+        .icon(IcPluginMM640G)
         .pluginName(R.string.medlink_app_patched)
         .shortName(R.string.medlink_short)
-        .preferencesId(R.xml.pref_bgsourcemedlink)
         .description(R.string.description_source_enlite),
     aapsLogger, rh
 ), BgSource {
@@ -64,9 +66,6 @@ class MedLinkPlugin @Inject constructor(
         }
     }
 
-    override fun advancedFilteringSupported(): Boolean {
-        return true
-    }
 
 
     //
@@ -186,9 +185,7 @@ class MedLinkPlugin @Inject constructor(
             } else {
                 null
             }
-                persistenceLayer.insertCgmSourceData(Sources.Enlite, glucoseValues, calibrations, sensorStartTime)
-
-                .blockingGet()
+                runBlocking { persistenceLayer.insertCgmSourceData(Sources.Enlite, glucoseValues, calibrations, sensorStartTime) }
                 .also { result ->
                     var startId=0L
                     var lastDbId=0L

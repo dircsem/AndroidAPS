@@ -3,6 +3,7 @@ package app.aaps.core.interfaces.aps
 import android.annotation.SuppressLint
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -80,7 +81,9 @@ data class RT(
     // 🎯 Context Module fields
     var contextEnabled: Boolean = false,               // Context Module feature flag
     var contextIntentCount: Int = 0,                   // Number of active context intents
-    var contextModulation: Double = 1.0                // SMB modulation factor (0.5-1.1)
+    var contextModulation: Double = 1.0,               // SMB modulation factor (0.5-1.1)
+    @Transient
+    var aimiAdaptationStatus: AimiAdaptationStatus? = null
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)

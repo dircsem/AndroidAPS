@@ -25,24 +25,25 @@ class SmbDamping(
     private val policy: TailAwareSmbPolicy = TailAwareSmbPolicy()
 ) {
 
+    // F6 — single implementation. `damp()` is a thin wrapper over `dampWithAudit()` so both entry points
+    // can never diverge again (they previously used two different late-fat rules; see git history).
     fun damp(
         smbU: Double,
         iobTailFrac: Double,
         exercise: Boolean,
         suspectedLateFatMeal: Boolean,
         bypassDamping: Boolean = false,
-        activity: InsulinActivityState
-    ): Double {
-        if (bypassDamping) return smbU
-        var out = smbU
-        if (iobTailFrac > policy.tailIobHigh) {
-            val tailMult = computeTailMultiplier(activity)
-            out *= tailMult
-        }
-        if (exercise) out *= policy.postExerciseDamping
-        if (suspectedLateFatMeal) out *= policy.lateFattyMealDamping
-        return out
-    }
+        activity: InsulinActivityState,
+        elapsedSinceMealMin: Double = 0.0
+    ): Double = dampWithAudit(
+        smbU = smbU,
+        iobTailFrac = iobTailFrac,
+        exercise = exercise,
+        suspectedLateFatMeal = suspectedLateFatMeal,
+        bypassDamping = bypassDamping,
+        activity = activity,
+        elapsedSinceMealMin = elapsedSinceMealMin
+    ).out
 
     fun dampWithAudit(
         smbU: Double,
@@ -50,7 +51,8 @@ class SmbDamping(
         exercise: Boolean,
         suspectedLateFatMeal: Boolean,
         bypassDamping: Boolean = false,
-        activity: InsulinActivityState
+        activity: InsulinActivityState,
+        elapsedSinceMealMin: Double = 0.0
     ): SmbDampingAudit {
         if (bypassDamping) {
             return SmbDampingAudit(
@@ -72,25 +74,16 @@ class SmbDamping(
         var lateMult = 1.0
 
         if (lateApplied) {
-            // par défaut on n’a pas le temps depuis le repas
-            var elapsedSinceMealMin = 0.0
-
-            try {
-                // on tente de récupérer la valeur dans un état global, si dispo
-                val stateClass = Class.forName("app.aaps.plugins.aps.openAPSAIMI.model.ModeState")
-                val field = stateClass.getDeclaredField("timeSinceMealMin")
-                field.isAccessible = true
-                elapsedSinceMealMin = (field.get(null) as? Double) ?: 0.0
-            } catch (_: Exception) {
-                // fallback : reste à 0.0
-            }
-
-            val lateFatFactor = when {
-                elapsedSinceMealMin < 120 -> 0.85    // 0–2h post-meal → légère réduction
-                elapsedSinceMealMin < 240 -> 0.9     // 2–4h → s’allège
-                else -> 0.95                         // >4h → quasi neutralisé
-            }
-            lateMult = lateFatFactor
+            // B1+B2+F5 — Late fat/protein rise damping.
+            // Base is the user preference `lateFattyMealDamping` (default 0.7 = up to −30% SMB), NOT a
+            // hardcoded constant. It ramps back toward neutral (0.95) as time since the meal elapses, since
+            // the delayed rise fades over ~4h. `elapsedSinceMealMin` is now passed in explicitly by the
+            // caller — the previous reflection into `ModeState.timeSinceMealMin` always threw (no such field)
+            // so `elapsed` was pinned at 0 and the whole ladder collapsed to a constant 0.85.
+            // The preference range allows 0.0, which would zero the SMB for up to four hours. Floor it.
+            val base = policy.lateFattyMealDamping.coerceIn(0.5, 1.0)
+            val progress = (elapsedSinceMealMin / 240.0).coerceIn(0.0, 1.0)
+            lateMult = base + (0.95 - base).coerceAtLeast(0.0) * progress
             out *= lateMult
         }
         if (tailApplied) out *= tailMult

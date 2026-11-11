@@ -1,7 +1,7 @@
 package app.aaps.plugins.aps.openAPSAIMI.ISF
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 class IsfAdjustmentEngineTest {
 
@@ -38,5 +38,25 @@ class IsfAdjustmentEngineTest {
             nowMs = now // Same time
         )
         assertEquals(result1, result2, 0.001)
+    }
+
+    /** B3: the very first call of the process must not be pinned to the profile ISF. */
+    @Test
+    fun `first adjustment is not rate limited`() {
+        val engine = IsfAdjustmentEngine(maxStepPctPerLoop = 0.05, maxStepPctPerHour = 0.20)
+
+        val result = engine.compute(
+            bgKalman = 120.0,
+            tddEma = 40.0,
+            profileIsf = 50.0,
+            sippConfidence = 0.0,
+            kalmanVar = 0.0,
+            nowMs = 1000000L
+        )
+
+        // denom = ln(120/55) * 40^2 * 0.02 = 24.965, so 2300/denom = 92.13, capped at 1.7 * 50 = 85.
+        // kalmanTrust = 1, wAf = 0.6, so blended = 0.6 * 85 + 0.4 * 50 = 71.
+        // There is no anchor yet, so 71 is returned as is instead of the profile ISF.
+        assertEquals(71.0, result, 0.01)
     }
 }

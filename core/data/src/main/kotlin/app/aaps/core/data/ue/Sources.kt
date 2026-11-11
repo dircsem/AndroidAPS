@@ -12,6 +12,7 @@ enum class Sources {
     LoopDialog,
     TempBasalDialog,
     CalibrationDialog,
+    ConcentrationDialog,
     FillDialog,
     SiteRotationDialog,
     BgCheck,
@@ -24,10 +25,13 @@ enum class Sources {
     SettingsExport,
     Actions,            //From Actions plugin
     Automation,         //From Automation plugin
+    AfrezzaDialog,
     Autotune,           //From Autotune plugin
     BG,                 //From BG plugin => Add One Source per BG Source for Calibration or Sensor Change
     Aidex,
     Dexcom,
+    DexcomOnePlus,
+    Libre3Native,
     Eversense,
     Glimp,
     MM640g,
@@ -37,10 +41,13 @@ enum class Sources {
     Glunovo,
     Intelligo,
     Xdrip,
+    Insulin,            //From Insulin plugin
     Ottai,              //From Ottai Plugin
     SyaiTag,
     SiBionic,
     Sino,
+    Instara,            // From Instara Plugin
+    NotificationReader,
     LocalProfile,       //From LocalProfile plugin
     Loop,               //From Loop plugin
     Maintenance,        //From Maintenance plugin
@@ -77,6 +84,7 @@ enum class Sources {
     Aaps,               // MainApp
     BgFragment,
     Garmin,
+    Scene,              //From Scene activation
     Database,           // for PersistenceLayer
     Unknown,    //if necessary
     Enlite

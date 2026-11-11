@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="riley_link_ble_config_remove_riley_link">Loại bỏ</string>
+    <string name="riley_link_ble_config_scan_error">Lỗi quét: %1$d</string>
+    <string name="riley_link_ble_config_scan_finished">Quét hoàn tất</string>
+    <string name="rileylink_error_pump_unreachable">Không thể kết nối với Bơm</string>
+    <string name="rileylink_settings_tab1">Cài đặt</string>
+    <string name="rileylink_settings_tab2">Lịch sử</string>
+</resources>

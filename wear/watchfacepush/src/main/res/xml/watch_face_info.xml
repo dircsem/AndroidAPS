@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WatchFaceInfo>
+    <Preview value="@drawable/preview" />
+    <MultipleInstancesAllowed value="true" />
+    <FlavorsSupported value="false" />
+    <!-- The Samsung editor crashes on a face with nothing customisable
+         (IndexOutOfBoundsException in its own onViewCreated), and every element here is fixed
+         deliberately so a user cannot break the layout. Declaring the face non-editable keeps the
+         editor from being opened at all. Revisit if a user-facing option is ever added. -->
+    <Editable value="false" />
+</WatchFaceInfo>

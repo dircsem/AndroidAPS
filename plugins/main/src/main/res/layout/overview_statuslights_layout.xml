@@ -138,7 +138,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:text="|"
-        android:textColor="@color/lightGray"
+        android:textColor="#4dB1B1B1"
         android:paddingStart="1dp"
         android:paddingEnd="1dp"
         android:textSize="14sp" />

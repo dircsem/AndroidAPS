@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">Lỗi bơm</string>
+    <string name="medtronic_error_pump_frequency_not_set">Tần số Bơm chưa được thiết lập.</string>
+    <string name="medtronic_errors">Lỗi</string>
+    <string name="medtronic_error_serial_not_set">Serial # chưa thiết lập.</string>
+    <string name="medtronic_history_type">Loại:</string>
+    <string name="medtronic_pump_status_pump_unreachable">Không thể kết nối với Bơm</string>
+    <string name="medtronic_warning">Cảnh báo</string>
+    <string name="medtronic_pump_history">Lịch sử bơm Medtronic</string>
+</resources>

@@ -3,10 +3,13 @@ package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 import android.content.Context
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmHttpRetry
+import app.aaps.plugins.aps.openAPSAIMI.model.VerdictType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
+import app.aaps.plugins.aps.openAPSAIMI.llm.claude.ClaudeModelResolver
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -45,7 +48,7 @@ class AuditorAIService @Inject constructor(
         OPENAI("openai", "ChatGPT (GPT-5.2)"),
         GEMINI("gemini", "Gemini (3.0 Flash)"),
         DEEPSEEK("deepseek", "DeepSeek (Chat)"),
-        CLAUDE("claude", "Claude (3.5 Sonnet)")
+        CLAUDE("claude", "Claude (model chosen in settings)")
     }
     
     /**
@@ -54,15 +57,18 @@ class AuditorAIService @Inject constructor(
      * @param input Complete auditor input
      * @param provider AI provider to use
      * @param timeoutMs Timeout in milliseconds
+     * @param profileFactorsArmed True when the user opted in to the profile factors. It only swaps
+     *   one rule line of the prompt; with false the prompt is exactly the one of before.
      * @return Auditor verdict or null if failed/timeout
      */
     suspend fun getVerdict(
         input: AuditorInput,
         provider: Provider,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-        useHighPerf: Boolean = false
+        useHighPerf: Boolean = false,
+        profileFactorsArmed: Boolean = false
     ): AuditorVerdict? = withContext(Dispatchers.IO) {
-        
+
         // Get API key
         val apiKey = getApiKey(provider)
         if (apiKey.isBlank()) {
@@ -70,9 +76,9 @@ class AuditorAIService @Inject constructor(
             auditorStatusLiveData.notifyUpdate()
             return@withContext null
         }
-        
+
         // Build prompt
-        val prompt = AuditorPromptBuilder.buildPrompt(input)
+        val prompt = AuditorPromptBuilder.buildPrompt(input, profileFactorsArmed)
         
         // --- ROCKET SAUVAGE: RETRY LOGIC (3 attempts) ---
         var lastException: Exception? = null
@@ -200,21 +206,20 @@ class AuditorAIService @Inject constructor(
      * Call Gemini API
      */
     private fun callGemini(apiKey: String, prompt: String, useHighPerf: Boolean): String {
-        // 1. Select Model based on complexity
-        // HighPerf -> gemini-3-pro | Standard -> gemini-3-flash
-        val modelName = if (useHighPerf) "gemini-3-pro" else "gemini-3-flash-preview"
+        // 1. Select Model based on complexity (durable *-latest aliases track current GA)
+        // HighPerf -> pro tier | Standard -> flash tier
+        val modelName = if (useHighPerf) "gemini-pro-latest" else "gemini-flash-latest"
         
         val primaryModel = geminiResolver.resolveGenerateContentModel(apiKey, modelName)
         
         try {
-            return executeGeminiRequest(apiKey, prompt, primaryModel)
+            return LlmHttpRetry.withTransientRetry { executeGeminiRequest(apiKey, prompt, primaryModel) }
         } catch (e: Exception) {
-            // 2. Fallback on Quota Exceeded (429)
-            val msg = e.message?.lowercase() ?: ""
-            if (msg.contains("429") || msg.contains("quota") || msg.contains("resource_exhausted")) {
-                val fallbackModel = "gemini-3-flash-preview"
-                android.util.Log.w("AIMI_GEMINI", "Auditor Quota Exceeded. Fallback to $fallbackModel")
-                return executeGeminiRequest(apiKey, prompt, fallbackModel)
+            // 2. Quota (429) OR still-overloaded (503) after retries → flash fallback (also retried).
+            if (LlmHttpRetry.isQuota(e) || LlmHttpRetry.isTransient(e)) {
+                val fallbackModel = "gemini-flash-latest"
+                android.util.Log.w("AIMI_GEMINI", "Auditor: $primaryModel failed (${e.message?.take(80)}). Fallback to $fallbackModel")
+                return LlmHttpRetry.withTransientRetry { executeGeminiRequest(apiKey, prompt, fallbackModel) }
             }
             throw e
         }
@@ -319,7 +324,8 @@ class AuditorAIService @Inject constructor(
      * Call Claude API
      */
     private fun callClaude(apiKey: String, prompt: String, useHighPerf: Boolean): String {
-        val model = if (useHighPerf) "claude-3-5-sonnet-20241022" else "claude-3-haiku-20240307"
+        // One user-selected model for every audit (useHighPerf no longer switches tiers for Claude).
+        val model = ClaudeModelResolver.current()
         val url = URL(CLAUDE_URL)
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -328,13 +334,12 @@ class AuditorAIService @Inject constructor(
             setRequestProperty("x-api-key", apiKey)
             setRequestProperty("anthropic-version", "2023-06-01")
             connectTimeout = 15_000 // Reduced per audit
-            readTimeout = DEFAULT_TIMEOUT_MS.toInt()   // Reduced per audit
+            readTimeout = 90_000            // larger Claude models (Sonnet 5 / Fable 5.1) need more time; the verdict is async anyway
         }
         
         val requestBody = JSONObject().apply {
             put("model", model)
-            put("max_tokens", 2048)
-            put("temperature", 0.3)
+            put("max_tokens", 8192) // thinking tokens count in this limit on newer Claude models
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
@@ -363,21 +368,54 @@ class AuditorAIService @Inject constructor(
     }
     
     /**
-     * Parse verdict from API response
+     * Asks the profile checker for its two factors. One attempt, never null, never throws.
+     *
+     * It is a separate request on purpose, sent after the main verdict has already been handled, so
+     * it cannot delay or change the verdict path in any way. It deliberately does NOT touch
+     * [AuditorStatusTracker]: the status the user sees stays the status of the main verdict.
+     *
+     * Every failure — no key, timeout, network, bad JSON — comes back as a neutral answer that
+     * carries its reason, so the log always has one line per request.
      */
-    private fun parseVerdict(responseJson: String, provider: Provider): AuditorVerdict {
+    suspend fun getProfileFactorProposal(
+        prompt: String,
+        provider: Provider,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): AuditorProfileFactorLlmOutput = withContext(Dispatchers.IO) {
+        val apiKey = getApiKey(provider)
+        if (apiKey.isBlank()) return@withContext AuditorProfileFactorLlmOutput.failed("no_api_key")
+        try {
+            val responseJson = withTimeoutOrNull(timeoutMs) {
+                when (provider) {
+                    Provider.OPENAI   -> callOpenAI(apiKey, prompt, useHighPerf = false)
+                    Provider.GEMINI   -> callGemini(apiKey, prompt, useHighPerf = false)
+                    Provider.DEEPSEEK -> callDeepSeek(apiKey, prompt)
+                    Provider.CLAUDE   -> callClaude(apiKey, prompt, useHighPerf = false)
+                }
+            } ?: return@withContext AuditorProfileFactorLlmOutput.failed("timeout")
+            val text = extractContentText(responseJson, provider)
+            return@withContext AuditorProfileFactorParser.parse(text)
+        } catch (e: Exception) {
+            return@withContext AuditorProfileFactorLlmOutput.failed("exception:${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Pulls the model's own text out of the provider envelope and strips a code fence.
+     *
+     * Shared by the verdict and by the profile check, so both read the same four provider shapes.
+     */
+    private fun extractContentText(responseJson: String, provider: Provider): String {
         val root = JSONObject(responseJson)
-        
+
         val contentJson = when (provider) {
             Provider.OPENAI, Provider.DEEPSEEK -> {
-                // OpenAI/DeepSeek format: choices[0].message.content
                 root.getJSONArray("choices")
                     .getJSONObject(0)
                     .getJSONObject("message")
                     .getString("content")
             }
-            Provider.GEMINI -> {
-                // Gemini format: candidates[0].content.parts[0].text
+            Provider.GEMINI                    -> {
                 root.getJSONArray("candidates")
                     .getJSONObject(0)
                     .getJSONObject("content")
@@ -385,16 +423,12 @@ class AuditorAIService @Inject constructor(
                     .getJSONObject(0)
                     .getString("text")
             }
-            Provider.CLAUDE -> {
-                // Claude format: content[0].text
-                root.getJSONArray("content")
-                    .getJSONObject(0)
-                    .getString("text")
+            Provider.CLAUDE                    -> {
+                ClaudeModelResolver.extractText(root)
             }
         }
-        
-        // Extract JSON from markdown code block if present
-        val jsonStr = if (contentJson.contains("```json")) {
+
+        return if (contentJson.contains("```json")) {
             contentJson.substringAfter("```json")
                 .substringBefore("```")
                 .trim()
@@ -405,9 +439,25 @@ class AuditorAIService @Inject constructor(
         } else {
             contentJson.trim()
         }
-        
+    }
+
+    /**
+     * Parse verdict from API response
+     */
+    private fun parseVerdict(responseJson: String, provider: Provider): AuditorVerdict {
+        val jsonStr = extractContentText(responseJson, provider)
+
         // Parse verdict JSON
         val verdictJson = JSONObject(jsonStr)
-        return AuditorVerdict.fromJSON(verdictJson)
+        val verdict = AuditorVerdict.fromJSON(verdictJson)
+        AuditorStatusTracker.updateStatus(verdict.toTrackerStatus())
+        return verdict
     }
+
+    private fun AuditorVerdict.toTrackerStatus(): AuditorStatusTracker.Status =
+        when (verdict) {
+            VerdictType.Confirm -> AuditorStatusTracker.Status.OK_CONFIRM
+            VerdictType.Soften -> AuditorStatusTracker.Status.OK_SOFTEN
+            VerdictType.ShiftToTbr -> AuditorStatusTracker.Status.OK_PREFER_TBR
+        }
 }

@@ -9,43 +9,54 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.SourceSensor
-import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.bolus.WizardBolusExecutor
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.UserEntryLogger
-import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.keys.Preferences
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.shared.tests.TestBase
-import io.reactivex.rxjava3.core.Single
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
-import org.mockito.ArgumentMatchers.argThat
 import org.mockito.ArgumentMatchers.isNull
 import org.mockito.Mock
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.atLeast
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -54,6 +65,7 @@ import org.mockito.kotlin.whenever
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.time.Duration.Companion.milliseconds
 
 class LoopHubTest : TestBase() {
 
@@ -64,13 +76,15 @@ class LoopHubTest : TestBase() {
     @Mock lateinit var profileFunction: ProfileFunction
     @Mock lateinit var profileUtil: ProfileUtil
     @Mock lateinit var persistenceLayer: PersistenceLayer
-    @Mock lateinit var userEntryLogger: UserEntryLogger
     @Mock lateinit var preferences: Preferences
     @Mock lateinit var processedTbrEbData: ProcessedTbrEbData
+    @Mock lateinit var userEntryLogger: UserEntryLogger
     @Mock lateinit var dateUtil: DateUtil
+    @Mock lateinit var wizardBolusExecutor: WizardBolusExecutor
 
     private lateinit var loopHub: LoopHubImpl
     private val clock = Clock.fixed(Instant.ofEpochMilli(10_000), ZoneId.of("UTC"))
+    private val testScope = CoroutineScope(Dispatchers.Unconfined)
 
     @BeforeEach
     fun setup() {
@@ -81,7 +95,8 @@ class LoopHubTest : TestBase() {
         }
         loopHub = LoopHubImpl(
             aapsLogger, commandQueue, constraints, iobCobCalculator, loop,
-            profileFunction, profileUtil, persistenceLayer, userEntryLogger, preferences, processedTbrEbData, dateUtil
+            profileFunction, profileUtil, persistenceLayer, userEntryLogger, preferences, processedTbrEbData,
+            dateUtil, wizardBolusExecutor, testScope
         )
         loopHub.clock = clock
     }
@@ -94,19 +109,18 @@ class LoopHubTest : TestBase() {
         verifyNoMoreInteractions(loop)
         verifyNoMoreInteractions(profileFunction)
         verifyNoMoreInteractions(persistenceLayer)
-        verifyNoMoreInteractions(userEntryLogger)
     }
 
     @Test
-    fun testCurrentProfile() {
-        val profile = mock<Profile>()
+    fun testCurrentProfile() = runTest {
+        val profile = mock<EffectiveProfile>()
         whenever(profileFunction.getProfile()).thenReturn(profile)
         assertEquals(profile, loopHub.currentProfile)
         verify(profileFunction, times(1)).getProfile()
     }
 
     @Test
-    fun testCurrentProfileName() {
+    fun testCurrentProfileName() = runTest {
         whenever(profileFunction.getProfileName()).thenReturn("pro")
         assertEquals("pro", loopHub.currentProfileName)
         verify(profileFunction, times(1)).getProfileName()
@@ -145,7 +159,7 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testInsulinOnBoard() {
+    fun testInsulinOnBoard() = runTest {
         val iobTotal = IobTotal(time = 0).apply { iob = 23.9 }
         whenever(iobCobCalculator.calculateIobFromBolus()).thenReturn(iobTotal)
         assertEquals(23.9, loopHub.insulinOnboard, 1e-10)
@@ -153,7 +167,7 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testBasalOnBoard() {
+    fun testBasalOnBoard() = runTest {
         val iobBasal = IobTotal(time = 0).apply { basaliob = 23.9 }
         whenever(iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended()).thenReturn(iobBasal)
         assertEquals(23.9, loopHub.insulinBasalOnboard, 1e-10)
@@ -161,7 +175,7 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testCarbsOnBoard() {
+    fun testCarbsOnBoard() = runTest {
         val cobInfo = CobInfo(0, 12.0, 0.0)
         whenever(iobCobCalculator.getCobInfo(anyString())).thenReturn(cobInfo)
         assertEquals(12.0, loopHub.carbsOnboard)
@@ -169,10 +183,10 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testIsConnected() {
-        whenever(loop.runningMode).thenReturn(RM.Mode.CLOSED_LOOP)
+    fun testIsConnected() = runTest {
+        whenever(loop.runningMode()).thenReturn(RM.Mode.CLOSED_LOOP)
         assertEquals(true, loopHub.isConnected)
-        verify(loop, times(1)).runningMode
+        verify(loop, times(1)).runningMode()
     }
 
     private fun effectiveProfileSwitch(duration: Long) = EPS(
@@ -192,7 +206,7 @@ class LoopHubTest : TestBase() {
     )
 
     @Test
-    fun testIsTemporaryProfileTrue() {
+    fun testIsTemporaryProfileTrue() = runTest {
         val eps = effectiveProfileSwitch(10)
         whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(clock.millis())).thenReturn(eps)
         assertEquals(true, loopHub.isTemporaryProfile)
@@ -200,7 +214,7 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testIsTemporaryProfileFalse() {
+    fun testIsTemporaryProfileFalse() = runTest {
         val eps = effectiveProfileSwitch(0)
         whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(clock.millis())).thenReturn(eps)
         assertEquals(false, loopHub.isTemporaryProfile)
@@ -208,8 +222,8 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testTemporaryBasal() {
-        val profile = mock<Profile>()
+    fun testTemporaryBasal() = runTest {
+        val profile = mock<EffectiveProfile>()
         whenever(profileFunction.getProfile()).thenReturn(profile)
         val tb = mock<TB> {
             on { isAbsolute }.thenReturn(false)
@@ -221,9 +235,9 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testTemporaryBasalAbsolute() {
-        val profile = mock<Profile> {
-            onGeneric { getBasal(clock.millis()) }.thenReturn(2.0)
+    fun testTemporaryBasalAbsolute() = runTest {
+        val profile = mock<EffectiveProfile> {
+            on { getBasal(clock.millis()) }.thenReturn(2.0)
         }
         whenever(profileFunction.getProfile()).thenReturn(profile)
         val tb = mock<TB> {
@@ -236,8 +250,8 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testTemporaryBasalNoRun() {
-        val profile = mock<Profile>()
+    fun testTemporaryBasalNoRun() = runTest {
+        val profile = mock<EffectiveProfile>()
         whenever(profileFunction.getProfile()).thenReturn(profile)
         whenever(processedTbrEbData.getTempBasalIncludingConvertedExtended(clock.millis())).thenReturn(null)
         assertTrue(loopHub.temporaryBasal.isNaN())
@@ -245,16 +259,16 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testConnectPump() {
-        whenever(persistenceLayer.cancelCurrentRunningMode(clock.millis(), Action.RECONNECT, Sources.Garmin)).thenReturn(Single.just(PersistenceLayer.TransactionResult()))
+    fun testConnectPump() = runTest {
+        whenever(persistenceLayer.cancelCurrentRunningMode(clock.millis(), Action.RECONNECT, Sources.Garmin)).thenReturn(PersistenceLayer.TransactionResult())
         loopHub.connectPump()
         verify(persistenceLayer).cancelCurrentRunningMode(clock.millis(), Action.RECONNECT, Sources.Garmin)
-        verify(commandQueue).cancelTempBasal(enforceNew = true, autoForced = false, callback = null)
+        verify(commandQueue).cancelTempBasal(enforceNew = true, autoForced = false)
     }
 
     @Test
-    fun testDisconnectPump() {
-        val profile = mock<Profile>()
+    fun testDisconnectPump() = runTest {
+        val profile = mock<EffectiveProfile>()
         whenever(profileFunction.getProfile()).thenReturn(profile)
         loopHub.disconnectPump(23)
         verify(profileFunction).getProfile()
@@ -265,7 +279,7 @@ class LoopHubTest : TestBase() {
     }
 
     @Test
-    fun testGetGlucoseValues() {
+    fun testGetGlucoseValues() = runTest {
         val glucoseValues = listOf(
             GV(
                 timestamp = 1_000_000L, raw = 90.0, value = 93.0,
@@ -274,39 +288,33 @@ class LoopHubTest : TestBase() {
             )
         )
         whenever(persistenceLayer.getBgReadingsDataFromTime(1001_000, false))
-            .thenReturn(Single.just(glucoseValues))
+            .thenReturn(glucoseValues)
+        // No smoothed/calibrated overlay: the stored values come back as they are.
+        whenever(iobCobCalculator.ads).thenReturn(mock<AutosensDataStore>())
         assertArrayEquals(
             glucoseValues.toTypedArray(),
             loopHub.getGlucoseValues(Instant.ofEpochMilli(1001_000), false).toTypedArray()
         )
         verify(persistenceLayer).getBgReadingsDataFromTime(1001_000, false)
+        verify(iobCobCalculator).ads
     }
 
     @Test
     fun testPostCarbs() {
         val constraint = mock<Constraint<Int>> {
-            onGeneric { value() }.thenReturn(99)
+            on { value() }.thenReturn(99)
         }
         whenever(constraints.getMaxCarbsAllowed()).thenReturn(constraint)
         loopHub.postCarbs(100)
         verify(constraints).getMaxCarbsAllowed()
-        verify(userEntryLogger).log(
-            Action.CARBS,
-            Sources.Garmin,
-            null,
-            listOf(ValueWithUnit.Gram(99))
-        )
-        verify(commandQueue).bolus(
-            argThat { b ->
-                b!!.eventType == TE.Type.CARBS_CORRECTION &&
-                    b.carbs == 99.0
-            } ?: DetailedBolusInfo(),
-            isNull()
-        )
+        runBlocking {
+            // Carbs delivery now rides the shared executor (one audited path).
+            verify(wizardBolusExecutor).deliverCarbs(eq(99), isNull(), eq(Sources.Garmin), any(), any())
+        }
     }
 
     @Test
-    fun testStoreHeartRate() {
+    fun testStoreHeartRate() = runTest {
         val samplingStart = Instant.ofEpochMilli(1_001_000)
         val samplingEnd = Instant.ofEpochMilli(1_101_000)
         val hr = HR(
@@ -314,18 +322,20 @@ class LoopHubTest : TestBase() {
             duration = samplingEnd.toEpochMilli() - samplingStart.toEpochMilli(),
             dateCreated = clock.millis(),
             beatsPerMinute = 101.0,
-            device = "Test Device")
-        whenever(persistenceLayer.insertOrUpdateHeartRate(hr)).thenReturn(
-            Single.just(PersistenceLayer.TransactionResult())
+            device = "Test Device"
+        )
+        whenever(persistenceLayer.insertOrUpdateHeartRates(listOf(hr))).thenReturn(
+            PersistenceLayer.TransactionResult()
         )
         loopHub.storeHeartRate(
             samplingStart, samplingEnd, 101, "Test Device"
         )
-        verify(persistenceLayer).insertOrUpdateHeartRate(hr)
+        kotlinx.coroutines.delay(100.milliseconds) // Give time for GlobalScope.launch to complete
+        verify(persistenceLayer).insertOrUpdateHeartRates(listOf(hr))
     }
 
     @Test
-    fun testStoreStepsCount() {
+    fun testStoreStepsCount() = runTest {
         val samplingStart = Instant.ofEpochMilli(1_001_000)
         val samplingEnd = Instant.ofEpochMilli(1_301_000)
         val sc = SC(
@@ -340,9 +350,7 @@ class LoopHubTest : TestBase() {
             device = "Test Device",
             dateCreated = clock.millis(),
         )
-        whenever(persistenceLayer.insertOrUpdateStepsCount(sc)).thenReturn(
-            Single.just(PersistenceLayer.TransactionResult())
-        )
+        whenever(persistenceLayer.insertOrUpdateStepsCount(sc)).thenReturn(PersistenceLayer.TransactionResult())
         loopHub.storeStepsCount(
             samplingStart,
             samplingEnd,
@@ -354,6 +362,78 @@ class LoopHubTest : TestBase() {
             60,
             "Test Device",
         )
+        delay(100)
         verify(persistenceLayer).insertOrUpdateStepsCount(sc)
+    }
+
+    private fun note(text: String, atMs: Long, durationMin: Long) =
+        TE(timestamp = atMs, type = TE.Type.NOTE, glucoseUnit = GlucoseUnit.MGDL, note = text, duration = durationMin * 60_000L)
+
+    /** Same window as the loop: the note's duration, 90 min without one, never more than 150 min. */
+    @Test
+    fun testDetectActiveTherapyMode_Coffee() {
+        val t0 = 1_700_000_000_000L
+        val min = 60_000L
+        assertEquals("COFFEE", loopHub.detectActiveTherapyMode(listOf(note("coffee", t0, 0)), t0 + 89 * min))
+        assertEquals(null, loopHub.detectActiveTherapyMode(listOf(note("coffee", t0, 0)), t0 + 91 * min))
+        assertEquals("COFFEE", loopHub.detectActiveTherapyMode(listOf(note("café", t0, 120)), t0 + 119 * min))
+        assertEquals(null, loopHub.detectActiveTherapyMode(listOf(note("coffee", t0, 300)), t0 + 151 * min))
+    }
+
+    /** A declared meal wins over coffee, as in the loop. */
+    @Test
+    fun testDetectActiveTherapyMode_MealWinsOverCoffee() {
+        val t0 = 1_700_000_000_000L
+        val events = listOf(note("coffee", t0, 90), note("bfast", t0, 60))
+        assertEquals("BFAST", loopHub.detectActiveTherapyMode(events, t0 + 10 * 60_000L))
+    }
+
+    @Test
+    fun postBolus_limitedByConstraintsAndSentToQueue() = runTest {
+        whenever(constraints.applyBolusConstraints(any())).thenReturn(ConstraintObject(1.5, aapsLogger))
+        val result = mock<PumpEnactResult> { on { success } doReturn true }
+        whenever(commandQueue.bolus(any())).thenReturn(result)
+        var failure: String? = null
+
+        assertEquals(1.5, loopHub.postBolus(3.0) { failure = it }, 1e-9)
+
+        verify(constraints).applyBolusConstraints(any())
+        val captor = argumentCaptor<DetailedBolusInfo>()
+        verify(commandQueue).bolus(captor.capture())
+        assertEquals(1.5, captor.firstValue.insulin, 1e-9)
+        assertNull(failure)
+    }
+
+    @Test
+    fun postBolus_queueFailureIsReported() = runTest {
+        whenever(constraints.applyBolusConstraints(any())).thenReturn(ConstraintObject(1.0, aapsLogger))
+        val result = mock<PumpEnactResult> {
+            on { success } doReturn false
+            on { comment } doReturn "Loop is suspended"
+        }
+        whenever(commandQueue.bolus(any())).thenReturn(result)
+        var failure: String? = null
+
+        assertEquals(1.0, loopHub.postBolus(1.0) { failure = it }, 1e-9)
+
+        verify(constraints).applyBolusConstraints(any())
+        verify(commandQueue).bolus(any())
+        assertEquals("Loop is suspended", failure)
+    }
+
+    @Test
+    fun postBolus_zeroAfterConstraintsIsNotSent() {
+        whenever(constraints.applyBolusConstraints(any())).thenReturn(ConstraintObject(0.0, aapsLogger))
+
+        assertEquals(0.0, loopHub.postBolus(2.0) { }, 1e-9)
+
+        verify(constraints).applyBolusConstraints(any())
+    }
+
+    @Test
+    fun postBolus_invalidAmountIsNotSent() {
+        assertEquals(0.0, loopHub.postBolus(Double.NaN) { }, 1e-9)
+        assertEquals(0.0, loopHub.postBolus(-1.0) { }, 1e-9)
+        assertEquals(0.0, loopHub.postBolus(0.0) { }, 1e-9)
     }
 }

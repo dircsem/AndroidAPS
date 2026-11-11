@@ -100,6 +100,6 @@ data class AIMIStepsDataMTR(
     val isValid: Boolean = false
 ) {
     companion object {
-        val EMPTY = AIMIStepsDataMTR()
+        val EMPTY = AIMIStepsDataMTR(0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, "Unknown", 0L, false)
     }
 }

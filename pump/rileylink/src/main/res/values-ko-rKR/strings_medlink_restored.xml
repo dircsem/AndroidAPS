@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="riley_link_ble_config_remove_riley_link">삭제</string>
+    <string name="riley_link_ble_config_scan_error">스캔 에러: %1$d</string>
+    <string name="riley_link_ble_config_scan_finished">스캔 완료</string>
+    <string name="rileylink_error_pump_unreachable">펌프에 연결할 수 없습니다.</string>
+    <string name="rileylink_settings_tab1">설정</string>
+    <string name="rileylink_settings_tab2">이력</string>
+</resources>

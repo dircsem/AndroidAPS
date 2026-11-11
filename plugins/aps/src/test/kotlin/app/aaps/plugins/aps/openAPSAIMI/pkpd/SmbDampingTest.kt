@@ -1,7 +1,8 @@
 package app.aaps.plugins.aps.openAPSAIMI.pkpd
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 class SmbDampingTest {
 
@@ -74,5 +75,73 @@ class SmbDampingTest {
             activity = createActivity()
         )
         assertEquals(0.6, result, 0.01)
+    }
+
+    // B2 — at meal onset (elapsed 0) the late-fat multiplier must equal the *preference* floor (0.7),
+    // NOT the old hardcoded 0.85 that ignored the user setting.
+    @Test
+    fun `late fat uses preference floor at meal onset`() {
+        val audit = damping.dampWithAudit(
+            smbU = 1.0,
+            iobTailFrac = 0.0,
+            exercise = false,
+            suspectedLateFatMeal = true,
+            bypassDamping = false,
+            activity = createActivity(),
+            elapsedSinceMealMin = 0.0
+        )
+        assertEquals(0.70, audit.lateFatMult, 1e-9)
+        assertEquals(0.70, audit.out, 1e-9)
+    }
+
+    // B1+F5 — the time ladder must actually depend on elapsed. Past 4h the rise has faded, so the
+    // multiplier ramps toward neutral (0.95) instead of being pinned at a constant.
+    @Test
+    fun `late fat ramps toward neutral after four hours`() {
+        val mid = damping.dampWithAudit(
+            1.0, 0.0, false, suspectedLateFatMeal = true,
+            bypassDamping = false, activity = createActivity(), elapsedSinceMealMin = 120.0
+        )
+        assertEquals(0.825, mid.lateFatMult, 1e-9) // 0.7 + (0.95-0.7)*0.5
+
+        val late = damping.dampWithAudit(
+            1.0, 0.0, false, suspectedLateFatMeal = true,
+            bypassDamping = false, activity = createActivity(), elapsedSinceMealMin = 300.0
+        )
+        assertEquals(0.95, late.lateFatMult, 1e-9) // clamped at 4h
+    }
+
+    // F6 — damp() and dampWithAudit() must agree (single implementation).
+    @Test
+    fun `damp matches dampWithAudit out`() {
+        val direct = damping.damp(
+            1.0, 0.3, exercise = true, suspectedLateFatMeal = true,
+            bypassDamping = false, activity = createActivity(), elapsedSinceMealMin = 90.0
+        )
+        val audited = damping.dampWithAudit(
+            1.0, 0.3, exercise = true, suspectedLateFatMeal = true,
+            bypassDamping = false, activity = createActivity(), elapsedSinceMealMin = 90.0
+        )
+        assertEquals(audited.out, direct, 1e-9)
+    }
+
+    // The preference range of `OApsAIMISmbLateFatDamping` starts at 0.0. Taken as is, that would
+    // zero every SMB for up to four hours, so the multiplier is floored at 0.5.
+    @Test
+    fun `late fat damping never zeroes the smb even at the lowest preference`() {
+        val zeroPolicy = SmbDamping(
+            TailAwareSmbPolicy(
+                tailIobHigh = 0.25,
+                smbDampingAtTail = 0.5,
+                postExerciseDamping = 0.6,
+                lateFattyMealDamping = 0.0
+            )
+        )
+        val audit = zeroPolicy.dampWithAudit(
+            1.0, 0.0, exercise = false, suspectedLateFatMeal = true,
+            bypassDamping = false, activity = createActivity(), elapsedSinceMealMin = 0.0
+        )
+        assertTrue(audit.lateFatMult >= 0.5, "lateFatMult was ${audit.lateFatMult}")
+        assertTrue(audit.out >= 0.5, "out was ${audit.out}")
     }
 }

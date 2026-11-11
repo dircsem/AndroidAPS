@@ -50,7 +50,8 @@ object SmbInstructionExecutor {
         val highCarbTime: Boolean,
         val snackTime: Boolean,
         val sleepTime: Boolean,
-        val recentSteps5Minutes: Int,
+        /** Steps in the last 5 minutes. `null` means unknown: the DIA is then not changed for steps. */
+        val recentSteps5Minutes: Int?,
         val recentSteps10Minutes: Int,
         val recentSteps30Minutes: Int,
         val recentSteps60Minutes: Int,
@@ -85,19 +86,22 @@ object SmbInstructionExecutor {
         val profileCurrentBasal: Double,
         val cob: Float,
         val globalReactivityFactor: Double,  // 🎯 NEW: From UnifiedReactivityLearner
-        val isConfirmedHighRise: Boolean = false // 🚀 NEW: For meal confirmation
+        val isConfirmedHighRise: Boolean = false, // 🚀 NEW: For meal confirmation
+        /** Min BG (mg/dL) in lookback window; used for post-hypo MPC/PI blend dampening. */
+        val minBgLookbackMgdl: Double = Double.MAX_VALUE,
     )
 
     data class Hooks(
         val refineSmb: (Float, Float, Float, Float, OapsProfileAimi) -> Float,
         // ❌ adjustFactors REMOVED: UnifiedReactivityLearner replaces time-based factors
-        val calculateAdjustedDia: (Float, Int, Int, Float, Float, Float, Double) -> Double,
+        val calculateAdjustedDia: (Float, Int, Int?, Float, Float, Float, Double) -> Double,
         val costFunction: (Double, Double, Double, Int, Double, Double) -> Double,
         val applySafety: (MealData, Float, Double?, StringBuilder?, PkPdRuntime?, Boolean, Boolean, Boolean) -> Float,
         val runtimeToMinutes: (Long?) -> Int,
         val computeHypoThreshold: (Double, Int?) -> Double,
         val isBelowHypo: (Double, Double, Double, Double, Double) -> Boolean,
-        val logDataMl: (Float, Float) -> Unit,
+        /** Stages the training row of this tick. The label is NOT passed: it is stamped at the tick tail. */
+        val logDataMl: (Float) -> Unit,
         val logData: (Float, Float) -> Unit,
         val roundBasal: (Double) -> Double,
         val roundDouble: (Double, Int) -> Double
@@ -343,21 +347,23 @@ object SmbInstructionExecutor {
         // Avoid over-amplifying by applying a softened factor in act-target path.
         val actTargetFactor = (1.0 + (factors - 1.0) * 0.5).coerceIn(0.80, 1.30)
         val actTarget = deltaGross / input.sens * actTargetFactor.toFloat()
-        var actMissing: Double
-        var deltaScore = 0.5
-
-        if (input.glucoseStatus.delta <= 4.0) {
-            actMissing = hooks.roundDouble(
-                (actCurr * smbToGive - max(actFuture, 0.0)) / 5,
-                4
-            )
-            deltaScore = ((input.bg - input.targetBg) / 100.0).coerceIn(0.0, 1.0)
-        } else {
-            actMissing = hooks.roundDouble(
-                (actTarget - max(actFuture, 0.0)) / 5,
-                4
-            )
-        }
+        val postHypoRecent = input.minBgLookbackMgdl < SmbMpcPiBlend.POST_HYPO_BG_THRESHOLD_MGDL
+        val deltaScore = SmbMpcPiBlend.computeDeltaScore(
+            delta = input.glucoseStatus.delta,
+            bg = input.bg,
+            targetBg = input.targetBg,
+            postHypoRecent = postHypoRecent,
+        )
+        var actMissing = hooks.roundDouble(
+            SmbMpcPiBlend.computeActMissing(
+                delta = input.glucoseStatus.delta,
+                actCurr = actCurr.toDouble(),
+                actFuture = actFuture.toDouble(),
+                smbToGive = smbToGive.toDouble(),
+                actTarget = actTarget.toDouble(),
+            ),
+            4
+        )
 
         val tpD = input.tp.toDouble()
         val tdD = td.coerceAtLeast(tpD * 2.1)
@@ -366,10 +372,11 @@ object SmbInstructionExecutor {
         val s = 1 / (1 - a + (1 + a) * kotlin.math.exp(-tdD / tau))
         var aimiInsReq = actMissing / (s / (tau * tau) * tpD * (1 - tpD / tdD) * kotlin.math.exp(-tpD / tau))
 
+        aimiInsReq = aimiInsReq.coerceAtLeast(0.0)
         aimiInsReq = if (aimiInsReq < smbToGive) aimiInsReq else smbToGive.toDouble()
         // 🔒 SAFETY: Cap strict ici aussi pour éviter qu'une heuristique interne ne dépasse le maxSMB
         aimiInsReq = kotlin.math.min(aimiInsReq, input.maxSmb)
-        val finalInsulinDose = hooks.roundDouble(aimiInsReq, 2)
+        val finalInsulinDose = hooks.roundDouble(aimiInsReq.coerceAtLeast(0.0), 2)
 
         val doseMin = 0.0
         val doseMax = input.maxSmb
@@ -402,28 +409,32 @@ object SmbInstructionExecutor {
         val correction = kp * error
 
         val optimalBasalMpc = (optimalDose + correction).coerceIn(doseMin, doseMax)
-        // --- Mix MPC / PI : MPC plus dominant pour BG > cible ---
-        val alphaRaw = 0.5 + 0.5 * deltaScore  // 0.3 → 0.5 de base
-        val alpha = alphaRaw.coerceIn(0.3, 0.9)
-
-        //val alpha = 0.4 + 0.5 * deltaScore
+        val alpha = SmbMpcPiBlend.computeAlpha(deltaScore)
+        val piDoseForBlend = finalInsulinDose.coerceAtLeast(0.0)
+        if (postHypoRecent && input.glucoseStatus.delta > SmbMpcPiBlend.FAST_RISE_DELTA_THRESHOLD) {
+            input.rT.reason.append(" | Post-hypo blend dampen (minBG<70)")
+        }
         input.rT.reason.appendLine(
             input.context.getString(
                 R.string.reason_mpc_pi,
                 optimalBasalMpc,
                 alpha * 100,
-                finalInsulinDose,
+                piDoseForBlend,
                 (1 - alpha) * 100
             )
         )
         run {
-            val mpcUsed = kotlin.math.max(0.0, alpha * optimalBasalMpc)
-            val piUsed  = kotlin.math.max(0.0, (1 - alpha) * finalInsulinDose)
+            val mpcUsed = alpha * optimalBasalMpc.coerceAtLeast(0.0)
+            val piUsed = (1 - alpha) * piDoseForBlend
             val denom = mpcUsed + piUsed
             val mpcShare = if (denom > 1e-6) 100.0 * mpcUsed / denom else 0.0
             input.rT.reason.append(" | MPC utile: %.0f%% (alpha=%.0f%%)".format(mpcShare, 100 * alpha))
         }
-        var smbDecision = (alpha * optimalBasalMpc + (1 - alpha) * finalInsulinDose).toFloat()
+        var smbDecision = SmbMpcPiBlend.blendMpcPi(
+            optimalBasalMpc = optimalBasalMpc,
+            piDose = piDoseForBlend,
+            alpha = alpha,
+        ).toFloat()
 
         val suspectedLateFatMeal = input.highCarbTime && hooks.runtimeToMinutes(input.highCarbRunTime) > 90
         smbDecision = hooks.applySafety(
@@ -461,7 +472,10 @@ object SmbInstructionExecutor {
                 exercise = input.sportTime,
                 suspectedLateFatMeal = input.lateFatRiseFlag,
                 mealModeRun = mealModeRun,
-                highBgRiseActive = highBgRiseActive
+                highBgRiseActive = highBgRiseActive,
+                // Best available time-since-meal at this call site: high-carb meal runtime (0 when unknown →
+                // full late-fat damping at the preference floor). Lets SmbDamping ramp toward neutral post-meal.
+                elapsedSinceMealMin = hooks.runtimeToMinutes(input.highCarbRunTime).toDouble()
             )
         )
         var smbAfterDamping = dampingOut.smbAfterDamping
@@ -579,7 +593,7 @@ object SmbInstructionExecutor {
             )
         }
 
-        hooks.logDataMl(predictedSmb, finalSmb)
+        hooks.logDataMl(predictedSmb)
         hooks.logData(predictedSmb, finalSmb)
 
         input.pkpdRuntime?.let { runtime ->

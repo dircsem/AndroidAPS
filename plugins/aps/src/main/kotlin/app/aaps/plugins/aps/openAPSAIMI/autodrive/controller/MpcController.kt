@@ -4,10 +4,14 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.openAPSAIMI.autodrive.InsulinActionModel
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.models.AutoDriveCommand
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.models.AutoDriveState
+import app.aaps.plugins.aps.openAPSAIMI.release.HyperSeverityTier
+import app.aaps.plugins.aps.openAPSAIMI.release.HyperTrajectoryMpcFeedForward
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -25,10 +29,9 @@ class MpcController @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences
 ) {
-    // 🔬 METABOLIC_SI_BASE — CALIBRATION
-    // 0.05 : Augmente l'agressivité (perçu comme moins puissant par le solveur)
-    // pour permettre d'atteindre le maxIOB réel de l'utilisateur lors d'une montée.
-    private val METABOLIC_SI_BASE = 0.05
+    // 🔬 Action de l'insuline : voir InsulinActionModel.
+    // L'ancien `METABOLIC_SI_BASE = 0.05` vivait ici, dans la barrière et dans l'estimateur avec
+    // trois valeurs différentes. La calibration est désormais énoncée en une constante de temps.
 
     // Paramètres MPC
     private val horizonMinutes = 180          // On vérifie sur 180 minutes (Weighted Horizon)
@@ -36,6 +39,57 @@ class MpcController @Inject constructor(
     private val steps = horizonMinutes / stepMinutes
     // Poids de base (Modifiés dynamiquement si Nuit/Jour)
     private val qBg = 1.0                    // Pénalité pour l'écart au Target BG
+
+    /** Hard cap on grid search size — prevents CPU blow-ups when maxSMB is very high. */
+    internal companion object {
+        const val MAX_DOSE_CANDIDATES = 400
+        const val FINE_SEARCH_STEP_U = 0.005
+        const val COARSE_SEARCH_STEP_U = 0.015
+
+        /**
+         * The doses the solver is allowed to consider, over the whole safe domain `[0, maxSafeDoseU]`.
+         *
+         * The candidate count is capped at [MAX_DOSE_CANDIDATES] for CPU. That cap used to truncate the
+         * **domain** instead of coarsening the **step**: the loop stopped after 400 entries, so at
+         * [FINE_SEARCH_STEP_U] the largest dose the solver could ever score was
+         * `399 * 0.005 = 1.995 U`, whatever `maxSafeDoseU` said.
+         *
+         * That was measurable in production. `isHyperPlateauQuiet` requires `|combinedDelta| < 1.2`, so
+         * every rising tick took the fine step and the 1.995 U ceiling, while a quiet plateau took the
+         * coarse step and a 5.985 U ceiling — the domain was widest exactly when the need was smallest.
+         * On 172 rising ticks at BG >= 140 with no carbs on board, `model_output_u` had a maximum of
+         * **1.87 U** and a p90 of 1.85, against `maxSafeDoseU` of about 2.5 U. The identity is exact:
+         * `1.995 - profileBasal * 3 / 12 = 1.995 - 0.58 / 4 = 1.850`, since the TBR share is subtracted
+         * from `bestDose` afterwards. The solver never saw the top fifth of its own authorised domain.
+         *
+         * The step is now widened so the last candidate reaches `maxSafeDoseU`. The CPU guard is
+         * unchanged — never more than [MAX_DOSE_CANDIDATES] candidates — and the resolution only
+         * coarsens above a domain of `MAX_DOSE_CANDIDATES * searchStep` (1.995 U at the fine step),
+         * where it becomes `maxSafeDoseU / 399`: 0.0063 U at a 2.5 U domain, still an order of magnitude
+         * finer than the pump's own bolus granularity.
+         *
+         * This widens the search domain only. It cannot exceed `maxSafeDoseU`, which is
+         * `min(activeMaxSmb, weight * uPerKg)` and is not touched here, and every bound downstream —
+         * `ControlBarrierShield`, the catalogue caps, `finalizeAndCapSMB`, `applySmbUnits` — still
+         * applies. It cannot add insulin on a tick whose optimum is interior to the domain, which is the
+         * case whenever the cost function is already asking for less than the ceiling.
+         */
+        fun buildDoseCandidates(maxSafeDoseU: Double, searchStep: Double): List<Double> {
+            if (!maxSafeDoseU.isFinite() || maxSafeDoseU <= 0.0) return listOf(0.0)
+            val requested = searchStep.takeIf { it.isFinite() && it > 0.0 } ?: FINE_SEARCH_STEP_U
+            // Coarsen the step rather than cut the domain: the last candidate must reach maxSafeDoseU.
+            val minStepForFullDomain = maxSafeDoseU / (MAX_DOSE_CANDIDATES - 1)
+            val step = max(requested, minStepForFullDomain)
+            val out = ArrayList<Double>(min(MAX_DOSE_CANDIDATES, (maxSafeDoseU / step).toInt() + 2))
+            var dose = 0.0
+            while (dose <= maxSafeDoseU + step * 0.5 && out.size < MAX_DOSE_CANDIDATES) {
+                out.add(min(dose, maxSafeDoseU))
+                dose += step
+            }
+            if (out.isEmpty()) out.add(0.0)
+            return out
+        }
+    }
 
     /**
      * Calcule la dose optimale pour les 5 prochaines minutes (Receding Horizon).
@@ -59,24 +113,44 @@ class MpcController @Inject constructor(
             activeMaxSmb = 0.5 // On refuse d'envoyer de fortes doses d'un coup
         } else {
             activeTargetBg = 100.0
+
+            val htrTier = HyperSeverityTier.entries.getOrElse(state.htrTierOrdinal) { HyperSeverityTier.OFF }
+            val htrMaxMult = HyperTrajectoryMpcFeedForward.aggressiveMaxSmbMultiplier(
+                tier = htrTier,
+                projectionLeadMgdl = state.htrProjectionLeadMgdl,
+            )
             
             // 🚀 DAWN GUARD CONSERVATISM
             // Si on suspecte un pic de cortisol (Matériel + Heure + Pas de glucides + Pas de pas), 
             // on rend l'IA extrêmement prudente sur l'envoi de bolus (SMB).
-            val isDawnWindow = state.hour in 5..9
+            val isDawnWindow = state.hour in 4..10
             val isLowActivity = state.steps < 200
-            val isDawnRiseSuspected = isDawnWindow && isLowActivity && (state.hr > state.rhr + 5) && state.cob < 0.1
+            // No heart-rate term. It used to read `state.hr > state.rhr + 5`, which on a resting rate
+            // of 50 means "over 55" — true almost every morning — and this branch sits ABOVE the one
+            // commented "Unannounced Meal Crushing", so a heart rate 5 bpm over resting made that
+            // branch unreachable and a real undeclared breakfast was treated as cortisol. The same
+            // guard in ContinuousStateEstimator (`legacyDawn`) already does this job with no heart
+            // rate at all; the two are now consistent. The hour, the step count, the carbs test and
+            // `physioExtendedDawnGuard` — which comes from the physiological phase, not from the
+            // heart rate — all keep their say.
+            val legacyDawnRise = isDawnWindow && isLowActivity && state.cob < 0.1
+            val isDawnRiseSuspected = (state.physioExtendedDawnGuard && state.cob < 0.1) || legacyDawnRise
 
             if (isDawnRiseSuspected) {
-                activeRInsulin = 100.0 // L'insuline est "très chère" : on préfère la basale lente
-                activeMaxSmb = state.maxSMB * 0.5 // On divise par 2 le plafond de bolus
-            } else if (state.estimatedRa > 3.0) {
-                // 🧨 DYNAMIC AGGRESSIVENESS (Phase 11 - Unannounced Meal Crushing)
-                activeRInsulin = 10.0
-                activeMaxSmb = state.highBgMaxSMB 
+                val dawnCostMult = if (state.physioExtendedDawnGuard) {
+                    4.0
+                } else {
+                    1.0
+                }
+                activeRInsulin = 100.0 * dawnCostMult.coerceAtMost(4.0)
+                activeMaxSmb = state.maxSMB * if (state.physioExtendedDawnGuard) 0.45 else 0.5
+            } else if (state.estimatedRa > 3.0 || htrTier >= HyperSeverityTier.ANTICIPATORY) {
+                // 🧨 DYNAMIC AGGRESSIVENESS (Phase 11 - Unannounced Meal Crushing) + HTR feed-forward
+                activeRInsulin = if (htrTier >= HyperSeverityTier.ANTICIPATORY) 12.0 else 10.0
+                activeMaxSmb = state.highBgMaxSMB * htrMaxMult
             } else if (state.bg > 120.0) {
                 activeRInsulin = 20.0
-                activeMaxSmb = state.highBgMaxSMB
+                activeMaxSmb = state.highBgMaxSMB * htrMaxMult.coerceAtLeast(1.0)
             } else {
                 activeRInsulin = 30.0
                 activeMaxSmb = state.maxSMB
@@ -87,18 +161,22 @@ class MpcController @Inject constructor(
         // Bridle le domaine de recherche MPC : min(plafond SMB actif, poids × coeff).
         // Coeff configurable (OApsAIMIMpcInsulinUPerKgPerStep), défaut 0.065 U/kg/5min (~+30% vs ancien 0.05 fixe).
         val uPerKg = preferences.get(DoubleKey.OApsAIMIMpcInsulinUPerKgPerStep)
-        val maxSafeDoseU = min(activeMaxSmb, state.patientWeightKg * uPerKg)
+        val boundedMaxSmb = if (activeMaxSmb.isFinite() && activeMaxSmb > 0.0) activeMaxSmb else state.maxSMB.coerceAtLeast(0.0)
+        val weightCap = state.patientWeightKg.takeIf { it.isFinite() && it > 0.0 }?.let { it * uPerKg } ?: boundedMaxSmb
+        val maxSafeDoseU = min(boundedMaxSmb, weightCap).coerceAtLeast(0.0)
+
+        val isHyperPlateauQuiet = !state.isNight &&
+            state.bg > 145.0 &&
+            abs(state.bgVelocity) < 0.35 &&
+            abs(state.combinedDelta) < 1.2 &&
+            state.estimatedRa < 2.5
 
         // Résolution via balayage fin sur le domaine praticable Sécurisé [0.0 , maxSafeDoseU]
-        // Un pas de 0.005U sur 5 min équivaut à un ajustement basal lisse de 0.06 U/h
-        val searchStep = 0.005
-        val doseCandidates = generateSequence(0.0) { it + searchStep }
-            .takeWhile { it <= maxSafeDoseU }
-            .toList()
+        val searchStep = if (isHyperPlateauQuiet) COARSE_SEARCH_STEP_U else FINE_SEARCH_STEP_U
+        val doseCandidates = Companion.buildDoseCandidates(maxSafeDoseU, searchStep)
 
-        // 📊 MULTI-HORIZON COMPARISON (Alignment Request)
-        // We find the optimal dose for each horizon to provide a comparative view in the logs.
-        val horizons = listOf(60, 120, 180)
+        // Hyper plateau: act on 180m horizon only (still safe); skip extra alignment work.
+        val horizons = if (isHyperPlateauQuiet) listOf(180) else listOf(60, 120, 180)
         val optimalDoses = mutableMapOf<Int, Double>()
 
         for (h in horizons) {
@@ -117,11 +195,19 @@ class MpcController @Inject constructor(
         }
 
         val bestDose = optimalDoses[180] ?: 0.0 // We act on the safest (180w) result
-        
-        aapsLogger.debug(
-            LTag.APS,
-            "🧮 [MPC] Alignment Comparison: 60=${optimalDoses[60]!!.format(2)}U, 120=${optimalDoses[120]!!.format(2)}U, 180w=${bestDose.format(2)}U"
-        )
+
+        if (isHyperPlateauQuiet) {
+            aapsLogger.debug(
+                LTag.APS,
+                "🧮 [MPC] Hyper-plateau quiet mode: candidates=${doseCandidates.size} step=${searchStep} 180w=${bestDose.format(2)}U",
+            )
+        } else {
+            aapsLogger.debug(
+                LTag.APS,
+                "🧮 [MPC] Alignment Comparison: 60=${horizonDoseLabel(optimalDoses, 60)}U, " +
+                    "120=${horizonDoseLabel(optimalDoses, 120)}U, 180w=${bestDose.format(2)}U",
+            )
+        }
 
         // Traitement de la sortie :
         val maxTbrMultiplier = if (state.isNight) 5.0 else 3.0
@@ -148,7 +234,7 @@ class MpcController @Inject constructor(
         }
 
         val smbU = max(0.0, bestDose - (tbrUph / 12.0))
-        val comparisonStr = "H:[60:${optimalDoses[60]!!.format(2)}|120:${optimalDoses[120]!!.format(2)}|180:${bestDose.format(2)}]"
+        val comparisonStr = formatHorizonComparison(optimalDoses, bestDose)
 
         return AutoDriveCommand(
             temporaryBasalRate = tbrUph,
@@ -175,7 +261,10 @@ class MpcController @Inject constructor(
         val p1 = 0.015 
         
         // La sensibilité est dynamique, estimée dans l'état, mise à l'échelle métabolique
-        val si = startState.estimatedSI * METABOLIC_SI_BASE
+        val si = InsulinActionModel.controlCoefficient(
+            isfMgdlPerU = InsulinActionModel.isfFromStateSi(startState.estimatedSI),
+            tauMin = InsulinActionModel.MPC_TAU_MIN,
+        )
 
         for (k in 1..targetSteps) {
             // -- Dynamique du Glucose (Simulation Euler sur 5 min) --
@@ -224,6 +313,13 @@ class MpcController @Inject constructor(
 
         return totalCost
     }
+
+    /** Safe labels when [horizons] omits 60/120 (hyper-plateau quiet uses 180 only). */
+    private fun horizonDoseLabel(optimalDoses: Map<Int, Double>, minutes: Int): String =
+        optimalDoses[minutes]?.format(2) ?: "n/a"
+
+    private fun formatHorizonComparison(optimalDoses: Map<Int, Double>, bestDose: Double): String =
+        "H:[60:${horizonDoseLabel(optimalDoses, 60)}|120:${horizonDoseLabel(optimalDoses, 120)}|180:${bestDose.format(2)}]"
 
     private fun Double.format(digits: Int) = "%.${digits}f".format(this)
 }

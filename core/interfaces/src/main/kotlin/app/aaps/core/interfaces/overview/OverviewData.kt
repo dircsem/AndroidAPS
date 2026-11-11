@@ -6,6 +6,7 @@ import androidx.annotation.DrawableRes
 import app.aaps.core.data.model.GV
 import app.aaps.core.interfaces.graph.Scale
 import app.aaps.core.interfaces.graph.SeriesData
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
 
 interface OverviewData {
 
@@ -16,22 +17,20 @@ interface OverviewData {
 
     fun reset()
     fun initRange()
+
     /*
      * PUMP STATUS
      */
-
     var pumpStatus: String
 
     /*
      * CALC PROGRESS
      */
-
     var calcProgressPct: Int
 
     /*
      * TEMPORARY BASAL
      */
-
     fun temporaryBasalText(): String
     fun temporaryBasalDialogText(): String
     @DrawableRes fun temporaryBasalIcon(): Int
@@ -39,19 +38,24 @@ interface OverviewData {
 
     /*
      * EXTENDED BOLUS
-    */
+     */
     fun extendedBolusText(): String
     fun extendedBolusDialogText(): String
 
     /*
      * Graphs
      */
-
     var bgReadingsArray: List<GV>
     var maxBgValue: Double
     var bucketedGraphSeries: SeriesData
     var bgReadingGraphSeries: SeriesData
     var predictionsGraphSeries: SeriesData
+
+    /**
+     * Refreshes the legacy GraphView prediction series from [PreparePredictionsWorker] output.
+     * The Compose/Vico path uses [app.aaps.core.interfaces.overview.graph.OverviewDataCache.predictionsFlow] separately.
+     */
+    fun replacePredictionGraphSeriesFromWorker(points: List<BgDataPoint>)
 
     val basalScale: Scale
     var baseBasalGraphSeries: SeriesData
@@ -95,7 +99,8 @@ interface OverviewData {
     val devScale: Scale
     var deviationsSeries: SeriesData
 
-    var maxRatioValueFound: Double                    //even if sens data equals 0 for all the period, minimum scale is between 95% and 105%
+    // Even if sens data equals 0 for all the period, minimum scale is between 95% and 105%.
+    var maxRatioValueFound: Double
     var minRatioValueFound: Double
     val ratioScale: Scale
     var ratioSeries: SeriesData
@@ -111,9 +116,9 @@ interface OverviewData {
     val dsMinScale: Scale
     var dsMaxSeries: SeriesData
     var dsMinSeries: SeriesData
+
     var heartRateScale: Scale
     var heartRateGraphSeries: SeriesData
     var stepsForScale: Scale
     var stepsCountGraphSeries: SeriesData
-
 }

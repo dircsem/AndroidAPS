@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor
 
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -11,16 +12,21 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Space
+import android.widget.Toast
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.ui.dialogs.OKDialog
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.widget.Switch
 
 
@@ -33,8 +39,7 @@ class AimiModeSettingsActivity : TranslatedDaggerAppCompatActivity() {
     // private val prefs by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var persistenceLayer: app.aaps.core.interfaces.db.PersistenceLayer
-    @Inject lateinit var aapsSchedulers: app.aaps.core.interfaces.rx.AapsSchedulers
-    private val sp by lazy { androidx.preference.PreferenceManager.getDefaultSharedPreferences(this) }
+    private val sp by lazy { getSharedPreferences("aimi_mode_activity", Context.MODE_PRIVATE) }
 
     private var selectedMode = ModeType.LUNCH
 
@@ -386,33 +391,41 @@ class AimiModeSettingsActivity : TranslatedDaggerAppCompatActivity() {
         val durationMin = inputDuration.text.toString().toIntOrNull() ?: 60
         val durationMs = durationMin * 60 * 1000L
 
-        OKDialog.showConfirmation(
-            this,
-            "Activate $modeNote mode?",
-            "This will create a Note '$modeNote' ($durationMin min) to trigger AIMI logic.",
-            {
-                 // Create Therapy Event
-                 val te = app.aaps.core.data.model.TE(
-                     timestamp = System.currentTimeMillis(),
-                     type = app.aaps.core.data.model.TE.Type.NOTE,
-                     note = modeNote,
-                     duration = durationMs, // 🚀 ADDED DURATION
-                     enteredBy = "AIMI Advisor",
-                     glucoseUnit = app.aaps.core.data.model.GlucoseUnit.MGDL
-                 )
-                 
-                 persistenceLayer.insertOrUpdateTherapyEvent(te)
-                     .subscribeOn(aapsSchedulers.io)
-                     .observeOn(aapsSchedulers.main)
-                     .subscribe({
-                         app.aaps.core.ui.toast.ToastUtils.okToast(this, "$modeNote Mode Activated ($durationMin min)!")
-                         finish()
-                     }, { error ->
-                         app.aaps.core.ui.toast.ToastUtils.errorToast(this, "Error: ${error.message}")
-                         error.printStackTrace()
-                     })
+        AlertDialog.Builder(this)
+            .setTitle("Activate $modeNote mode?")
+            .setMessage("This will create a Note '$modeNote' ($durationMin min) to trigger AIMI logic.")
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val te = app.aaps.core.data.model.TE(
+                    timestamp = System.currentTimeMillis(),
+                    type = app.aaps.core.data.model.TE.Type.NOTE,
+                    note = modeNote,
+                    duration = durationMs,
+                    enteredBy = "AIMI Advisor",
+                    glucoseUnit = app.aaps.core.data.model.GlucoseUnit.MGDL
+                )
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            persistenceLayer.insertOrUpdateTherapyEvent(te)
+                        }
+                        Toast.makeText(
+                            this@AimiModeSettingsActivity,
+                            "$modeNote Mode Activated ($durationMin min)!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        finish()
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            this@AimiModeSettingsActivity,
+                            "Error: ${e.message ?: e.toString()}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        e.printStackTrace()
+                    }
+                }
             }
-        )
+            .show()
     }
 
     private fun getStringPref(key: DoubleKey): String {

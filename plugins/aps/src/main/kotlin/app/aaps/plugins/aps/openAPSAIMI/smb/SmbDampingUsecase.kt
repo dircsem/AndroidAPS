@@ -14,7 +14,8 @@ object SmbDampingUsecase {
         val exercise: Boolean,
         val suspectedLateFatMeal: Boolean,
         val mealModeRun: Boolean,
-        val highBgRiseActive: Boolean
+        val highBgRiseActive: Boolean,
+        val elapsedSinceMealMin: Double = 0.0
     )
 
     data class Output(
@@ -29,7 +30,8 @@ object SmbDampingUsecase {
             smb = input.smbDecision,
             exercise = input.exercise,
             suspectedLateFatMeal = input.suspectedLateFatMeal,
-            bypassDamping = bypass
+            bypassDamping = bypass,
+            elapsedSinceMealMin = input.elapsedSinceMealMin
         )
         return Output(audit?.out ?: input.smbDecision, audit)
     }

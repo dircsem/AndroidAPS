@@ -7,7 +7,15 @@ package app.aaps.plugins.aps.openAPSAIMI.pkpd
  * Empêche la sur-correction en modulant SMB et intervalle selon le stage d'activité.
  * 
  * Principe : "Injecter → Laisser agir → Réévaluer" au lieu de "sur-corriger à chaque tick"
- * 
+ *
+ * ⚠️ STACKING (B3) : ce guard réduit le SMB sur le *même* stade d'activité insuline que
+ * `SmbDamping` (tail damping). Les deux sont indépendants et se multiplient sur le même tick :
+ * p.ex. facteur réactivité 0.60 × plancher tail 0.70 × guard absorption 0.60 ≈ ×0.25 sur un SMB.
+ * C'est intentionnel (deux vues physiologiques distinctes : réactivité apprise vs cinétique
+ * d'absorption), mais l'empilement doit rester visible dans les logs. Si un gating explicite est
+ * souhaité (n'appliquer qu'un des deux quand l'autre a déjà mordu ce tick), le faire ici — ne PAS
+ * dupliquer la logique côté `SmbDamping`.
+ *
  * @property factor Facteur multiplicatif SMB (0.4..1.0). Plus bas = plus prudent
  * @property intervalAddMin Minutes à ajouter à l'intervalle avant prochain SMB (0..6)
  * @property preferTbr Si true, privilégier TBR au lieu de SMB

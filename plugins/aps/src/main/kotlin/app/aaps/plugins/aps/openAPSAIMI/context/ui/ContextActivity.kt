@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
@@ -13,12 +14,18 @@ import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.databinding.ActivityContextBinding
 import app.aaps.plugins.aps.openAPSAIMI.context.ContextManager
 import app.aaps.plugins.aps.openAPSAIMI.context.ContextPreset
+import app.aaps.plugins.aps.openAPSAIMI.patient.PatientStatePresentationBuilder
+import app.aaps.plugins.aps.openAPSAIMI.patient.PatientStateRuntimeRepository
+import app.aaps.plugins.aps.openAPSAIMI.physio.HealthContextRepository
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.minutes
 
@@ -33,11 +40,13 @@ class ContextActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var sp: SP
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var healthContextRepository: HealthContextRepository
     
     private lateinit var binding: ActivityContextBinding
     private lateinit var adapter: ContextIntentAdapter
     
     private val activityScope = CoroutineScope(Dispatchers.Main + Job())
+    private var patientStateRefreshJob: Job? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +62,25 @@ class ContextActivity : TranslatedDaggerAppCompatActivity() {
         setupUI()
         setupPresets()
         refreshUI()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshUI()
+        refreshPhysioSnapshot()
+        startPatientStateRefresh()
+    }
+
+    override fun onPause() {
+        patientStateRefreshJob?.cancel()
+        patientStateRefreshJob = null
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        patientStateRefreshJob?.cancel()
+        activityScope.cancel()
+        super.onDestroy()
     }
     
     private fun setupUI() {
@@ -173,6 +201,69 @@ class ContextActivity : TranslatedDaggerAppCompatActivity() {
         // Settings
         binding.switchContextEnabled.isChecked = sp.getBoolean(app.aaps.core.keys.BooleanKey.OApsAIMIContextEnabled.key, false)
         binding.switchLLMEnabled.isChecked = sp.getBoolean(app.aaps.core.keys.BooleanKey.OApsAIMIContextLLMEnabled.key, false)
+        refreshPatientRuntimeUi()
+    }
+
+    private fun refreshPhysioSnapshot() {
+        activityScope.launch(Dispatchers.IO) {
+            try {
+                healthContextRepository.fetchSnapshot()
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.APS, "ContextActivity physio snapshot refresh failed", e)
+            }
+        }
+    }
+
+    private fun startPatientStateRefresh() {
+        patientStateRefreshJob?.cancel()
+        patientStateRefreshJob = activityScope.launch {
+            launch {
+                PatientStateRuntimeRepository.updates.collectLatest {
+                    refreshPatientRuntimeUi()
+                }
+            }
+            while (isActive) {
+                refreshPatientRuntimeUi()
+                delay(60_000L)
+            }
+        }
+    }
+
+    private fun refreshPatientRuntimeUi() {
+        val runtimeSnapshot = PatientStateRuntimeRepository.getLatest()
+        val presentation = runtimeSnapshot?.let {
+            PatientStatePresentationBuilder.build(
+                snapshot = it,
+                nowMs = System.currentTimeMillis(),
+            )
+        }
+        if (presentation == null) {
+            binding.layoutPatientStateDetails.visibility = View.GONE
+            binding.textPatientStateEmpty.visibility = View.VISIBLE
+            binding.textPatientStateEmpty.text = rh.gs(R.string.context_patient_state_empty)
+            return
+        }
+
+        binding.layoutPatientStateDetails.visibility = View.VISIBLE
+        binding.textPatientStateEmpty.visibility = View.GONE
+        binding.textPatientStateUpdated.text = presentation.updatedSummary
+        binding.textPatientStateMode.text = presentation.modeHeadline
+        binding.textPatientStateNarrative.text = presentation.narrative
+        binding.textPatientStateLiveBody.text = presentation.physioLiveSummary
+        binding.textPatientStateThermal.text = presentation.thermalSummary
+        binding.textPatientStatePhaseValue.text = presentation.physiologySummary
+        binding.textPatientStateIntentValue.text = presentation.intentSummary
+        binding.textPatientStateSignalsValue.text = presentation.signalSummary
+        PatientSignalGaugeBinder.bindAll(
+            mealContainer = binding.layoutPatientSignalGaugeMeal.root,
+            endogenousContainer = binding.layoutPatientSignalGaugeEndogenous.root,
+            resistanceContainer = binding.layoutPatientSignalGaugeResistance.root,
+            thermalContainer = binding.layoutPatientSignalGaugeThermal.root,
+            sensorContainer = binding.layoutPatientSignalGaugeSensor.root,
+            gauges = presentation.signalGauges,
+        )
+        binding.textPatientStateDeliveryValue.text = presentation.deliverySummary
+        binding.textPatientStateReasonsValue.text = presentation.reasonSummary
     }
     
     private fun addPreset(preset: ContextPreset) {
@@ -226,9 +317,13 @@ class ContextActivity : TranslatedDaggerAppCompatActivity() {
                 "🍷 Alcohol: ${intent.units}U ${intent.intensity.name}"
             is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.Travel -> 
                 "✈️ Travel: ${intent.intensity.name}"
-            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.MenstrualCycle -> 
+            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.MenstrualCycle ->
                 "🔄 Cycle: ${intent.phase.name}"
-            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.Custom -> 
+            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.SlowCarbMeal ->
+                "🍕 Repas lent: ${intent.intensity.name}"
+            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.HypoRecovery ->
+                "🍬 Hypo récup: ${intent.intensity.name}"
+            is app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.Custom ->
                 "📝 ${intent.description}"
         }
     }

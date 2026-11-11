@@ -6,12 +6,14 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.plugins.aps.openAPSAIMI.StepService
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.schedulers.Schedulers
 import java.util.Timer
 import java.util.TimerTask
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 📱 AIMI Phone Steps Sync Service - MTR Implementation
@@ -33,6 +35,7 @@ class AIMIPhoneStepsSyncServiceMTR @Inject constructor(
     private val sp: SP,
     private val aapsLogger: AAPSLogger
 ) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     companion object {
         private const val TAG = "PhoneStepsSync"
@@ -40,8 +43,7 @@ class AIMIPhoneStepsSyncServiceMTR @Inject constructor(
         private const val SOURCE_DEVICE = "PhoneSensor"
         private const val PREF_KEY_ENABLED = "aimi_phone_steps_sync_enable"
     }
-    
-    private val disposable = CompositeDisposable()
+
     private var syncTimer: Timer? = null
     
     /**
@@ -79,7 +81,6 @@ class AIMIPhoneStepsSyncServiceMTR @Inject constructor(
     fun stop() {
         syncTimer?.cancel()
         syncTimer = null
-        disposable.clear()
         aapsLogger.info(LTag.APS, "[$TAG] Stopped")
     }
     
@@ -90,13 +91,13 @@ class AIMIPhoneStepsSyncServiceMTR @Inject constructor(
         try {
             val now = System.currentTimeMillis()
             
-            // Read all windows from StepService
-            val steps5 = StepService.getRecentStepCount5Min()
-            val steps10 = StepService.getRecentStepCount10Min()
-            val steps15 = StepService.getRecentStepCount15Min()
-            val steps30 = StepService.getRecentStepCount30Min()
-            val steps60 = StepService.getRecentStepCount60Min()
-            val steps180 = StepService.getRecentStepCount180Min()
+            // Read all windows from StepService. Unknown (null) becomes 0 and is not written: only steps5 > 0 is stored.
+            val steps5 = StepService.getRecentStepCount5Min() ?: 0
+            val steps10 = StepService.getRecentStepCount10Min() ?: 0
+            val steps15 = StepService.getRecentStepCount15Min() ?: 0
+            val steps30 = StepService.getRecentStepCount30Min() ?: 0
+            val steps60 = StepService.getRecentStepCount60Min() ?: 0
+            val steps180 = StepService.getRecentStepCount180Min() ?: 0
             
             // Only write if we have data
             if (steps5 > 0) {
@@ -112,21 +113,17 @@ class AIMIPhoneStepsSyncServiceMTR @Inject constructor(
                     device = SOURCE_DEVICE
                 )
                 
-                disposable.add(
-                    persistenceLayer.insertOrUpdateStepsCount(sc)
-                        .subscribeOn(Schedulers.io())
-                        .subscribe(
-                            { _ ->
-                                aapsLogger.debug(
-                                    LTag.APS,
-                                    "[$TAG] ✅ Synced: $steps5 steps (5min), 15min=$steps15, 30min=$steps30"
-                                )
-                            },
-                            { error ->
-                                aapsLogger.error(LTag.APS, "[$TAG] ❌ DB insert failed", error)
-                            }
+                ioScope.launch {
+                    try {
+                        persistenceLayer.insertOrUpdateStepsCount(sc)
+                        aapsLogger.debug(
+                            LTag.APS,
+                            "[$TAG] ✅ Synced: $steps5 steps (5min), 15min=$steps15, 30min=$steps30"
                         )
-                )
+                    } catch (e: Exception) {
+                        aapsLogger.error(LTag.APS, "[$TAG] ❌ DB insert failed", e)
+                    }
+                }
             } else {
                 aapsLogger.debug(LTag.APS, "[$TAG] No steps to sync (StepService returned 0)")
             }

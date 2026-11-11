@@ -14,7 +14,6 @@ import app.aaps.pump.common.hw.rileylink.R
 import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
 import app.aaps.pump.common.hw.rileylink.data.RLHistoryItem
 import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusHistoryItemBinding
-import app.aaps.pump.common.hw.rileylink.dialog.RileyLinkStatusHistoryFragment
 import dagger.android.support.DaggerFragment
 import java.util.Collections
 import javax.inject.Inject
@@ -78,7 +77,7 @@ class MedLinkStatusHistoryFragment : DaggerFragment() {
          fun addItemsAndClean(items: MutableList<RLHistoryItem>) {
             this.historyList.clear()
 
-            Collections.sort<RLHistoryItem?>(items, RLHistoryItem.Comparator())
+            items.sortWith(RLHistoryItem.Comparator())
 
             for (item in items) {
                 if (!historyList.contains(item) && isValidItem(item)) {

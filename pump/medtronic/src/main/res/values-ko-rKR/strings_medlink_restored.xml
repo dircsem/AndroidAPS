@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">펌프 에러</string>
+    <string name="medtronic_error_pump_frequency_not_set">펌프 주파수가 설정되지 않았습니다.</string>
+    <string name="medtronic_errors">에러</string>
+    <string name="medtronic_error_serial_not_set">일련번호 # 설정되지 않음</string>
+    <string name="medtronic_history_type">종류:</string>
+    <string name="medtronic_pump_status_pump_unreachable">펌프에 연결할 수 없습니다</string>
+    <string name="medtronic_warning">경고</string>
+    <string name="medtronic_pump_history">메드트로닉 펌프 이력</string>
+</resources>

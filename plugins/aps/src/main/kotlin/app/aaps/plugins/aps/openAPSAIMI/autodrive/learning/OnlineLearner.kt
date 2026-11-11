@@ -3,6 +3,8 @@ package app.aaps.plugins.aps.openAPSAIMI.autodrive.learning
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.models.AutoDriveState
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,6 +23,15 @@ import javax.inject.Singleton
 class OnlineLearner @Inject constructor(
     private val aapsLogger: AAPSLogger
 ) {
+    data class StatusSnapshot(
+        val pendingPredictionCount: Int,
+        val evaluatedFeedbackCount: Long,
+        val releaseCount: Long,
+        val learnedSensitivityFactor: Double,
+        val lastFeedbackAt: Long?,
+        val lastError: Double?,
+        val updatedAt: Long?,
+    )
     
     // Historique des prédictions (Pour comparer T-actuel avec T-30min)
     private val predictionHistory = mutableMapOf<Long, Double>()
@@ -31,6 +42,21 @@ class OnlineLearner @Inject constructor(
         private set
 
     private val learningRate = 0.005 // Descente de Gradient très lente (sécurité)
+    private val evaluatedFeedbackCount = AtomicLong(0L)
+    private val releaseCount = AtomicLong(0L)
+    private val statusRef = AtomicReference(
+        StatusSnapshot(
+            pendingPredictionCount = 0,
+            evaluatedFeedbackCount = 0L,
+            releaseCount = 0L,
+            learnedSensitivityFactor = 1.0,
+            lastFeedbackAt = null,
+            lastError = null,
+            updatedAt = null,
+        )
+    )
+    private var lastFeedbackAt: Long? = null
+    private var lastError: Double? = null
 
     /**
      * Appelé à chaque Tique (5 min).
@@ -43,6 +69,7 @@ class OnlineLearner @Inject constructor(
         if (currentState.bg > 140.0 && currentState.bgVelocity > 0.8 && learnedSensitivityFactor > 1.0) {
              val releaseStep = 0.1 // Retour très rapide en cas de repas fantôme
              learnedSensitivityFactor = Math.max(1.0, learnedSensitivityFactor - releaseStep)
+             releaseCount.incrementAndGet()
              aapsLogger.info(LTag.APS, "🎓 [ONLINE_LEARNING] 🏃 Exercise Release Triggered! BG=${currentState.bg.toInt()} Vel=${"%.2f".format(currentState.bgVelocity)} -> Normalizing Sensitivity to ${learnedSensitivityFactor.format(3)}")
         }
 
@@ -77,6 +104,9 @@ class OnlineLearner @Inject constructor(
             
             // Saturation de la variance apprise (Max ±50% d'écart pour la sécurité)
             learnedSensitivityFactor = learnedSensitivityFactor.coerceIn(0.5, 1.5)
+            evaluatedFeedbackCount.incrementAndGet()
+            lastFeedbackAt = currentEpochMs
+            lastError = error
 
             aapsLogger.debug(
                 LTag.APS,
@@ -90,6 +120,23 @@ class OnlineLearner @Inject constructor(
         
         // Nettoyage des vieilles prédictions orphelines (Fuites mémoire)
         predictionHistory.entries.removeIf { it.key < currentEpochMs - (60 * 60 * 1000) }
+        publishStatus(currentEpochMs)
+    }
+
+    fun statusSnapshot(): StatusSnapshot = statusRef.get()
+
+    private fun publishStatus(updatedAt: Long) {
+        statusRef.set(
+            StatusSnapshot(
+                pendingPredictionCount = predictionHistory.size,
+                evaluatedFeedbackCount = evaluatedFeedbackCount.get(),
+                releaseCount = releaseCount.get(),
+                learnedSensitivityFactor = learnedSensitivityFactor,
+                lastFeedbackAt = lastFeedbackAt,
+                lastError = lastError,
+                updatedAt = updatedAt,
+            )
+        )
     }
 
     private fun Double.format(digits: Int) = "%.${digits}f".format(this)

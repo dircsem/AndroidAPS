@@ -17,10 +17,16 @@ import kotlinx.serialization.builtins.ArraySerializer
 import kotlinx.serialization.json.Json
 import javax.inject.Provider
 
+@OptIn(ExperimentalSerializationApi::class)
+private val rtJson = Json {
+    allowSpecialFloatingPointValues = true
+    ignoreUnknownKeys = true
+}
+
 /**
  * Sanitize JSON strings to remove problematic Unicode characters
  * that can cause deserialization crashes (especially arrows and math symbols).
- * 
+ *
  * This is critical for backward compatibility with old database records
  * that may contain Unicode characters in consoleLog arrays.
  */
@@ -35,7 +41,7 @@ private fun sanitizeJson(json: String): String {
         .replace("🠠", "->")      // U+1F820 LEFTWARDS TRIANGLE-HEADED ARROW
         .replace("🠡", "->")      // U+1F821 UPWARDS TRIANGLE-HEADED ARROW
         .replace("🠣", "->")      // U+1F823 DOWNWARDS TRIANGLE-HEADED ARROW
-       // Replace math symbols
+        // Replace math symbols
         .replace("×", "x")       // U+00D7 MULTIPLICATION SIGN
         .replace("÷", "/")       // U+00F7 DIVISION SIGN
         .replace("±", "+/-")     // U+00B1 PLUS-MINUS SIGN
@@ -47,8 +53,8 @@ private fun sanitizeJson(json: String): String {
 fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSResult>): APSResult =
     when (algorithm) {
         app.aaps.database.entities.APSResult.Algorithm.AMA,
-        app.aaps.database.entities.APSResult.Algorithm.SMB -> {
-            apsResultProvider.get().with(Json.decodeFromString(this.resultJson)).also { result ->
+        app.aaps.database.entities.APSResult.Algorithm.SMB ->
+            apsResultProvider.get().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     // Si AIMI a son propre GlucoseStatus, remplace GlucoseStatusSMB ci-dessous
@@ -62,10 +68,9 @@ fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSR
                 result.mealData = this.mealDataJson?.let { Json.decodeFromString(MealData.serializer(), it) }
                 result.autosensResult = this.autosensDataJson?.let { Json.decodeFromString(AutosensResult.serializer(), it) }
             }
-        }
 
-        app.aaps.database.entities.APSResult.Algorithm.AUTO_ISF -> {
-            apsResultProvider.get().with(Json.decodeFromString(this.resultJson)).also { result ->
+        app.aaps.database.entities.APSResult.Algorithm.AUTO_ISF ->
+            apsResultProvider.get().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     this.glucoseStatusJson?.let { Json.decodeFromString<GlucoseStatusAutoIsf>(it) }
@@ -78,10 +83,9 @@ fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSR
                 result.mealData = this.mealDataJson?.let { Json.decodeFromString(MealData.serializer(), it) }
                 result.autosensResult = this.autosensDataJson?.let { Json.decodeFromString(AutosensResult.serializer(), it) }
             }
-        }
 
         app.aaps.database.entities.APSResult.Algorithm.AIMI -> {
-            apsResultProvider.get().with(Json.decodeFromString(sanitizeJson(this.resultJson))).also { result ->
+            apsResultProvider.get().with(rtJson.decodeFromString(sanitizeJson(this.resultJson))).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     // Si AIMI a un GlucoseStatus spécifique, remplace par Json.decodeFromString<GlucoseStatusAimi>(it)
@@ -115,7 +119,7 @@ fun APSResult.toDb(): app.aaps.database.entities.APSResult =
                 profileJson = this.oapsProfile?.let { Json.encodeToString(OapsProfile.serializer(), it) },
                 mealDataJson = this.mealData?.let { Json.encodeToString(MealData.serializer(), it) },
                 autosensDataJson = this.autosensResult?.let { Json.encodeToString(AutosensResult.serializer(), it) },
-                resultJson = Json.encodeToString(RT.serializer(), this.rawData() as RT)
+                resultJson = rtJson.encodeToString(RT.serializer(), this.rawData() as RT)
             )
         }
 
@@ -129,7 +133,7 @@ fun APSResult.toDb(): app.aaps.database.entities.APSResult =
                 profileJson = this.oapsProfileAutoIsf?.let { Json.encodeToString(OapsProfileAutoIsf.serializer(), it) },
                 mealDataJson = this.mealData?.let { Json.encodeToString(MealData.serializer(), it) },
                 autosensDataJson = this.autosensResult?.let { Json.encodeToString(AutosensResult.serializer(), it) },
-                resultJson = Json.encodeToString(RT.serializer(), this.rawData() as RT)
+                resultJson = rtJson.encodeToString(RT.serializer(), this.rawData() as RT)
             )
         }
 
@@ -144,7 +148,7 @@ fun APSResult.toDb(): app.aaps.database.entities.APSResult =
                 profileJson = this.oapsProfileAimi?.let { Json.encodeToString(OapsProfileAimi.serializer(), it) },
                 mealDataJson = this.mealData?.let { Json.encodeToString(MealData.serializer(), it) },
                 autosensDataJson = this.autosensResult?.let { Json.encodeToString(AutosensResult.serializer(), it) },
-                resultJson = Json.encodeToString(RT.serializer(), this.rawData() as RT)
+                resultJson = rtJson.encodeToString(RT.serializer(), this.rawData() as RT)
             )
         }
 

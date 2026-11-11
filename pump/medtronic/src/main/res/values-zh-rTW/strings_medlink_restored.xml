@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">幫浦錯誤</string>
+    <string name="medtronic_error_pump_frequency_not_set">未設定幫浦頻率。</string>
+    <string name="medtronic_errors">錯誤</string>
+    <string name="medtronic_error_serial_not_set">未設定序號。</string>
+    <string name="medtronic_history_type">類型：</string>
+    <string name="medtronic_pump_status_pump_unreachable">無法連線幫浦</string>
+    <string name="medtronic_warning">警告</string>
+    <string name="medtronic_pump_history">Medtronic 幫浦歷史紀錄</string>
+</resources>

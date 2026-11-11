@@ -1,10 +1,11 @@
 package app.aaps.plugins.source.di
 
 import app.aaps.core.interfaces.source.DexcomBoyda
+import app.aaps.core.interfaces.source.EversenseCalibrationSource
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.source.XDripSource
-import app.aaps.plugins.source.BGSourceFragment
 import app.aaps.plugins.source.DexcomPlugin
+import app.aaps.plugins.source.EversensePlugin
 import app.aaps.plugins.source.GlimpPlugin
 import app.aaps.plugins.source.MM640gPlugin
 import app.aaps.plugins.source.MedLinkPlugin
@@ -16,42 +17,57 @@ import app.aaps.plugins.source.PoctechPlugin
 import app.aaps.plugins.source.SyaiPlugin
 import app.aaps.plugins.source.TomatoPlugin
 import app.aaps.plugins.source.XdripSourcePlugin
+import app.aaps.plugins.source.activities.DexcomOnePlusStartActivity
+import app.aaps.plugins.source.activities.DexcomOnePlusStatusActivity
+import app.aaps.plugins.source.activities.DexcomOnePlusWarmupActivity
+import app.aaps.plugins.source.activities.EversenseCalibrationActivity
+import app.aaps.plugins.source.activities.EversensePlacementActivity
+import app.aaps.plugins.source.activities.EversenseStatusActivity
+import app.aaps.plugins.source.activities.Libre3StartActivity
+import app.aaps.plugins.source.activities.Libre3StatusActivity
+import app.aaps.plugins.source.activities.Libre3WarmupActivity
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
+import app.aaps.plugins.source.activities.RequestEversensePermissionActivity
+import app.aaps.plugins.source.notificationreader.NotificationCollectorService
 import dagger.Binds
 import dagger.Module
 import dagger.android.ContributesAndroidInjector
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 
 @Module(
     includes = [
         SourceModule.Bindings::class
     ]
 )
-
+@InstallIn(SingletonComponent::class)
 @Suppress("unused")
 abstract class SourceModule {
 
-    @ContributesAndroidInjector abstract fun contributesBGSourceFragment(): BGSourceFragment
-
-    @ContributesAndroidInjector abstract fun contributesXdripWorker(): XdripSourcePlugin.XdripSourceWorker
-    @ContributesAndroidInjector abstract fun contributesDexcomWorker(): DexcomPlugin.DexcomWorker
-    @ContributesAndroidInjector abstract fun contributesMM640gWorker(): MM640gPlugin.MM640gWorker
-    @ContributesAndroidInjector abstract fun contributesGlimpWorker(): GlimpPlugin.GlimpWorker
-    @ContributesAndroidInjector abstract fun contributesPoctechWorker(): PoctechPlugin.PoctechWorker
-    @ContributesAndroidInjector abstract fun contributesTomatoWorker(): TomatoPlugin.TomatoWorker
-    @ContributesAndroidInjector abstract fun contributesSyaiWorker(): SyaiPlugin.SyaiWorker
-    @ContributesAndroidInjector abstract fun contributesOttaiWorker(): OttaiPlugin.OttaiWorker
-    @ContributesAndroidInjector abstract fun contributesSiAppWorker(): PatchedSiAppPlugin.PatchedSiAppWorker
-    @ContributesAndroidInjector abstract fun contributesSinoAppWorker(): PatchedSinoAppPlugin.PatchedSinoAppWorker
+    // All BG-source workers migrated to @HiltWorker (constructed by HiltWorkerFactory).
 
     @ContributesAndroidInjector abstract fun contributesMedLinkWorker(): MedLinkPlugin.MedLinkWorker
 
     @ContributesAndroidInjector abstract fun contributesRequestDexcomPermissionActivity(): RequestDexcomPermissionActivity
+    @ContributesAndroidInjector abstract fun contributesEversensePlugin(): EversensePlugin
+    @ContributesAndroidInjector abstract fun contributesRequestEversensePermissionActivity(): RequestEversensePermissionActivity
+    @ContributesAndroidInjector abstract fun contributesEversenseCalibrationActivity(): EversenseCalibrationActivity
+    @ContributesAndroidInjector abstract fun contributesEversenseStatusActivity(): EversenseStatusActivity
+    @ContributesAndroidInjector abstract fun contributesEversensePlacementActivity(): EversensePlacementActivity
+    @ContributesAndroidInjector abstract fun contributesDexcomOnePlusStatusActivity(): DexcomOnePlusStatusActivity
+    @ContributesAndroidInjector abstract fun contributesDexcomOnePlusStartActivity(): DexcomOnePlusStartActivity
+    @ContributesAndroidInjector abstract fun contributesDexcomOnePlusWarmupActivity(): DexcomOnePlusWarmupActivity
+    @ContributesAndroidInjector abstract fun contributesLibre3StatusActivity(): Libre3StatusActivity
+    @ContributesAndroidInjector abstract fun contributesLibre3StartActivity(): Libre3StartActivity
+    @ContributesAndroidInjector abstract fun contributesLibre3WarmupActivity(): Libre3WarmupActivity
+    @ContributesAndroidInjector abstract fun contributesNotificationCollectorService(): NotificationCollectorService
 
     @Module
+    @InstallIn(SingletonComponent::class)
     interface Bindings {
-
         @Binds fun bindNSClientSource(nsClientSourcePlugin: NSClientSourcePlugin): NSClientSource
         @Binds fun bindDexcomBoyda(dexcomPlugin: DexcomPlugin): DexcomBoyda
         @Binds fun bindXDrip(xdripSourcePlugin: XdripSourcePlugin): XDripSource
+        @Binds fun bindEversenseCalibrationSource(eversensePlugin: EversensePlugin): EversenseCalibrationSource
     }
 }

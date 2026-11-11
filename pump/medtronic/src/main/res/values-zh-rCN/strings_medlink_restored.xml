@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="pumperror">泵错误</string>
+    <string name="medtronic_error_pump_frequency_not_set">未设置泵频率。</string>
+    <string name="medtronic_errors">错误</string>
+    <string name="medtronic_error_serial_not_set">未设置序列号。</string>
+    <string name="medtronic_history_type">类型：</string>
+    <string name="medtronic_pump_status_pump_unreachable">泵无法连接</string>
+    <string name="medtronic_warning">警告</string>
+    <string name="medtronic_pump_history">美敦力泵历史记录</string>
+</resources>

@@ -5,45 +5,40 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.Insight
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.MedLinkCallbackBridge
 import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.resources.ResourceHelper
-import dagger.android.HasAndroidInjector
-import javax.inject.Inject
 import javax.inject.Provider
 
 class CommandStopPump(
-    injector: HasAndroidInjector,
+    private val aapsLogger: AAPSLogger,
+    private val rh: ResourceHelper,
+    private val activePlugin: ActivePlugin,
+    override val pumpEnactResultProvider: Provider<PumpEnactResult>,
     override val callback: Callback?,
 ) : Command {
 
-    @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var activePlugin: ActivePlugin
-    @Inject lateinit var pumpEnactResultProvider: Provider<PumpEnactResult>
-
-    init {
-        injector.androidInjector().inject(this)
-    }
-
     override val commandType: Command.CommandType = Command.CommandType.STOP_PUMP
 
-    override fun execute() {
-        val pump = activePlugin.activePump
-        if (pump is Insight) {
-            val result = pump.stopPump()
-            callback?.result(result)?.run()
+    override suspend fun execute(): PumpEnactResult {
+        val pump = activePlugin.activePumpInternal
+        return if (pump is Insight) {
+            pump.stopPump().also {
+                aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${it.success} enacted: ${it.enacted}")
+            }
         } else if (pump is MedLinkPumpPluginBase) {
-            pump.userSuspend(callback)
+            // MedLink suspends asynchronously and answers through a callback
+            MedLinkCallbackBridge.await(
+                onTimeout = { pumpEnactResultProvider.get().success(false).enacted(false).comment("MedLink did not answer the stop command") }
+            ) { callback -> pump.userSuspend(callback) }
+        } else {
+            pumpEnactResultProvider.get().success(true).enacted(false)
         }
     }
 
     override fun status(): String = rh.gs(app.aaps.core.ui.R.string.stop_pump)
 
     override fun log(): String = "STOP PUMP"
-    override fun cancel() {
-        aapsLogger.debug(LTag.PUMPQUEUE, "Result cancel")
-        callback?.result(pumpEnactResultProvider.get().success(false).comment(app.aaps.core.ui.R.string.connectiontimedout))?.run()
-    }
 }

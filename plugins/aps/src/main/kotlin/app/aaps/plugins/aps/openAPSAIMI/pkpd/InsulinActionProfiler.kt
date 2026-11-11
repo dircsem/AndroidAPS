@@ -2,7 +2,8 @@ package app.aaps.plugins.aps.openAPSAIMI.pkpd
 
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.OapsProfileAimi
-import kotlin.math.pow// 1. Définir la structure de données pour notre nouvelle métrique
+
+// 1. Définir la structure de données pour notre nouvelle métrique
 data class IobActionProfile(
     val iobTotal: Double,
     val peakMinutes: Double,      // Temps pondéré jusqu'au pic. Négatif si le pic est passé.
@@ -11,18 +12,6 @@ data class IobActionProfile(
 )
 
 object InsulinActionProfiler {
-
-    // Modèle simple de courbe d'action de l'insuline (peut être affiné)
-    // Retourne une activité relative (0 à 1) pour un temps donné après l'injection.
-    private fun getInsulinActivity(minutesSinceBolus: Double, peakTime: Double): Double {
-        if (minutesSinceBolus < 0 || peakTime <= 0) return 0.0
-        // Utilise une fonction de Weibull, courante pour modéliser la PK/PD
-        val shape = 3.5
-        val scale = peakTime / ((shape - 1) / shape).pow(1 / shape)
-        val activity = (shape / scale) * (minutesSinceBolus / scale).pow(shape - 1) *
-            kotlin.math.exp(-(minutesSinceBolus / scale).pow(shape))
-        return activity
-    }
 
     fun calculate(iobArray: Array<IobTotal>, profile: OapsProfileAimi, snsDominance: Double = 0.3): IobActionProfile {
         // 🧬 PHYSIO-MODULATION: Stress (SNS=0.8) -> +20% Peak; Optimal (SNS=0.2) -> -4% Peak
@@ -40,7 +29,7 @@ object InsulinActionProfiler {
         val now = System.currentTimeMillis()
 
         // Normalisation pour que le pic d'activité soit égal à 1
-        val maxActivity = getInsulinActivity(insulinPeakTime, insulinPeakTime)
+        val maxActivity = InsulinWeibullCurve.activityRaw(insulinPeakTime, insulinPeakTime)
         if (maxActivity == 0.0) return IobActionProfile(0.0, 0.0, 0.0, 0.0)
 
 
@@ -56,8 +45,8 @@ object InsulinActionProfiler {
             weightedPeakMinutes += timeToPeak * iobValue
 
             // Calcul de l'activité actuelle et future pour ce bolus
-            val activityNow = getInsulinActivity(minutesSinceBolus, insulinPeakTime) / maxActivity
-            val activityIn30Min = getInsulinActivity(minutesSinceBolus + 30, insulinPeakTime) / maxActivity
+            val activityNow = InsulinWeibullCurve.activityRaw(minutesSinceBolus, insulinPeakTime) / maxActivity
+            val activityIn30Min = InsulinWeibullCurve.activityRaw(minutesSinceBolus + 30, insulinPeakTime) / maxActivity
 
             weightedActivityNow += activityNow * iobValue
             weightedActivityIn30Min += activityIn30Min * iobValue

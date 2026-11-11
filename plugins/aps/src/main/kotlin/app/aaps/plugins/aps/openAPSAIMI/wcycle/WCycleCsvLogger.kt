@@ -3,15 +3,21 @@ package app.aaps.plugins.aps.openAPSAIMI.wcycle
 import android.content.Context
 import android.os.Environment
 import android.util.Log
+import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-class WCycleCsvLogger(private val ctx: Context) {
+class WCycleCsvLogger(
+    private val ctx: Context,
+    private val storageHelper: AimiStorageHelper? = null
+) {
     private val TAG = "WCycleCsvLogger"
 
-    // 🔧 FIX: Use ONLY standard /Documents/AAPS path (no app-specific fallback)
-    private val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
+    private val dir by lazy {
+        storageHelper?.getAimiDirectory()
+            ?: File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
+    }
     private val file = File(dir, "oapsaimi_wcycle.csv")
 
     private val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)

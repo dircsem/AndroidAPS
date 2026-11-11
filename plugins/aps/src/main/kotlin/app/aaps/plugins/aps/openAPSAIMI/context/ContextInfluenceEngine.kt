@@ -47,7 +47,11 @@ class ContextInfluenceEngine @Inject constructor(
         val smbFactorClamp: Float,          // Multiplicateur SMB (0.50..1.10)
         val extraIntervalMin: Int,          // Minutes à ajouter à l'interval (0..10)
         val preferBasal: Boolean,           // Préférer TBR vs SMB
-        val reasoningSteps: List<String>    // Explications pour logs
+        val reasoningSteps: List<String>,   // Explications pour logs
+        /** Absolute per-SMB cap in U (null = no extra cap). Enforced at the SMB finalize gate; never raises SMB. */
+        val smbCeilingU: Double? = null,
+        /** Hard SMB-off for the current tick (e.g. declared hypo recovery). Enforced at the SMB finalize gate. */
+        val suppressSmb: Boolean = false,
     ) {
         init {
             require(smbFactorClamp in 0.50f..1.10f) {
@@ -57,7 +61,7 @@ class ContextInfluenceEngine @Inject constructor(
                 "extraIntervalMin must be [0, 10], got $extraIntervalMin"
             }
         }
-        
+
         companion object {
             fun neutral() = ContextInfluence(
                 smbFactorClamp = 1.0f,
@@ -96,9 +100,23 @@ class ContextInfluenceEngine @Inject constructor(
         var smbFactor = 1.0f
         var extraInterval = 0
         var preferBasal = false
-        
+        var smbCeilingU: Double? = null
+        var suppressSmb = false
+
         // Process each intent type
-        
+
+        // Hypo recovery (highest safety priority: hard SMB-off, prefer basal, protective posture)
+        if (snapshot.hasHypoRecovery) {
+            val hypoInfluence = processHypoRecovery(
+                snapshot.activeIntents.filterIsInstance<HypoRecovery>(),
+                reasoning
+            )
+            smbFactor *= hypoInfluence.smbFactor
+            extraInterval = maxOf(extraInterval, hypoInfluence.extraInterval)
+            preferBasal = preferBasal || hypoInfluence.preferBasal
+            suppressSmb = true
+        }
+
         // Activity (highest priority for safety - hypo risk)
         if (snapshot.hasActivity) {
             val activityInfluence = processActivity(
@@ -165,7 +183,24 @@ class ContextInfluenceEngine @Inject constructor(
             // Don't reduce smbFactor, just adjust interval
             extraInterval = maxOf(extraInterval, mealInfluence.extraInterval)
         }
-        
+
+        // Slow-carb / fat-protein meal (phase-aware: capped early SMB, damped late coverage)
+        if (snapshot.hasSlowCarbMeal) {
+            val slowInfluence = processSlowCarbMeal(
+                snapshot.activeIntents.filterIsInstance<SlowCarbMeal>(),
+                currentBG,
+                iob,
+                snapshot.timestampMs,
+                mode,
+                reasoning
+            )
+            smbFactor *= slowInfluence.smbFactor
+            extraInterval = maxOf(extraInterval, slowInfluence.extraInterval)
+            preferBasal = preferBasal || slowInfluence.preferBasal
+            // Tightest (smallest) ceiling wins across intents.
+            smbCeilingU = listOfNotNull(smbCeilingU, slowInfluence.smbCeilingU).minOrNull()
+        }
+
         // Clamp to safe bounds
         val clampedSmb = smbFactor.coerceIn(0.50f, 1.10f)
         val clampedInterval = extraInterval.coerceIn(0, 10)
@@ -180,7 +215,9 @@ class ContextInfluenceEngine @Inject constructor(
             smbFactorClamp = clampedSmb,
             extraIntervalMin = clampedInterval,
             preferBasal = preferBasal,
-            reasoningSteps = reasoning
+            reasoningSteps = reasoning,
+            smbCeilingU = smbCeilingU,
+            suppressSmb = suppressSmb,
         )
     }
     
@@ -189,7 +226,9 @@ class ContextInfluenceEngine @Inject constructor(
     private data class IntentInfluence(
         val smbFactor: Float,
         val extraInterval: Int,
-        val preferBasal: Boolean
+        val preferBasal: Boolean,
+        /** Absolute per-SMB ceiling in U (null = no extra cap). Only ever lowers the delivered SMB. */
+        val smbCeilingU: Double? = null,
     )
     
     private fun processActivity(
@@ -203,6 +242,8 @@ class ContextInfluenceEngine @Inject constructor(
         
         // Activity → High insulin sensitivity → Risk hypo
         // Strategy: Reduce SMB, increase interval, prefer basal
+        // When BG is already high and rising, [ExerciseHyperOverridePolicy] in DetermineBasalAIMI2
+        // lifts basal cuts and skips preferBasal SMB zeroing (SMB still off via exercise lockout).
         
         val (smbFactor, intervalAdd, preferBasal) = when (maxIntensity) {
             Intensity.EXTREME -> Triple(0.60f, 8, true)   // -40% SMB, +8min
@@ -340,9 +381,98 @@ mode: ContextMode,
         
         return IntentInfluence(1.0f, intervalAdd, false)  // Neutral SMB
     }
-    
+
+    /**
+     * Declared hypo / recovery window: hard SMB-off + prefer basal. Purely suppressive; engages the
+     * protective post-hypo machinery (via the POST_HYPO_RECOVERY prime) rather than the exercise lockout.
+     */
+    private fun processHypoRecovery(
+        hypos: List<HypoRecovery>,
+        reasoning: MutableList<String>
+    ): IntentInfluence {
+        val maxIntensity = hypos.maxByOrNull { it.intensity }?.intensity
+            ?: return IntentInfluence(1.0f, 0, false)
+        val (smbFactor, intervalAdd) = when (maxIntensity) {
+            Intensity.EXTREME, Intensity.HIGH -> 0.50f to 10
+            Intensity.MEDIUM                  -> 0.50f to 8
+            Intensity.LOW                     -> 0.60f to 6
+        }
+        reasoning.add("HypoRecovery ${maxIntensity.name} → SMB off (preferBasal), +${intervalAdd}min")
+        return IntentInfluence(smbFactor, intervalAdd, preferBasal = true)
+    }
+
+    /**
+     * Fat / protein / slow-absorbing meal (pizza, fries, cheese…). Phase-aware: a small hard-capped
+     * fast SMB early (never a front-loaded multi-U dump), damped SMB later. Basal runs normally
+     * (preferBasal NOT used). The absolute [IntentInfluence.smbCeilingU] + extended interval bound the
+     * early insulin; a deferred hypo guard tightens both when BG is low-normal / IOB is loaded.
+     */
+    private fun processSlowCarbMeal(
+        meals: List<SlowCarbMeal>,
+        currentBG: Double,
+        iob: Double,
+        nowMs: Long,
+        mode: ContextMode,
+        reasoning: MutableList<String>
+    ): IntentInfluence {
+        val intent = meals.maxByOrNull { it.intensity } ?: return IntentInfluence(1.0f, 0, false, null)
+        val maxIntensity = intent.intensity
+        val elapsedMs = (nowMs - intent.startTimeMs).coerceAtLeast(0L)
+        val earlyPhase = elapsedMs < intent.absorptionDelay.inWholeMilliseconds
+
+        val (smbFactor, intervalAdd) = if (earlyPhase) {
+            when (maxIntensity) {
+                Intensity.EXTREME, Intensity.HIGH -> 0.55f to 9
+                Intensity.MEDIUM                  -> 0.60f to 8
+                Intensity.LOW                     -> 0.70f to 6
+            }
+        } else {
+            when (maxIntensity) {
+                Intensity.EXTREME -> 0.70f to 4
+                Intensity.HIGH    -> 0.78f to 4
+                Intensity.MEDIUM  -> 0.85f to 3
+                Intensity.LOW     -> 0.92f to 2
+            }
+        }
+        val baseCeilingU: Double? = if (earlyPhase) {
+            when (maxIntensity) {
+                Intensity.EXTREME, Intensity.HIGH -> 1.2
+                Intensity.MEDIUM                  -> 1.0
+                Intensity.LOW                     -> 0.8
+            }
+        } else {
+            when (maxIntensity) {
+                Intensity.EXTREME -> 1.5
+                Intensity.HIGH    -> 1.8
+                Intensity.MEDIUM  -> 2.0
+                Intensity.LOW     -> null
+            }
+        }
+
+        // Deferred hypo guard: tighten factor AND ceiling when BG is low-normal / IOB loaded.
+        val guardedSmb = when {
+            currentBG < 100 -> (smbFactor * 0.85f).coerceAtLeast(0.50f)
+            currentBG < 120 && iob > 2.0 -> (smbFactor * 0.90f).coerceAtLeast(0.50f)
+            else -> smbFactor
+        }
+        val guardedCeiling = if (baseCeilingU != null && currentBG < 100)
+            (baseCeilingU * 0.60).coerceAtLeast(0.40) else baseCeilingU
+
+        val modeSmb = when (mode) {
+            ContextMode.CONSERVATIVE -> (guardedSmb * 0.95f).coerceAtLeast(0.50f)
+            ContextMode.BALANCED     -> guardedSmb
+            ContextMode.AGGRESSIVE   -> (guardedSmb / 0.95f).coerceAtMost(1.10f)
+        }
+
+        reasoning.add(
+            "SlowCarbMeal ${maxIntensity.name} ${if (earlyPhase) "EARLY" else "ABSORBING"} " +
+                "→ SMB×${modeSmb.format(2)} ceiling=${guardedCeiling?.let { "%.1fU".format(it) } ?: "none"} +${intervalAdd}min"
+        )
+        return IntentInfluence(modeSmb, intervalAdd, preferBasal = false, smbCeilingU = guardedCeiling)
+    }
+
     // Helpers
-    
+
     private fun Float.format(decimals: Int): String {
         return "%.${decimals}f".format(this)
     }

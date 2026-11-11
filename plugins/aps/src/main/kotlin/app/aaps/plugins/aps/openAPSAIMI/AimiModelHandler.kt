@@ -75,7 +75,8 @@ object AimiUamHandler {
 
     /** Ligne de statut prête à logguer dans rT.reason */
     fun statusLine(context: Context): String {
-        val path = lastModelPath ?: modelUamFile.absolutePath
+        val configuredModelFile = File(lastModelPath ?: modelUamFile.absolutePath)
+        val path = configuredModelFile.absolutePath
         val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
         val documentsFolderName = context.getString(R.string.folder_documents)
         val relativePath = if (path.startsWith(documentsDir)) {
@@ -85,8 +86,7 @@ object AimiUamHandler {
         }
         //val flag = if (lastLoadOk) "✅" else "❌"
         val flag = if (lastLoadOk) "✔" else "✘"
-        //val size = if (modelUamFile.exists()) "${modelUamFile.length()} B" else "missing"
-        val size = if (modelUamFile.exists()) String.format("%.1f KB", modelUamFile.length().toDouble() / 1024) else "missing"
+        val size = if (configuredModelFile.exists()) String.format("%.1f KB", configuredModelFile.length().toDouble() / 1024) else "missing"
         //return "📦 UAM model: $flag ($path, $size)"
         return context.getString(R.string.uam_model_status, flag, relativePath, size)
     }
@@ -172,6 +172,16 @@ object AimiUamHandler {
         val itp = ensureInterpreter(reason, context) ?: run {
             //reason?.appendLine("❌ Modèle UAM indisponible → SMB=0")
             reason?.appendLine(context.getString(R.string.uam_unavailable))
+            return 0f
+        }
+
+        val expectedFeatureCount = runCatching {
+            UamInputSchemaValidator.expectedFeatureCount(itp.getInputTensor(0).shape())
+        }.getOrNull()
+        if (expectedFeatureCount != null && inputs.size != expectedFeatureCount) {
+            val mismatchReason = UamInputSchemaValidator.mismatchReason(expectedFeatureCount, inputs.size)
+            reason?.appendLine(mismatchReason)
+            Log.w(TAG, mismatchReason)
             return 0f
         }
 

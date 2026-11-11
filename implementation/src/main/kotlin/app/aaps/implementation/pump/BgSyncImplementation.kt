@@ -1,5 +1,6 @@
 package app.aaps.implementation.pump
 
+import kotlinx.coroutines.runBlocking
 import android.os.Bundle
 import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequest
@@ -163,9 +164,7 @@ class BgSyncImplementation @Inject constructor(
         }
 
 
-        persistenceLayer.insertCgmSourceData(Sources.Enlite, glucoseValues, calibrations, sensorStartTime)
-
-            .blockingGet()
+        runBlocking { persistenceLayer.insertCgmSourceData(Sources.Enlite, glucoseValues, calibrations, sensorStartTime) }
             .also { result ->
                 var startId=0L
                 var lastDbId=0L
@@ -253,9 +252,9 @@ class BgSyncImplementation @Inject constructor(
             CgmSourceTransaction.Calibration(timestamp = calibration.timestamp,
                                              value = calibration.value, glucoseUnit = calibration.glucoseUnit.toDbType())
         }
-        repository.runTransactionForResult(CgmSourceTransaction(glucoseValue, calibrations = calibrations, sensorInsertionTime = null))
-            .doOnError { aapsLogger.error(LTag.DATABASE, "Error while saving BG", it) }
-            .blockingGet()
+        runCatching { runBlocking { repository.runTransactionForResultSuspend(CgmSourceTransaction(glucoseValue, calibrations = calibrations, sensorInsertionTime = null)) } }
+            .onFailure { aapsLogger.error(LTag.DATABASE, "Error while saving BG", it) }
+            .getOrThrow()
             .also { result ->
                 result.updated.forEach { aapsLogger.debug(LTag.DATABASE, "Updated BG $it") }
                 return result.updated.size > 0
@@ -286,9 +285,9 @@ class BgSyncImplementation @Inject constructor(
             )
         )
         val calibrations = listOf<CgmSourceTransaction.Calibration>()
-        repository.runTransactionForResult(CgmSourceTransaction(glucoseValue, calibrations = calibrations, sensorInsertionTime = null))
-            .doOnError { aapsLogger.error(LTag.DATABASE, "Error while saving Bg", it) }
-            .blockingGet()
+        runCatching { runBlocking { repository.runTransactionForResultSuspend(CgmSourceTransaction(glucoseValue, calibrations = calibrations, sensorInsertionTime = null)) } }
+            .onFailure { aapsLogger.error(LTag.DATABASE, "Error while saving Bg", it) }
+            .getOrThrow()
             .also { result ->
                 result.inserted.forEach { aapsLogger.debug(LTag.DATABASE, "Inserted Bg $it") }
                 return result.inserted.size > 0

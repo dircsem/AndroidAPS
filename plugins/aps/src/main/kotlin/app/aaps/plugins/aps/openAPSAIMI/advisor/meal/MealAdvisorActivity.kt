@@ -338,10 +338,16 @@ class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
             setColor(color); cornerRadius = 12f
         }
 
-        // Risks
+        // Risks — show whenever manual review is advised or hidden carbs are high
         if (result.hiddenCarbRisk == "HIGH" || result.needsManualConfirmation) {
             riskWarningText.visibility = android.view.View.VISIBLE
-            riskWarningText.text = "⚠️ HIGH RISK: ${result.insulinRelevantNotes.joinToString(", ")}"
+            val notes = result.insulinRelevantNotes.joinToString(", ").ifBlank { "Review estimate before confirming." }
+            val prefix = when {
+                result.hiddenCarbRisk == "HIGH" && result.needsManualConfirmation -> "⚠️ HIGH RISK & MANUAL CHECK"
+                result.hiddenCarbRisk == "HIGH" -> "⚠️ HIGH HIDDEN CARB RISK"
+                else -> "⚠️ MANUAL CONFIRMATION ADVISED"
+            }
+            riskWarningText.text = "$prefix: $notes"
         } else {
             riskWarningText.visibility = android.view.View.GONE
         }
@@ -351,14 +357,16 @@ class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
     }
 
     private fun recalculateProposal() {
-        try {
-            val carbs = carbsInput.text.toString().toDoubleOrNull() ?: 0.0
-            val profile = profileFunction.getProfile()
-            val cr = if (profile != null && profile.getIc() > 0.1) profile.getIc() else 10.0
-            val insulin = carbs / cr
-            confirmButton.text = "INJECT ${carbs.toInt()}g CARBS\nConsolidated Dose: %.1f U".format(insulin)
-        } catch (e: Exception) {
-            confirmButton.text = "CONFIRM INJECTION"
+        lifecycleScope.launch {
+            try {
+                val carbs = carbsInput.text.toString().toDoubleOrNull() ?: 0.0
+                val profile = withContext(Dispatchers.IO) { profileFunction.getProfile() }
+                val cr = if (profile != null && profile.getIc() > 0.1) profile.getIc() else 10.0
+                val insulin = carbs / cr
+                confirmButton.text = "INJECT ${carbs.toInt()}g CARBS\nConsolidated Dose: %.1f U".format(insulin)
+            } catch (e: Exception) {
+                confirmButton.text = "CONFIRM INJECTION"
+            }
         }
     }
 
@@ -375,7 +383,12 @@ class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
                 notes = "AIMI V2: ${currentEstimate?.description ?: ""}",
                 ids = app.aaps.core.data.model.IDs()
             )
-            persistenceLayer.insertOrUpdateCarbs(ca, app.aaps.core.data.ue.Action.TREATMENT, app.aaps.core.data.ue.Sources.CarbDialog, ca.notes).blockingGet()
+            persistenceLayer.insertOrUpdateCarbs(
+                ca,
+                app.aaps.core.data.ue.Action.TREATMENT,
+                app.aaps.core.data.ue.Sources.CarbDialog,
+                ca.notes
+            )
             
             preferences.put(app.aaps.core.keys.BooleanKey.OApsAIMIMealAdvisorTrigger, true)
             preferences.put(DoubleKey.OApsAIMILastEstimatedCarbs, valCarbs)

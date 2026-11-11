@@ -53,7 +53,8 @@ class DynamicBasalController @Inject constructor(
         bg: Double,
         targetBg: Double,
         delta: Double,
-        shortAvgDelta: Double
+        shortAvgDelta: Double,
+        projectionHorizonMin: Double? = null,
     ): ControllerState {
         
         // 1. Proportional Error (Distance from target)
@@ -72,10 +73,33 @@ class DynamicBasalController @Inject constructor(
         }
 
         // 3. Total Error Signal
-        // Error = (Distance * P) + (Velocity * D)
-        // Note: Delta is in mg/dL/5min. Multiplying by 12 converts roughly to mg/dL/hour for parity with P.
+        //
+        // 🎯 Lot 1 — formulation en **erreur projetée**. Le couple (P, D) historique combinait deux
+        // grandeurs d'unités différentes avec des poids indépendants : `P_WEIGHT = 0.05` par mg/dL
+        // d'écart contre `12 * D_WEIGHT = 1.8` par mg/dL/5min de pente, soit un rapport de **36:1**.
+        // Une montée banale de +2,5 mg/dL/5min ajoutait +4,5 au multiplicateur, ce qu'il aurait fallu
+        // compenser par une glycémie 90 mg/dL sous la cible : le terme proportionnel ne pouvait donc
+        // jamais freiner le terme dérivé, et le contrôleur demandait 5 à 8× le basal profil alors que la
+        // glycémie était *sous* la cible (observé en production les 01 et 02/08/2026).
+        //
+        // On projette désormais la glycémie sur l'horizon d'action de l'insuline et on mesure **un seul**
+        // écart. Le gain dérivé n'est plus un réglage libre : il vaut `P_WEIGHT * horizon`, ce qui le rend
+        // dimensionnellement cohérent avec le gain proportionnel. À glycémie stable le résultat est
+        // identique à l'ancien ; seule l'influence de la pente est ramenée à une valeur physiologique.
+        // ⚠️ Asymétrie montée/descente. La projection réduit l'influence de la pente de 1,8 à 0,6 par
+        // mg/dL/5min : bénéfique en **montée** (c'est le défaut corrigé), mais en **descente** elle
+        // freinerait *moins* que l'ancienne formulation — sur une hyper qui redescend vite, l'ancien
+        // signal tombait à 0 là où le projeté demanderait encore ~1,8× le profil. On retient donc le
+        // **minimum** des deux : jamais plus agressif que le comportement historique, sur tout le domaine.
         val derivativeError = velocity * 12.0
-        val totalErrorSignal = (proportionalError * P_WEIGHT) + (derivativeError * D_WEIGHT)
+        val legacySignal = (proportionalError * P_WEIGHT) + (derivativeError * D_WEIGHT)
+        val totalErrorSignal = if (projectionHorizonMin != null && projectionHorizonMin > 0.0) {
+            val steps = projectionHorizonMin / 5.0
+            val projectedBg = bg + velocity * steps
+            min((projectedBg - targetBg) * P_WEIGHT, legacySignal)
+        } else {
+            legacySignal
+        }
 
         // 4. Sigmoid Mapping
         // We use a logistic function to map the unbounded error signal strictly to [0.0, 1.0]
@@ -148,7 +172,9 @@ class DynamicBasalController @Inject constructor(
         val variableSensitivity: Double,
         val duraISFminutes: Double,
         val predictedBgOverride: Double?,
-        val mode: Mode
+        val mode: Mode,
+        /** Horizon de projection (min) du lot 1 ; `null` = ancienne formulation P+D. */
+        val projectionHorizonMin: Double? = null,
     )
 
     data class Decision(
@@ -158,6 +184,14 @@ class DynamicBasalController @Inject constructor(
     )
 
     companion object {
+
+        /**
+         * Horizon de projection du lot 1, en minutes : délai d'action typique de l'insuline rapide.
+         * Le gain dérivé effectif vaut `P_WEIGHT * (horizon / 5)`, soit 0,6 par mg/dL/5min à 60 min —
+         * contre 1,8 dans l'ancienne formulation.
+         */
+        const val PROJECTION_HORIZON_MIN = 60.0
+
         /**
          * Main compute function called by BasalDecisionEngine.
          * For now, it delegates back to a simplified instance/companion calculation
@@ -168,6 +202,7 @@ class DynamicBasalController @Inject constructor(
             // Using similar math to `calculateDynamicRate` without injecting the logger for this static path.
             val proportionalError = input.bg - input.targetBg
             val velocity = input.delta * 0.8 + input.shortAvgDelta * 0.2
+            val horizon = input.projectionHorizonMin
             
             // Braking
             if ((input.bg < input.targetBg && velocity < -1.0) || (input.bg <= 90.0 && velocity < -2.0)) {
@@ -175,7 +210,18 @@ class DynamicBasalController @Inject constructor(
             }
 
             // P-D simplistic map for fallback
-            var multiplier = 1.0 + (proportionalError * 0.05) + (velocity * 12.0 * 0.15)
+            // 🎯 Lot 1 — même refonte que [calculateDynamicRate] : erreur projetée au lieu d'un couple
+            // (P, D) dont le gain dérivé valait 36× le gain proportionnel. Voir le commentaire détaillé
+            // dans [calculateDynamicRate].
+            val legacyMultiplier = 1.0 + (proportionalError * 0.05) + (velocity * 12.0 * 0.15)
+            // Voir [calculateDynamicRate] : minimum des deux formulations, pour ne jamais freiner moins
+            // que l'ancienne sur une descente.
+            var multiplier = if (horizon != null && horizon > 0.0) {
+                val projectedBg = input.bg + velocity * (horizon / 5.0)
+                min(1.0 + (projectedBg - input.targetBg) * 0.05, legacyMultiplier)
+            } else {
+                legacyMultiplier
+            }
             
             // Scale and constrain
             multiplier = multiplier.coerceIn(0.0, 10.0)
@@ -189,8 +235,26 @@ class DynamicBasalController @Inject constructor(
             return Decision(
                 rate = finalRate,
                 durationMin = 30,
-                reason = "PI-Fallback: P=%.1f D=%.1f Mult=%.2fx".format(proportionalError, velocity, multiplier)
+                reason = if (horizon != null && horizon > 0.0)
+                    "PI-Projected: P=%.1f D=%.1f H=%.0fmin Proj=%.0f Mult=%.2fx".format(
+                        proportionalError, velocity, horizon, input.bg + velocity * (horizon / 5.0), multiplier
+                    )
+                else
+                    "PI-Fallback: P=%.1f D=%.1f Mult=%.2fx".format(proportionalError, velocity, multiplier)
             )
+        }
+
+        /**
+         * Kinematic BG projection shared by the T3C rise-unlock gate and [computeT3c].
+         * Parabolic (constant-accel) forecast of where BG is heading, so the unlock decision and the
+         * correction magnitude agree on the same projection. Pure; no eventualBg blending here — kept
+         * independent of the pkpd/UAM eventual so the unlock is not dragged by a floored eventual.
+         */
+        fun projectBg(bg: Double, delta: Float, shortAvgDelta: Double, accel: Double): Double {
+            val velocity = delta * 0.7f + shortAvgDelta.toFloat() * 0.3f
+            val projectionMins = if (delta >= 3.0f && delta > shortAvgDelta) 40.0 else 30.0
+            val t = projectionMins / 5.0
+            return bg + (velocity * t) + (0.5 * accel * t * t)
         }
 
         /**
@@ -201,7 +265,8 @@ class DynamicBasalController @Inject constructor(
          *  2. Resistance resolving suddenly → accumulated IOB causes rapid hypoglycemia
          *
          * Strategy:
-         *  - Correction activates at 130 mg/dL (not target=100) to prevent resistance
+         *  - Correction activates once the **projected** BG exceeds `activationThreshold` (configurable,
+         *    default 100) — anticipatory: engages on where BG is heading, not current BG
          *  - ISF-driven formula (not multiplier-based) → proper correction magnitude
          *  - Adaptive horizon: 20 min at BG 130–160, 15 min above 160 (more urgent)
          *  - Resistance→sensitivity transition detection: cut basal EARLY when drop begins
@@ -224,7 +289,8 @@ class DynamicBasalController @Inject constructor(
             activationThreshold: Double = 130.0,
             aggressiveness: Double = 1.0,
             maxBasalCap: Double? = null,
-            trajectory: T3cTrajectoryContext? = null
+            trajectory: T3cTrajectoryContext? = null,
+            anticipationHints: T3cAnticipation.Hints = T3cAnticipation.Hints.DISABLED
         ): Double {
             val effectiveIsf = isf.coerceAtLeast(10.0)
             val velocity = delta * 0.7f + shortAvgDelta.toFloat() * 0.3f
@@ -248,26 +314,29 @@ class DynamicBasalController @Inject constructor(
             
             // 1. Parabolic Projection
             // USES activationThreshold instead of targetBg for engagement trigger
-            val projectionMins = if (delta >= 3.0f && delta > shortAvgDelta) 40.0 else 30.0
-            val t = projectionMins / 5.0
-            val projectedBg = bg + (velocity * t) + (0.5 * accel * t * t)
-            
+            val projectedBg = projectBg(bg, delta, shortAvgDelta, accel)
+            val effectiveProjectedBg = T3cAnticipation.blendProjectedForHyper(
+                projectedBg = projectedBg,
+                eventualBg = eventualBg,
+                strength = anticipationHints.strength
+            )
+
             // 2. Anticipation de la Cible (Smarter Braking)
-            val baseToDeliver = if (projectedBg < targetBg) {
-                profileBasal * exp((projectedBg - targetBg) / 15.0)
+            val baseToDeliver = if (effectiveProjectedBg < targetBg) {
+                profileBasal * exp((effectiveProjectedBg - targetBg) / 15.0)
             } else {
                 profileBasal
             }
-            
+
             // Use activationThreshold as the reference for correction
-            val projectedError = (projectedBg - activationThreshold).coerceAtLeast(0.0)
+            val projectedError = (effectiveProjectedBg - activationThreshold).coerceAtLeast(0.0)
             
             // 3. Calcul du Besoin Brut T3C
             val requiredU = projectedError / effectiveIsf
             
             // 4. Multiplicateur Anti-Résistance (Glucotoxicité)
-            val resistanceFactor = if (bg > activationThreshold + 30.0) {
-                1.0 + ((bg - (activationThreshold + 30.0)) / 100.0).coerceAtMost(1.0)
+            val resistanceFactor = if (effectiveProjectedBg > activationThreshold + 30.0) {
+                1.0 + ((effectiveProjectedBg - (activationThreshold + 30.0)) / 100.0).coerceAtMost(1.0)
             } else {
                 1.0
             }
@@ -280,20 +349,26 @@ class DynamicBasalController @Inject constructor(
             }
             
             // 6. Horizon de Livraison Réactif
-            val deliveryHorizonHours = when {
+            val deliveryHorizonHoursRaw = when {
                 delta >= 3.0f || velocity >= 3.0f -> 0.16
-                projectedBg > activationThreshold + 30.0 -> 0.25
+                effectiveProjectedBg > activationThreshold + 30.0 -> 0.25
                 else -> 0.33
             }
-            
+            val deliveryHorizonHours = T3cAnticipation.compressDeliveryHorizonHours(
+                baseHorizonHours = deliveryHorizonHoursRaw,
+                minutesToHyperExcursion = anticipationHints.minutesToHyperExcursion,
+                strength = anticipationHints.strength
+            )
+
             // Apply AGGRESSIVENESS here
             val correctionRate = (requiredU / deliveryHorizonHours) * resistanceFactor * accelFactor * aggressiveness
-            
+
             // 7. Continuous Braking : Freinage linéaire basé sur la vitesse de chute
             val brakeFactor = (1.0 + velocity / 2.0).coerceIn(0.0, 1.0)
 
-            // Apply BOTH brakeFactor AND resTransitionMult
-            val totalRate = (baseToDeliver + correctionRate) * brakeFactor * resTransitionMult
+            // Apply BOTH brakeFactor AND resTransitionMult; then curve-based hypo lead (IOB/COB envelope)
+            var totalRate = (baseToDeliver + correctionRate) * brakeFactor * resTransitionMult
+            totalRate *= T3cAnticipation.hypoLeadMultiplier(anticipationHints, targetBg)
 
             // Cap at configured max basal (T3C should respect user-defined hard ceiling).
             // Fallback keeps legacy behavior if cap is not provided.
@@ -307,8 +382,7 @@ class DynamicBasalController @Inject constructor(
                     ctx = ctx
                 )
             }
-            // eventualBg is folded into [T3cTrajectoryContext.eventualPredBg] on the real T3C path only;
-            // when trajectory is null, behavior matches pre-trajectory T3C (tests / legacy callers).
+            // eventualBg + prediction envelopes feed [anticipationHints] on the T3C path; trajectory.ctx still applies last.
             return out.coerceIn(0.0, effectiveCap)
         }
 

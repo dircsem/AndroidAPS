@@ -1,15 +1,24 @@
 package app.aaps.plugins.aps.openAPSAIMI.physio
 
+import android.os.Looper
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.data.model.TE
 import app.aaps.plugins.aps.openAPSAIMI.physio.gate.CosineTrajectoryGate
 import app.aaps.plugins.aps.openAPSAIMI.physio.GateInput
+import app.aaps.plugins.aps.openAPSAIMI.physio.SleepLiveDetector
 import app.aaps.plugins.aps.openAPSAIMI.physio.KernelType
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * 💉 AIMI Insulin Decision Adapter - MTR Implementation
@@ -39,6 +48,15 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
     private val relevanceGate: CosineTrajectoryGate, // 🌀 Relevance Gate (Trajectory Filter)
     private val aapsLogger: AAPSLogger
 ) {
+    private val inflammationEstimator = InflammationLatentEstimatorMTR()
+    private val decisionOrchestratorShadow = AIMIDecisionOrchestratorShadowMTR()
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val hypoEventsRef = AtomicReference<List<TE>>(emptyList())
+    private val hypoEventsRefreshInFlight = AtomicBoolean(false)
+    private val activityRef = AtomicReference(RealTimeActivity(0, 0))
+    private val activityRefreshInFlight = AtomicBoolean(false)
+    @Volatile
+    private var lastDecisionTrace: PhysioDecisionTraceMTR? = null
     
     companion object {
         private const val TAG = "InsulinDecisionAdapter"
@@ -65,6 +83,29 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
      */
     fun getLatestSnapshot(): HealthContextSnapshot {
         return repo.getLastSnapshot()
+    }
+
+    /** Semantic physio context (sleep/HRV/state) for RBT pattern catalog and meta leaves. */
+    fun getEffectiveContext(minConfidence: Double = 0.3): PhysioContextMTR =
+        contextStore.getEffectiveContext(minConfidence) ?: PhysioContextMTR.NEUTRAL
+
+    fun getLastDecisionTrace(): PhysioDecisionTraceMTR? = lastDecisionTrace
+
+    fun setFinalLoopDecisionType(decisionType: String) {
+        val current = lastDecisionTrace ?: return
+        lastDecisionTrace = current.copy(finalLoopDecisionType = decisionType)
+    }
+
+    fun setSmbActionType(actionType: String) {
+        val current = lastDecisionTrace ?: return
+        val updated = current.copy(smbActionType = actionType)
+        lastDecisionTrace = updated.copy(decisionConflictFlags = buildDecisionConflictFlags(updated))
+    }
+
+    fun setBasalActionType(actionType: String) {
+        val current = lastDecisionTrace ?: return
+        val updated = current.copy(basalActionType = actionType)
+        lastDecisionTrace = updated.copy(decisionConflictFlags = buildDecisionConflictFlags(updated))
     }
     
     /**
@@ -106,15 +147,33 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
                 LTag.APS,
                 "[$TAG] ⚠️ BG too low (${currentBG.toInt()} mg/dL) - skipping physio modulation"
             )
+            logDecisionTrace(
+                state = "UNKNOWN",
+                confidence = 0.0,
+                dataQuality = 0.0,
+                sleepQualityScore = null,
+                multipliers = PhysioMultipliersMTR.NEUTRAL,
+                vetoReason = "bg_below_min_threshold"
+            )
             return PhysioMultipliersMTR.NEUTRAL
         }
         
         // Safety Check 2: Recent hypoglycemia
         if (hasRecentHypoglycemia(recentHypoTimestamp)) {
             aapsLogger.warn(LTag.APS, "[$TAG] ⚠️ Recent hypoglycemia detected - skipping modulation")
+            logDecisionTrace(
+                state = "UNKNOWN",
+                confidence = 0.0,
+                dataQuality = 0.0,
+                sleepQualityScore = null,
+                multipliers = PhysioMultipliersMTR.NEUTRAL,
+                vetoReason = "recent_hypoglycemia"
+            )
             return PhysioMultipliersMTR.NEUTRAL
         }
-        
+
+        ensurePhysioSnapshotRefreshed()
+
         // Get current snapshot (still needed for Real-Time Activity Brake)
         val snapshot = repo.getLastSnapshot() 
         
@@ -125,17 +184,34 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
 
         if (!snapshot.isValid) {
             //aapsLogger.debug(LTag.APS, "[$TAG] No valid snapshot - returning NEUTRAL")
+            logDecisionTrace(
+                state = physioContext.state.name,
+                confidence = physioContext.confidence,
+                dataQuality = physioContext.features?.dataQuality ?: 0.0,
+                sleepQualityScore = physioContext.features?.sleepQualityScore,
+                multipliers = PhysioMultipliersMTR.NEUTRAL,
+                vetoReason = "invalid_snapshot"
+            )
             return PhysioMultipliersMTR.NEUTRAL
         }
         
         // Safety Check 3: Confidence too low
         if (snapshot.confidence < MIN_CONFIDENCE_THRESHOLD) {
              // Silently ignore low confidence
+            logDecisionTrace(
+                state = physioContext.state.name,
+                confidence = snapshot.confidence,
+                dataQuality = physioContext.features?.dataQuality ?: 0.0,
+                sleepQualityScore = physioContext.features?.sleepQualityScore,
+                multipliers = PhysioMultipliersMTR.NEUTRAL,
+                vetoReason = "snapshot_confidence_below_threshold"
+            )
             return PhysioMultipliersMTR.NEUTRAL
         }
         
         // 1. Calculate raw multipliers (Semantic + Tactical)
         val rawMultipliers = calculateRawMultipliers(snapshot, physioContext, currentBG, currentDelta)
+        val inflammationLatent = inflammationEstimator.estimate(physioContext, snapshot)
         
         // 2. 🌀 Physiological Relevance Filter (based on Cosine Similarity)
         // This gate determines if the current physiological state is "relevant" enough
@@ -148,7 +224,8 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
             stepCount15m = snapshot.stepsLast15m,
             hrCurrent = snapshot.hrNow,
             hrvCurrent = snapshot.hrvRmssd,
-            sleepState = snapshot.sleepDebtMinutes > 0, 
+            sleepState = snapshot.asleepLiveConfidence >= SleepLiveDetector.ASLEEP_THRESHOLD ||
+                snapshot.hcSleepSessionActive,
             physioState = physioContext.state,
             dataQuality = snapshot.confidence
         )
@@ -166,15 +243,22 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
         
         // val trajectoryRelevanceScore = gateOutcome.relevanceScore (Already defined above)
         
+        // TAP-G RFC G.2: Cosine gate peak shift lives only in [PhysioMultipliersMTR.peakShiftMinutes] and is fed
+        // into [TapPeakGovernor] as physioPeakShiftMinutes — it is not re-applied as a second independent peak offset.
         val modulatedMultipliers = rawMultipliers.copy(
             isfFactor = modulatedISF,
-            peakShiftMinutes = gateOutcome.peakTimeShiftMinutes, // Carrier for Phase Shift
+            peakShiftMinutes = gateOutcome.peakTimeShiftMinutes,
             trajectoryRelevanceScore = trajectoryRelevanceScore,
             appliedCaps = if (gateOutcome.dominantKernel != KernelType.REST) 
                             "${rawMultipliers.appliedCaps} + CGate:${gateOutcome.dominantKernel}" 
                           else rawMultipliers.appliedCaps,
             source = "Semantic+Tactical+CGate",
             detailedReason = "🌀 CGate: ${gateOutcome.debug}" 
+        )
+        val shadowOrchestrator = decisionOrchestratorShadow.compute(
+            rawMultipliers = rawMultipliers,
+            cgateIsfMultiplier = gateOutcome.effectiveSensitivityMultiplier,
+            inflammation = inflammationLatent,
         )
         
         // 3. Apply HARD CAPS (Final Safety Net)
@@ -196,8 +280,80 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
                  aapsLogger.info(LTag.APS, "🌀 CGate: ${gateOutcome.debug}")
             }
         }
+        logDecisionTrace(
+            state = physioContext.state.name,
+            confidence = physioContext.confidence,
+            dataQuality = physioContext.features?.dataQuality ?: 0.0,
+            sleepQualityScore = physioContext.features?.sleepQualityScore,
+            multipliers = cappedMultipliers,
+            inflammationLatent = inflammationLatent,
+            shadowOrchestrator = shadowOrchestrator,
+            vetoReason = null
+        )
         
         return cappedMultipliers
+    }
+
+    private fun logDecisionTrace(
+        state: String,
+        confidence: Double,
+        dataQuality: Double,
+        sleepQualityScore: Double? = null,
+        multipliers: PhysioMultipliersMTR,
+        inflammationLatent: InflammationLatentStateMTR = InflammationLatentStateMTR(),
+        shadowOrchestrator: AIMIDecisionOrchestratorShadowMTR.ShadowResult = AIMIDecisionOrchestratorShadowMTR.ShadowResult(),
+        vetoReason: String?
+    ) {
+        lastDecisionTrace = PhysioDecisionTraceMTR(
+            timestamp = System.currentTimeMillis(),
+            physioState = state,
+            physioConfidence = confidence,
+            physioDataQuality = dataQuality,
+            sleepQualityScore = sleepQualityScore,
+            isfFactor = multipliers.isfFactor,
+            basalFactor = multipliers.basalFactor,
+            smbFactor = multipliers.smbFactor,
+            reactivityFactor = multipliers.reactivityFactor,
+            inflammationLatentIndex = inflammationLatent.index,
+            inflammationConfidence = inflammationLatent.confidence,
+            inflammationTimescale = inflammationLatent.timescale.name,
+            inflammationDrivers = inflammationLatent.drivers,
+            shadowOrchestratorEnabled = shadowOrchestrator.enabled,
+            shadowBudgetedIsfFactor = shadowOrchestrator.budgetedIsfFactor,
+            shadowBudgetedBasalFactor = shadowOrchestrator.budgetedBasalFactor,
+            shadowBudgetedSmbFactor = shadowOrchestrator.budgetedSmbFactor,
+            shadowOverlapPenalty = shadowOrchestrator.overlapPenalty,
+            shadowContributions = shadowOrchestrator.contributions,
+            shadowNotes = shadowOrchestrator.notes,
+            vetoReason = vetoReason,
+            finalLoopDecisionType = null,
+            smbActionType = null,
+            basalActionType = null,
+            decisionConflictFlags = emptyList(),
+            source = multipliers.source
+        )
+        aapsLogger.info(
+            LTag.APS,
+            "PHYSIO_DECISION state=$state conf=${confidence.format(2)} " +
+                "quality=${dataQuality.format(2)} isf=${multipliers.isfFactor.format(3)} " +
+                "basal=${multipliers.basalFactor.format(3)} smb=${multipliers.smbFactor.format(3)} " +
+                "sleepQ=${sleepQualityScore?.format(3) ?: "na"} " +
+                "inflam=${inflammationLatent.index.format(3)}(${inflammationLatent.timescale.name}) " +
+                "shadowSmb=${shadowOrchestrator.budgetedSmbFactor.format(3)} " +
+                "react=${multipliers.reactivityFactor.format(3)} " +
+                "veto=${vetoReason ?: "none"} source=${multipliers.source}"
+        )
+    }
+
+    private fun buildDecisionConflictFlags(trace: PhysioDecisionTraceMTR): List<String> {
+        val flags = mutableListOf<String>()
+        val hasSmb = trace.smbActionType == "smb"
+        val basalAction = trace.basalActionType
+        if (hasSmb && basalAction != null && basalAction != "none") {
+            flags += "dual_delivery"
+            flags += "dual_delivery_$basalAction"
+        }
+        return flags
     }
     
     // ═══════════════════════════════════════════════════════════════════════
@@ -333,11 +489,9 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
         
         // Check therapy events for hypo treatments
         try {
-            val hypoEvents = persistenceLayer.getTherapyEventDataFromTime(
-                now - RECENT_HYPO_WINDOW_MS,
-                TE.Type.NOTE,
-                false
-            ).filter { event ->
+            refreshHypoEventsAsync(now)
+            val events = hypoEventsRef.get()
+            val hypoEvents = events.filter { event ->
                 event.note?.contains("hypo", ignoreCase = true) == true ||
                 event.note?.contains("hypoglycemia", ignoreCase = true) == true
             }
@@ -369,10 +523,45 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
      * This bypasses the 15-min cache to allow real-time reactivity in the loop
      */
     fun getRealTimeActivity(): RealTimeActivity {
-         // Graceful fallback if repo fail (returns 0)
-         val steps = dataRepository.fetchStepsData(0) 
-         val hr = dataRepository.fetchLastHeartRate()
-         return RealTimeActivity(steps, hr)
+         refreshActivityAsync()
+         return activityRef.get()
+    }
+
+    private fun refreshHypoEventsAsync(now: Long) {
+        if (!hypoEventsRefreshInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                hypoEventsRef.set(
+                    persistenceLayer.getTherapyEventDataFromTime(
+                        now - RECENT_HYPO_WINDOW_MS,
+                        TE.Type.NOTE,
+                        ascending = false
+                    )
+                )
+            } catch (_: Exception) {
+                hypoEventsRef.set(emptyList())
+            } finally {
+                hypoEventsRefreshInFlight.set(false)
+            }
+        }
+    }
+
+    private fun refreshActivityAsync() {
+        if (!activityRefreshInFlight.compareAndSet(false, true)) return
+        ioScope.launch {
+            try {
+                activityRef.set(
+                    RealTimeActivity(
+                        stepsToday = dataRepository.fetchStepsData(0),
+                        heartRate = dataRepository.fetchLastHeartRate()
+                    )
+                )
+            } catch (_: Exception) {
+                activityRef.set(RealTimeActivity(0, 0))
+            } finally {
+                activityRefreshInFlight.set(false)
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -380,6 +569,23 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
     // ═══════════════════════════════════════════════════════════════════════
     
     private fun Double.format(decimals: Int): String = "%.${decimals}f".format(this)
+
+    /**
+     * [HealthContextRepository.fetchSnapshot] reads steps/HR via DB on a non-main thread
+     * ([UnifiedActivityProviderMTR] skips reads on the UI looper). Uses [runBlocking] on the
+     * main looper only so a brief UI stall is possible; loop/APS should prefer a background thread.
+     */
+    private fun ensurePhysioSnapshotRefreshed() {
+        try {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                runBlocking(Dispatchers.IO) { repo.fetchSnapshot() }
+            } else {
+                repo.fetchSnapshot()
+            }
+        } catch (_: Exception) {
+            // Physio must not fail the loop tick if merge/read throws.
+        }
+    }
     
     /**
      * Gets current adapter status for debugging
@@ -402,6 +608,7 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
      * Replaces the old diagnostic log with a Snapshot summary
      */
     fun getDetailedLogString(): String {
+        ensurePhysioSnapshotRefreshed()
         val snapshot = repo.getLastSnapshot()
         
         if (!snapshot.isValid || snapshot.timestamp == 0L) {
@@ -414,8 +621,12 @@ class AIMIInsulinDecisionAdapterMTR @Inject constructor(
         // Header
         sb.append("🏥 Physio Status (${ageMin}m ago) | Conf: ${(snapshot.confidence * 100).toInt()}%")
         
-        // Activity
-        sb.append("\n🏃 Activity: ${snapshot.stepsLast15m} steps/15m (State: ${snapshot.activityState})")
+        // Activity: 5m reacts faster to recent walking; 15m matches modulation window. ACTIVE if ≥200 steps/5m
+        // (a burst = already on the move) or ≥375 steps/15m (sustained). The effort belief drives the protection.
+        sb.append(
+            "\n🏃 Activity: ${snapshot.stepsLast5m} steps/5m | ${snapshot.stepsLast15m} steps/15m " +
+                "(State: ${snapshot.activityState}, ACTIVE if ≥200/5m or ≥375/15m)"
+        )
         
         // Heart
         val hrvStr = if (snapshot.hrvRmssd > 0) "${snapshot.hrvRmssd.toInt()}ms" else "--"

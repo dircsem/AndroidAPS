@@ -1,10 +1,17 @@
 package app.aaps.plugins.aps.openAPSAIMI.keys
 
+import app.aaps.core.keys.PreferenceType
 import app.aaps.core.keys.interfaces.StringPreferenceKey
+import app.aaps.plugins.aps.R
+import app.aaps.plugins.aps.openAPSAIMI.steps.UnifiedActivityProviderMTR
 
 enum class AimiStringKey(
     override val key: String,
     override val defaultValue: String,
+    override val titleResId: Int,
+    override val summaryResId: Int? = null,
+    override val preferenceType: PreferenceType = PreferenceType.TEXT_FIELD,
+    override val entries: Map<String, Int> = emptyMap(),
     override val defaultedBySM: Boolean = false,
     override val showInApsMode: Boolean = true,
     override val showInNsClientMode: Boolean = true,
@@ -16,6 +23,84 @@ enum class AimiStringKey(
     override val isPin: Boolean = false,
     override val exportable: Boolean = true
 ) : StringPreferenceKey {
-    PregnancyDueDateString("aimi_pregnancy_due_date_string", ""),
-    RemoteControlPin("aimi_remote_control_pin", "", isPin = true, isPassword = true),
+    PregnancyDueDateString(
+        key = "aimi_pregnancy_due_date_string",
+        defaultValue = "",
+        titleResId = R.string.OApsAIMI_PregnancyDueDate_title,
+        summaryResId = R.string.OApsAIMI_PregnancyDueDate_summary
+    ),
+    RemoteControlPin(
+        key = "aimi_remote_control_pin",
+        defaultValue = "",
+        titleResId = R.string.OApsAIMI_RemoteControlPin_title,
+        summaryResId = R.string.OApsAIMI_RemoteControlPin_summary,
+        isPin = true
+    ),
+
+    OuraPersonalAccessToken(
+        key = "aimi_oura_personal_access_token",
+        defaultValue = "",
+        titleResId = R.string.aimi_oura_pat_title,
+        summaryResId = R.string.aimi_oura_pat_summary,
+        isPassword = true,
+        exportable = false,
+    ),
+
+    /** Claude model used by every AIMI LLM path when that path uses Claude (Advisor provider, or Physio LLM provider for Physio). See [app.aaps.plugins.aps.openAPSAIMI.llm.claude.ClaudeModelResolver]. */
+    AimiAdvisorClaudeModel(
+        key = "aimi_advisor_claude_model",
+        defaultValue = "claude-sonnet-5",
+        titleResId = R.string.aimi_prefs_claude_model_title,
+        summaryResId = R.string.aimi_prefs_claude_model_summary,
+        preferenceType = PreferenceType.LIST,
+        entries = mapOf(
+            "claude-sonnet-5" to R.string.aimi_prefs_claude_model_sonnet5,
+            "claude-fable-5-1" to R.string.aimi_prefs_claude_model_fable51,
+            "claude-opus-5-5" to R.string.aimi_prefs_claude_model_opus55,
+            "claude-haiku-4-5" to R.string.aimi_prefs_claude_model_haiku45,
+        ),
+    ),
+
+    /** Steps & heart-rate source (same key as [UnifiedActivityProviderMTR.PREF_KEY_SOURCE_MODE]). */
+    ActivitySourceMode(
+        key = UnifiedActivityProviderMTR.PREF_KEY_SOURCE_MODE,
+        defaultValue = UnifiedActivityProviderMTR.DEFAULT_MODE,
+        titleResId = R.string.pref_aimi_steps_source_title,
+        preferenceType = PreferenceType.LIST,
+        entries = mapOf(
+            UnifiedActivityProviderMTR.MODE_PREFER_WEAR to R.string.pref_aimi_steps_source_wear,
+            UnifiedActivityProviderMTR.MODE_AUTO_FALLBACK to R.string.pref_aimi_steps_source_auto,
+            UnifiedActivityProviderMTR.MODE_HEALTH_CONNECT_ONLY to R.string.pref_aimi_steps_source_hc,
+            UnifiedActivityProviderMTR.MODE_DISABLED to R.string.pref_aimi_steps_source_disabled,
+        ),
+    ),
+
+    OApsAIMIPkpdStateDominantBranch(
+        key = "aimi_pkpd_state_dominant_branch",
+        defaultValue = "",
+        titleResId = 0,
+        showInApsMode = false,
+        showInNsClientMode = false,
+        showInPumpControlMode = false
+    ),
+
+    /** Last material `PEAK_GOV:` line for APS console / debugging (RFC H.4). */
+    OApsAIMIPkpdLastPeakGovLogLine(
+        key = "aimi_pkpd_state_last_peak_gov_log",
+        defaultValue = "",
+        titleResId = 0,
+        showInApsMode = false,
+        showInNsClientMode = false,
+        showInPumpControlMode = false
+    ),
+
+    /** Last `PEAK_GOV` line echoed to APS console (dedup in DetermineBasalAIMI2). */
+    OApsAIMIPkpdLastPeakGovConsoleEchoed(
+        key = "aimi_pkpd_state_last_peak_gov_console_echoed",
+        defaultValue = "",
+        titleResId = 0,
+        showInApsMode = false,
+        showInNsClientMode = false,
+        showInPumpControlMode = false
+    ),
 }

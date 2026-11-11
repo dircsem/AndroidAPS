@@ -1,5 +1,7 @@
 package app.aaps.pump.common.hw.medlink.keys
 
+import app.aaps.core.keys.PreferenceType
+import app.aaps.pump.common.hw.rileylink.R
 import app.aaps.core.keys.interfaces.BooleanPreferenceKey
 import app.aaps.core.keys.interfaces.IntentPreferenceKey
 
@@ -12,8 +14,11 @@ enum class MedLinkIntentPreferenceKey(
     override val dependency: BooleanPreferenceKey? = null,
     override val negativeDependency: BooleanPreferenceKey? = null,
     override val hideParentScreenIfHidden: Boolean = false,
-    override val exportable: Boolean = false
+    override val exportable: Boolean = false,
+    override val titleResId: Int = 0,
+    override val summaryResId: Int? = null,
+    override val preferenceType: PreferenceType = PreferenceType.ACTIVITY
 ) : IntentPreferenceKey {
 
-    MacAddressSelector("medlink_mac_address_selector")
+    MacAddressSelector("medlink_mac_address_selector", titleResId = R.string.medlink_configuration)
 }

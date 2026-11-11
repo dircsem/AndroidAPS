@@ -1,36 +1,73 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor
 
+import app.aaps.plugins.aps.openAPSAIMI.advisor.oref.OrefAnalysisReport
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaDecision
+
 /**
  * =============================================================================
  * AIMI ADVISOR DATA MODELS
  * =============================================================================
- * 
- * Simple, non-nullable data classes for the AIMI Profile Advisor feature.
+ *
+ * Simple data classes for the AIMI Profile Advisor feature.
  * Zero external dependencies - guaranteed crash-free.
+ *
+ * A measured number that could not be read is `null`, never a stand-in value.
+ * Same rule as [app.aaps.plugins.aps.openAPSAIMI.advisor.oref.OrefAnalysisReport]
+ * in the same advisor package.
  * =============================================================================
  */
 
 /**
+ * How much real data a metric block is built on.
+ *
+ * Mirrors [app.aaps.plugins.aps.openAPSAIMI.advisor.oref.OrefDataSufficiency]. Code that proposes a
+ * settings change must stop when this is [INSUFFICIENT]; it must never fall back to a default value.
+ * Text shown to the user must say that there is not enough data instead of printing a number.
+ */
+enum class AdvisorDataSufficiency {
+
+    /** No usable glucose history, so no number in the block can be trusted. */
+    INSUFFICIENT,
+
+    /** The glucose sources answered, so the non-null numbers are real measurements. */
+    GOOD,
+}
+
+/**
  * Metrics collected for analysis.
+ *
+ * Every `Double?` here is `null` when the source could not give a value (no calculator, a failed
+ * query, or an empty history). Readers must handle that case; see [dataSufficiency].
  */
 data class AdvisorMetrics(
     val periodLabel: String,
-    val tir70_180: Double,          // Fraction (0-1)
-    val tir70_140: Double,
-    val timeBelow70: Double,
-    val timeBelow54: Double,
-    val timeAbove180: Double,
-    val timeAbove250: Double,
-    val meanBg: Double,             // mg/dL
-    val gmi: Double,                // % (derived)
-    val tdd: Double,                // U/day
-    val basalPercent: Double,       // Basal as fraction of TDD
+    val tir70_180: Double?,         // Fraction (0-1), null = not measured
+    val tir70_140: Double?,
+    val timeBelow70: Double?,
+    val timeBelow54: Double?,
+    val timeAbove180: Double?,
+    val timeAbove250: Double?,
+    val meanBg: Double?,            // mg/dL, null = not measured
+    val variabilityCv: Double?,     // fraction (0-1), CV = sd / mean
+    val gmi: Double?,               // % (derived from meanBg)
+    val tdd: Double?,               // U/day
+    val basalPercent: Double?,      // Basal as fraction of TDD
     val hypoEvents: Int,
     val severeHypoEvents: Int,
     val hyperEvents: Int,
     val todayTir: Double?,    // (0-1) or null
-    val todayTdd: Double?     // U or null
-)
+    val todayTdd: Double?,    // U or null
+    /** Whether the glucose picture is real. Decision code must stop on [AdvisorDataSufficiency.INSUFFICIENT]. */
+    val dataSufficiency: AdvisorDataSufficiency = AdvisorDataSufficiency.INSUFFICIENT,
+    /** How many glucose readings [meanBg] and [variabilityCv] were built on. */
+    val bgReadingCount: Int = 0,
+    /** How many days the [tir70_180] average really covers (0 when no day could be read). */
+    val daysCovered: Int = 0,
+) {
+
+    /** True when no settings change may be proposed from this block. */
+    val isInsufficient: Boolean get() = dataSufficiency == AdvisorDataSufficiency.INSUFFICIENT
+}
 
 /**
  * Severity classification for the overall score.
@@ -86,12 +123,20 @@ data class AimiRecommendation(
 data class AdvisorReport(
     val generatedAt: Long,
     val metrics: AdvisorMetrics,
-    val overallScore: Double,           // 0-10 score
-    val overallSeverity: AdvisorSeverity,
+    /** 0-10 score, or null when there is not enough data to score the period. */
+    val overallScore: Double?,
+    /** Null when [overallScore] is null. */
+    val overallSeverity: AdvisorSeverity?,
     val overallAssessment: String,
     val recommendations: List<AimiRecommendation>,
     // PkpdSuggestions merged into recommendations with Domain.PKPD
-    val summary: String
+    val summary: String,
+    /** Same snapshot as used to build this report (avoid duplicate collectContext / heavy DB work). */
+    val advisorContext: AdvisorContext,
+    /** On-device OREF-aligned feature/outcome analysis (local DB); LGBM scores optional via ONNX. */
+    val orefAnalysis: OrefAnalysisReport? = null,
+    /** Latest Harmonia simulation branch attached to the runtime, sandbox-only. */
+    val harmoniaDecision: HarmoniaDecision? = null,
 )
 
 /**
@@ -105,7 +150,8 @@ data class AdvisorContext(
     val metrics: AdvisorMetrics,
     val profile: AimiProfileSnapshot,
     val prefs: AimiPrefsSnapshot,
-    val pkpdPrefs: PkpdPrefsSnapshot
+    val pkpdPrefs: PkpdPrefsSnapshot,
+    val harmoniaDecision: HarmoniaDecision? = null,
 )
 
 data class AimiProfileSnapshot(
@@ -121,7 +167,10 @@ data class AimiPrefsSnapshot(
     val maxSmb: Double,                     // U
     val lunchFactor: Double,                // multiplier
     val unifiedReactivityFactor: Double,    // multiplier
-    val autodriveMaxBasal: Double           // U/h
+    val autodriveMaxBasal: Double,          // U/h
+    val autodriveEnabled: Boolean = false,
+    /** Autodrive MPC-style aggressiveness (insulin per kg per 5 min step). */
+    val mpcInsulinUPerKgPerStep: Double = 0.065,
 )
 
 data class AdvisorFlag(

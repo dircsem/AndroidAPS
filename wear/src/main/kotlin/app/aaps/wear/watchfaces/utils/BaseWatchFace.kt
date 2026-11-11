@@ -1,7 +1,9 @@
 package app.aaps.wear.watchfaces.utils
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -22,14 +24,18 @@ import app.aaps.core.interfaces.rx.events.EventWearToMobile
 import app.aaps.core.interfaces.rx.weardata.EventData.ActionResendData
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.ui.extensions.toVisibility
-import app.aaps.core.ui.extensions.toVisibilityKeepSpace
+import androidx.core.graphics.createBitmap
+import app.aaps.wear.utils.toVisibility
+import app.aaps.wear.utils.toVisibilityKeepSpace
 import app.aaps.wear.R
 import app.aaps.wear.data.ComplicationData
 import app.aaps.wear.data.ComplicationDataRepository
+import app.aaps.wear.data.bgDataArray
+import app.aaps.wear.data.statusDataArray
 import app.aaps.wear.events.EventWearPreferenceChange
 import app.aaps.wear.interaction.menus.MainMenuActivity
 import dagger.android.AndroidInjection
+import dagger.android.HasAndroidInjector
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +50,16 @@ import kotlin.math.floor
 
 @SuppressLint("Deprecated")
 abstract class BaseWatchFace : WatchFace() {
+
+    private companion object {
+
+        /**
+         * How long one loaded set of data is reused across renders, so the halves of a split render
+         * are drawn from the same moment. Long enough to cover two back-to-back complication
+         * requests, short enough that no user-visible staleness comes from it.
+         */
+        private const val RENDER_DATA_SHARE_MS = 500L
+    }
 
     @Inject lateinit var complicationDataRepository: ComplicationDataRepository
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -70,11 +86,7 @@ abstract class BaseWatchFace : WatchFace() {
      * Each entry contains current BG, trend arrow, delta, and range info.
      */
     protected val singleBg
-        get() = arrayOf(
-            complicationData.bgData,
-            complicationData.bgData1,
-            complicationData.bgData2
-        )
+        get() = complicationData.bgDataArray(sp.getBoolean(R.string.key_switch_external, false))
 
     /**
      * Status data for all three datasets (primary + 2 followers).
@@ -87,11 +99,7 @@ abstract class BaseWatchFace : WatchFace() {
      * Each entry contains IOB, COB, basal rate, battery, loop status, etc.
      */
     protected val status
-        get() = arrayOf(
-            complicationData.statusData,
-            complicationData.statusData1,
-            complicationData.statusData2
-        )
+        get() = complicationData.statusDataArray(sp.getBoolean(R.string.key_switch_external, false))
 
     /**
      * Treatment history (boluses, temp basals, extended boluses).
@@ -173,9 +181,37 @@ abstract class BaseWatchFace : WatchFace() {
     private var mLastSvg = ""
     private var mLastDirection = ""
 
+    // True only once injection has returned, via onCreate below or via ensureInjected() for instances
+    // that never get an onCreate. Checked instead of catching UninitializedPropertyAccessException,
+    // which would also mask unrelated bugs.
+    protected var daggerInjectionComplete = false
+
+    /**
+     * Injects this instance if [onCreate] never ran, so `@Inject` fields are usable anyway.
+     *
+     * Editor sessions and preview generation run the watch face as a *headless* instance, which
+     * `androidx.wear.watchface` builds by reflection: `newInstance()` plus an internal `setContext()`
+     * that calls `attachBaseContext`. `Service.onCreate()` is never called, so without this every
+     * `@Inject` field stays unset and anything the framework calls into throws
+     * `UninitializedPropertyAccessException` - which during a headless release kills the binder and
+     * makes the system drop the editing session, losing the configuration just chosen.
+     *
+     * Works because `attachBaseContext` has run, so `applicationContext` resolves to `WearApp`, a
+     * `DaggerApplication` and therefore a [HasAndroidInjector]. Safe to call repeatedly - it no-ops
+     * once injection has happened by either route.
+     */
+    protected fun ensureInjected() {
+        if (daggerInjectionComplete) return
+        (applicationContext as? HasAndroidInjector)?.let {
+            it.androidInjector().inject(this)
+            daggerInjectionComplete = true
+        }
+    }
+
     override fun onCreate() {
         // Not derived from DaggerService, do injection here
         AndroidInjection.inject(this)
+        daggerInjectionComplete = true
         super.onCreate()
         simpleUi.onCreate(::forceUpdate)
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -309,7 +345,9 @@ abstract class BaseWatchFace : WatchFace() {
         layoutSet = true
         setupCharts()
         setDataFields()
-        missedReadingAlert()
+        // Sends a resend request to the phone - an effect outside the drawing, so a render-only
+        // instance must not do it, or every rendered frame would ask the phone for data again
+        if (!isRenderOnly) missedReadingAlert()
     }
 
     fun ageLevel(id: Int = 0): Int =
@@ -327,6 +365,9 @@ abstract class BaseWatchFace : WatchFace() {
     }
 
     override fun onDestroy() {
+        // Headless instances reach this without ever having run onCreate, so inject first - see
+        // ensureInjected(). For watch faces with no complication slots this is the only entry point.
+        ensureInjected()
         disposable.clear()
         watchfaceScope.cancel()
         simpleUi.onDestroy()
@@ -335,6 +376,20 @@ abstract class BaseWatchFace : WatchFace() {
 
     override fun getInteractiveModeUpdateRate(): Long {
         return if (showSecond) 1000L else 60 * 1000L // Only call onTimeChanged every 60 seconds
+    }
+
+    /**
+     * Override to true when a subclass needs something - complications, say - painted on the Canvas
+     * between measure/layout and the mainLayout draw; see [drawMainLayout]. False keeps the single
+     * measure+layout+draw pass.
+     */
+    protected open fun deferMainLayoutDraw(): Boolean = false
+
+    /** Performs the mainLayout draw that [onDraw] skipped because [deferMainLayoutDraw] is true. */
+    protected fun drawMainLayout(canvas: Canvas) {
+        if (::binding.isInitialized && layoutSet && !simpleUi.isEnabled(currentWatchMode)) {
+            binding.mainLayout.draw(canvas)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -355,9 +410,125 @@ abstract class BaseWatchFace : WatchFace() {
                 binding.mainLayout.measure(specW, specH)
                 val y = if (forceSquareCanvas) displayWidth else displayHeight // Square Steampunk
                 binding.mainLayout.layout(0, 0, displayWidth, y)
-                binding.mainLayout.draw(canvas)
+                if (!deferMainLayoutDraw()) binding.mainLayout.draw(canvas)
             }
         }
+    }
+
+    /**
+     * Width of the surface currently being drawn: the screen for a live watch face, the bitmap for
+     * a render. Subclasses that scale their layout to the surface should measure against this
+     * rather than asking the `WindowManager`, so a render into a bitmap of any size scales
+     * correctly. One value, two sources - [onCreate] sets it from the screen, [renderToBitmap] from
+     * the requested bitmap.
+     *
+     * Note a complication request carries no size of its own, so the render size is *our* choice;
+     * this is what makes the layout follow that choice.
+     *
+     * The `WindowManager` fallback covers an instance that ran neither [onCreate] nor
+     * [renderToBitmap] - it keeps the previous behaviour exactly for such an instance instead of
+     * silently scaling by zero.
+     */
+    protected val canvasWidth: Int
+        get() = if (displayWidth > 0) displayWidth
+        else (getSystemService(WINDOW_SERVICE) as WindowManager).currentWindowMetrics.bounds.width()
+
+    /**
+     * True when this instance exists only to draw into a [Bitmap] and is not, and never will be, a
+     * live watch face. Subclasses check it to skip anything that would have an effect outside the
+     * drawing itself - stored preferences, events, alerts.
+     */
+    protected var isRenderOnly: Boolean = false
+        private set
+
+    /**
+     * Tells a render-only instance to draw the ambient variant rather than the active one.
+     *
+     * A complication data source is never told about ambient mode, so the provider works it out from
+     * the display state and passes it here. `showSecond` then turns false, and the existing
+     * `updateSecondVisibility()` hides both the digital seconds and the analog second hand - which is
+     * what a still picture needs, since a second hand it cannot keep moving would otherwise freeze at
+     * a stale position.
+     *
+     * Ignored unless this instance is render-only, so a live watch face keeps deciding its own mode
+     * from the engine.
+     */
+    fun setRenderAmbient(ambient: Boolean) {
+        if (isRenderOnly) isAmbient = ambient
+    }
+
+    private var lastRenderDataLoad = 0L
+
+    /**
+     * Prepares this instance to draw into a [Bitmap] without ever being started as a `Service`.
+     *
+     * Needed on watches whose firmware no longer selects or binds code-based watch faces: there the
+     * drawing is published through an image complication instead, and the provider builds the watch
+     * face itself. Constructing one is safe - `WatchFaceService` has a single, lazily initialised
+     * field, engines are only ever created by the system over IPC, and none of the field
+     * initialisers here touch a `Context` (see `_docs/CWF_WFF_Prompt.md`, section 7d).
+     *
+     * Call once, before [renderToBitmap]. Attaching a base context is what makes `getSystemService`,
+     * `resources` and `applicationContext` work on an instance the framework never started;
+     * [ensureInjected] then fills the `@Inject` fields, exactly as it does for the headless
+     * instances the editor creates.
+     *
+     * @param hostContext the context of the component doing the rendering
+     */
+    fun prepareForRendering(hostContext: Context) {
+        isRenderOnly = true
+        attachBaseContext(hostContext.applicationContext)
+        ensureInjected()
+        refreshRenderData()
+    }
+
+    /**
+     * Reloads the data the next render will draw from.
+     *
+     * The live path collects the repository flow and is pushed new values; a render-only instance has
+     * no such subscription, so an instance kept warm across several renders must call this itself or
+     * it would keep drawing the values it started with.
+     */
+    fun refreshRenderData() {
+        // The halves of a split render are two separate requests, answered a few milliseconds apart.
+        // Reloading for each of them would let a data change land between the two, and the picture
+        // would then be assembled from two different moments - one half coloured for the old value
+        // and one for the new. Holding the snapshot briefly makes both halves of one refresh agree.
+        val now = System.currentTimeMillis()
+        if (now - lastRenderDataLoad >= RENDER_DATA_SHARE_MS) {
+            lastRenderDataLoad = now
+            runBlocking { complicationData = complicationDataRepository.complicationData.first() }
+        }
+        // [onDraw] populates the views only on its first call, through performViewSetup(); after that
+        // it just measures, lays out and draws. So a warm instance must re-apply the data itself or
+        // every render after the first would redraw the values the first one captured.
+        // setDataFields() is the whole refresh: it fills in the values and ends with setColor(),
+        // which reaches the subclass's own re-read of its description - for the Custom watch face
+        // that is where a newly sent zip and a changed preference are picked up.
+        if (layoutSet) setDataFields()
+    }
+
+    /**
+     * Draws one frame at [width] x [height] and returns it.
+     *
+     * Runs the real render sequence - [onDraw] then [onDrawOverlay] - so the result is what the
+     * watch face would paint, not a second implementation that could drift from it. Inflation and
+     * [performViewSetup] happen inside [onDraw] on the first call, so repeated calls reuse the same
+     * view hierarchy and only re-measure.
+     *
+     * Must run on the main thread: inflating the layout builds views that require a Looper.
+     * [prepareForRendering] must have been called first.
+     */
+    fun renderToBitmap(width: Int, height: Int): Bitmap {
+        displayWidth = width
+        displayHeight = height
+        specW = View.MeasureSpec.makeMeasureSpec(displayWidth, View.MeasureSpec.EXACTLY)
+        specH = if (forceSquareCanvas) specW else View.MeasureSpec.makeMeasureSpec(displayHeight, View.MeasureSpec.EXACTLY)
+        val bitmap = createBitmap(width, height)
+        val canvas = Canvas(bitmap)
+        onDraw(canvas)
+        onDrawOverlay(canvas)
+        return bitmap
     }
 
     override fun onTimeChanged(oldTime: WatchFaceTime, newTime: WatchFaceTime) {

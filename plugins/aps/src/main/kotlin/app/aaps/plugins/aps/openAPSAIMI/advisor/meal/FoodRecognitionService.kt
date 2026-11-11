@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.openAPSAIMI.patient.PatientStateRuntimeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -64,7 +65,11 @@ class FoodRecognitionService(
         }
         
         try {
-            return@withContext provider.estimateFromImage(bitmap, userDescription, apiKey)
+            val enrichedDescription = MealVisionUserPrompt.appendHarmoniaContext(
+                userDescription = userDescription,
+                harmoniaDecision = PatientStateRuntimeRepository.getLatest()?.harmoniaDecision,
+            )
+            return@withContext provider.estimateFromImage(bitmap, enrichedDescription, apiKey)
         } catch (e: Exception) {
             return@withContext FoodAnalysisPrompt.emptyErrorResult(
                 "Error",

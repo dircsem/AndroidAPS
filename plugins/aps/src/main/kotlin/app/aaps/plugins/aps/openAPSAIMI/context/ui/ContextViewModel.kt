@@ -192,6 +192,8 @@ class ContextViewModel(
             is ContextIntent.Alcohol -> "🍷 Alcohol: ${intent.units}U ${intent.intensity.name}"
             is ContextIntent.Travel -> "✈️ Travel: ${intent.intensity.name}"
             is ContextIntent.MenstrualCycle -> "🔄 Cycle: ${intent.phase.name}"
+            is ContextIntent.SlowCarbMeal -> "🍕 Repas lent: ${intent.intensity.name}"
+            is ContextIntent.HypoRecovery -> "🍬 Hypo récup: ${intent.intensity.name}"
             is ContextIntent.Custom -> "📝 ${intent.description}"
         }
     }

@@ -2,33 +2,35 @@ package app.aaps.plugins.sync.garmin
 
 import android.content.Context
 import androidx.annotation.VisibleForTesting
-import androidx.preference.PreferenceCategory
-import androidx.preference.PreferenceManager
-import androidx.preference.PreferenceScreen
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationId
+import app.aaps.core.interfaces.notifications.NotificationLevel
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventNewBG
-import app.aaps.core.interfaces.rx.events.EventPreferenceChange
+import app.aaps.core.interfaces.rx.collectResilient
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.validators.DefaultEditTextValidator
-import app.aaps.core.validators.preferences.AdaptiveIntPreference
-import app.aaps.core.validators.preferences.AdaptiveStringPreference
-import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
+import app.aaps.core.ui.compose.icons.IcPluginGarmin
+import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
+import app.aaps.core.ui.R as CoreUiR
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.garmin.keys.GarminBooleanKey
 import app.aaps.plugins.sync.garmin.keys.GarminIntKey
 import app.aaps.plugins.sync.garmin.keys.GarminStringKey
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.schedulers.Schedulers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.drop
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
@@ -38,6 +40,9 @@ import java.net.URI
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Locale
 import java.util.Date
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
@@ -46,6 +51,7 @@ import javax.inject.Singleton
 import kotlin.concurrent.withLock
 import kotlin.math.roundToInt
 import app.aaps.core.interfaces.sharedPreferences.SP
+import kotlinx.coroutines.runBlocking
 
 /** Support communication with Garmin devices.
  *
@@ -61,15 +67,16 @@ class GarminPlugin @Inject constructor(
     private val sp: SP,
     private val context: Context,
     private val loopHub: LoopHub,
-    private val rxBus: RxBus
+    private val persistenceLayer: PersistenceLayer,
+    private val config: Config,
+    private val notificationManager: NotificationManager
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.SYNC)
-        .pluginIcon(app.aaps.core.objects.R.drawable.ic_watch)
+        .icon(IcPluginGarmin)
         .pluginName(R.string.garmin)
         .shortName(R.string.garmin)
-        .description(R.string.garmin_description)
-        .preferencesId(PluginDescription.PREFERENCE_SCREEN),
+        .description(R.string.garmin_description),
     ownPreferences = listOf(GarminStringKey::class.java, GarminBooleanKey::class.java, GarminIntKey::class.java),
     aapsLogger, resourceHelper, preferences
 ) {
@@ -80,6 +87,46 @@ class GarminPlugin @Inject constructor(
     companion object {
         private const val PREF_GARMIN_LAST_STEPS = "garmin_http_last_steps"
         private const val PREF_GARMIN_LAST_TS = "garmin_http_last_steps_ts"
+
+        /** Keywords accepted from Garmin /mode (must match therapy.kt detection). */
+        private val ALLOWED_THERAPY_MODES = setOf(
+            "bfast", "lunch", "dinner", "highcarb", "coffee", "cafe", "fcl", "sport",
+            "stop", "meal", "snack"
+        )
+
+        private val DEFAULT_MODE_DURATIONS_MIN = mapOf(
+            "bfast" to 60,
+            "lunch" to 60,
+            "dinner" to 60,
+            "highcarb" to 90,
+            // CoffeeRiseMode.DEFAULT_WINDOW_MIN
+            "coffee" to 90,
+            "cafe" to 90,
+            "fcl" to 30,
+            "sport" to 120,
+            "meal" to 60,
+            "snack" to 30,
+            "stop" to 1,
+        )
+
+        /** FCL companion temporary target (mg/dL) — ends FCL meal basal with the TT. */
+        private const val FCL_TEMP_TARGET_MGDL = 80.0
+        private const val FCL_TEMP_TARGET_DURATION_MIN = 30
+
+        /** Answer to the watch when a bolus is not given. */
+        @VisibleForTesting
+        const val BOLUS_REFUSED_JSON = "{\"ok\":false}"
+
+        /** A new watch bolus is refused this long after the last one: long enough to stop a retry. */
+        @VisibleForTesting
+        const val BOLUS_REPEAT_BLOCK_MS = 60_000L
+
+        /**
+         * Notification used when a watch bolus is refused or limited.
+         * There is no Garmin specific id in [NotificationId] yet, so the bolus failure id is used,
+         * with a lower level (no alarm sound): see [refuseBolus].
+         */
+        private val GARMIN_BOLUS_NOTIFICATION = NotificationId.GARMIN_BOLUS
     }
 
     @VisibleForTesting
@@ -109,7 +156,7 @@ class GarminPlugin @Inject constructor(
     )
 
     @VisibleForTesting
-    private val disposable = CompositeDisposable()
+    var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @VisibleForTesting
     var clock: Clock = Clock.systemUTC()
@@ -122,61 +169,34 @@ class GarminPlugin @Inject constructor(
     private val glucoseUnitStr get() = if (loopHub.glucoseUnit == GlucoseUnit.MGDL) "mgdl" else "mmoll"
     private val garminAapsKey get() = preferences.get(GarminStringKey.RequestKey)
 
-    private fun onPreferenceChange(event: EventPreferenceChange) {
-        when (event.changedKey) {
-            "communication_ciq_debug_mode"                                       -> setupGarminMessenger()
-            GarminBooleanKey.LocalHttpServer.key, GarminIntKey.LocalHttpPort.key -> setupHttpServer()
-            GarminStringKey.RequestKey.key                                       -> sendPhoneAppMessage()
-        }
-    }
-
     private fun setupGarminMessenger() {
         resetGarminMessenger()
         createGarminMessenger()
     }
 
     private fun createGarminMessenger(): GarminMessenger {
-        val enableDebug = false // sp.getBoolean("communication_ciq_debug_mode", false)
+        val enableDebug = false
         aapsLogger.info(LTag.GARMIN, "initialize IQ messenger in debug=$enableDebug")
         return GarminMessenger(
-            aapsLogger, context, glucoseAppIds, 
-            { app, msg -> 
-                // Native ConnectIQ Message Handling (Bluetooth Sync)
-                if (msg is Map<*, *>) {
-                    try {
-                        @Suppress("UNCHECKED_CAST")
-                        val map = msg as? Map<String, Any>
-                        if (map != null) {
-                            aapsLogger.debug(LTag.GARMIN, "Received Native Message from ${app.id}: $map")
-                            receiveHeartRate(map, false)
-                            receiveSteps(map, false)  // ✅ CRITICAL FIX: Process steps from CIQ message
-                        }
-                    } catch (e: Exception) {
-                        aapsLogger.error(LTag.GARMIN, "Error processing native message: ${e.message}")
-                    }
-                }
-            }, 
-            true, enableDebug
-        ).also {
-            disposable.add(it)
-        }
+            aapsLogger, context, glucoseAppIds, { _, _ -> }, true, enableDebug
+        )
     }
 
-    override fun onStart() {
+    override suspend fun onStart() {
         super.onStart()
         aapsLogger.info(LTag.GARMIN, "start")
-        disposable.add(
-            rxBus
-                .toObservable(EventPreferenceChange::class.java)
-                .observeOn(Schedulers.io())
-                .subscribe(::onPreferenceChange)
-        )
-        disposable.add(
-            rxBus
-                .toObservable(EventNewBG::class.java)
-                .observeOn(Schedulers.io())
-                .subscribe(::onNewBloodGlucose)
-        )
+        scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        preferences.observe(GarminBooleanKey.LocalHttpServer)
+            .drop(1)
+            .collectResilient(scope, aapsLogger, LTag.GARMIN) { setupHttpServer() }
+        preferences.observe(GarminIntKey.LocalHttpPort)
+            .drop(1)
+            .collectResilient(scope, aapsLogger, LTag.GARMIN) { setupHttpServer() }
+        preferences.observe(GarminStringKey.RequestKey)
+            .drop(1)
+            .collectResilient(scope, aapsLogger, LTag.GARMIN) { sendPhoneAppMessage() }
+        persistenceLayer.observeChanges(GV::class.java)
+            .collectResilient(scope, aapsLogger, LTag.GARMIN, block = ::onNewBloodGlucose)
         setupHttpServer()
         if (garminAapsKey.isNotEmpty())
             setupGarminMessenger()
@@ -198,6 +218,7 @@ class GarminPlugin @Inject constructor(
                 registerEndpoint("/carbs", requestHandler(::onPostCarbs))
                 registerEndpoint("/bolus", requestHandler(::onPostBolus))
                 registerEndpoint("/temptarget", requestHandler(::onPostTempTarget))
+                registerEndpoint("/mode", requestHandler(::onPostMode))
                 registerEndpoint("/connect", requestHandler(::onConnectPump))
                 registerEndpoint("/sgv.json", requestHandler(::onSgv))
                 awaitReady(wait)
@@ -209,8 +230,9 @@ class GarminPlugin @Inject constructor(
         }
     }
 
-    override fun onStop() {
-        disposable.clear()
+    override suspend fun onStop() {
+        scope.cancel()
+        garminMessengerField?.dispose()
         aapsLogger.info(LTag.GARMIN, "Stop")
         server?.close()
         server = null
@@ -223,8 +245,8 @@ class GarminPlugin @Inject constructor(
      * these values immediately when values are requested by Garmin device.
      * Sends a message to the Garmin devices via the ciqMessenger. */
     @VisibleForTesting
-    fun onNewBloodGlucose(event: EventNewBG) {
-        val timestamp = event.glucoseValueTimestamp ?: return
+    fun onNewBloodGlucose(glucoseValues: List<GV>) {
+        val timestamp = glucoseValues.maxOfOrNull { it.timestamp } ?: return
         aapsLogger.info(LTag.GARMIN, "onNewBloodGlucose ${Date(timestamp)}")
         valueLock.withLock {
             if ((lastGlucoseValueTimestamp ?: 0) >= timestamp) return
@@ -463,15 +485,15 @@ class GarminPlugin @Inject constructor(
     fun receiveSteps(msg: Map<String, Any>, test: Boolean) {
         // 🔍 DIAGNOSTIC: Log what Garmin sends
         aapsLogger.debug(LTag.GARMIN, "receiveSteps() - Keys received: ${msg.keys.joinToString(", ")}")
-        
+
         // 1. Extract timestamps (robust parsing - handles String and Number)
         var samplingStartSec = toLong(msg["stepsStart"])
         var samplingEndSec = toLong(msg["stepsEnd"])
-        
+
         // 🔧 FALLBACK 1: Try case-insensitive variants
         if (samplingStartSec == 0L) samplingStartSec = toLong(msg["stepsstart"])
         if (samplingEndSec == 0L) samplingEndSec = toLong(msg["stepsend"])
-        
+
         // 🔧 FALLBACK 2: If timestamps missing, use current time - 5min window
         if (samplingStartSec == 0L || samplingEndSec == 0L) {
             if (msg.keys.any { it.contains("steps", ignoreCase = true) && it !in listOf("stepsStart", "stepsEnd", "stepsstart", "stepsend") }) {
@@ -492,17 +514,17 @@ class GarminPlugin @Inject constructor(
         val steps60 = toInt(msg["steps60"]) ?: 0
         val steps180 = toInt(msg["steps180"]) ?: 0
         val device: String? = msg["device"] as String?
-        
+
         // 3. Validation & Logging
         val hasData = steps5 > 0 || steps10 > 0 || steps15 > 0 || steps30 > 0 || steps60 > 0 || steps180 > 0
-        
+
         if (!hasData) {
             aapsLogger.debug(LTag.GARMIN, "Steps: All buckets are 0. Skipping.")
             return
         }
-        
+
         aapsLogger.info(LTag.GARMIN, "Steps: 5=$steps5, 10=$steps10, 15=$steps15, 30=$steps30, 60=$steps60, 180=$steps180")
-        
+
         receiveSteps(
             Instant.ofEpochSecond(samplingStartSec),
             Instant.ofEpochSecond(samplingEndSec),
@@ -521,11 +543,11 @@ class GarminPlugin @Inject constructor(
     fun receiveSteps(uri: URI) {
         // 🔍 DIAGNOSTIC
         aapsLogger.debug(LTag.GARMIN, "receiveSteps(HTTP) - Query: ${uri.query ?: "<empty>"}")
-        
+
         // 1. Extract timestamps with fallbacks
         var samplingStart: Long? = getQueryParameter(uri, "stepsStart")?.toLongOrNull()
         var samplingEnd: Long? = getQueryParameter(uri, "stepsEnd")?.toLongOrNull()
-        
+
         // 🔧 FALLBACK: Use current time if missing
         if (samplingStart == null || samplingEnd == null) {
             if ((uri.query ?: "").contains("steps", ignoreCase = true)) {
@@ -537,7 +559,7 @@ class GarminPlugin @Inject constructor(
                 return
             }
         }
-        
+
         // 2. Lenient Bucket Retrieval (Default to 0 if missing)
         // This allows watchfaces to send only partial data (e.g. only steps5) without failing
         val steps5 = getQueryParameter(uri, "steps5")?.toIntOrNull() ?: 0
@@ -551,7 +573,7 @@ class GarminPlugin @Inject constructor(
 
         // 3. Validation & Logging
         val hasData = steps5 > 0 || steps10 > 0 || steps15 > 0 || steps30 > 0 || steps60 > 0 || steps180 > 0
-        
+
         if (!hasData) {
             //Fix Garmin sending only "steps=xxx"
             val totalSteps = getQueryParameter(uri, "steps")?.toIntOrNull() ?: -1
@@ -564,9 +586,9 @@ class GarminPlugin @Inject constructor(
             aapsLogger.debug(LTag.GARMIN, "HTTP Steps: All buckets are 0. Skipping.")
             return
         }
-        
+
         aapsLogger.info(LTag.GARMIN, "HTTP Steps: 5=$steps5, 10=$steps10, 15=$steps15, 30=$steps30, 60=$steps60, 180=$steps180")
-        
+
         receiveSteps(
             Instant.ofEpochSecond(samplingStart),
             Instant.ofEpochSecond(samplingEnd),
@@ -612,6 +634,32 @@ class GarminPlugin @Inject constructor(
             if (totalSteps > 0 && delta == 0) {
                 sp.putInt(PREF_GARMIN_LAST_STEPS, totalSteps)
                 sp.putLong(PREF_GARMIN_LAST_TS, now)
+                val midnight = LocalDate.now()
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+                val todayCount = runBlocking {
+                    persistenceLayer.getStepsCountFromTimeToTime(midnight, now)
+                        // Device label may vary ("Garmin", "Garmin Connect", …); match family.
+                        .count { it.device.startsWith("Garmin") }
+                }
+                if (todayCount == 0) {
+                    aapsLogger.info(LTag.GARMIN, "[GarminHTTP] no records today, storing initial total=$totalSteps")
+                    loopHub.storeStepsCount(
+                        Instant.ofEpochSecond(samplingStart),
+                        Instant.ofEpochSecond(samplingEnd),
+                        totalSteps,
+                        none,
+                        none,
+                        none,
+                        none,
+                        none,
+                        device
+                    )
+                } else {
+                    aapsLogger.info(LTag.GARMIN, "[GarminHTTP] delta=0 but $todayCount records already today, skipping")
+                }
+                return
             }
             else
             {
@@ -711,10 +759,58 @@ class GarminPlugin @Inject constructor(
     }
 
     // mod Post bolus and temp targets
-    private fun onPostBolus(uri: URI): CharSequence {
+    /**
+     * A bolus asked for by the watch (`bolus` in U).
+     *
+     * The local HTTP server has no other protection than the request key, and any app on the phone can
+     * reach it. So a bolus is refused unless a request key is set in the Garmin settings, and it is
+     * always refused on a client, where it would never reach the pump. A repeat within
+     * [BOLUS_REPEAT_BLOCK_MS] is refused. The amount is limited by the max bolus, like every other
+     * bolus. The watch cannot show why a bolus was refused or limited, so the phone says it with a
+     * notification.
+     */
+    @VisibleForTesting
+    fun onPostBolus(uri: URI): CharSequence {
         val bolus: Double = getQueryParameter(uri, "bolus", 0.0)
-        loopHub.postBolus(bolus)
-        return ""
+        if (!bolus.isFinite() || bolus <= 0.0) return BOLUS_REFUSED_JSON
+        val asked = rh.gs(CoreUiR.string.format_insulin_units, bolus)
+        if (config.AAPSCLIENT) {
+            refuseBolus(rh.gs(R.string.garmin_bolus_not_on_client, asked))
+            return BOLUS_REFUSED_JSON
+        }
+        if (garminAapsKey.isEmpty()) {
+            refuseBolus(rh.gs(R.string.garmin_bolus_needs_key, asked))
+            return BOLUS_REFUSED_JSON
+        }
+        // A watch that retries, or a repeated request, must not give the bolus twice. Each bolus is
+        // limited on its own, so without this nothing limits the total.
+        val now = clock.millis()
+        val last = lastWatchBolusMs
+        if (last != null && now - last in 0 until BOLUS_REPEAT_BLOCK_MS) {
+            refuseBolus(rh.gs(R.string.garmin_bolus_too_soon, asked))
+            return BOLUS_REFUSED_JSON
+        }
+        val given = loopHub.postBolus(bolus) { reason ->
+            refuseBolus(rh.gs(R.string.garmin_bolus_not_delivered, asked, reason))
+        }
+        if (given <= 0.0) {
+            refuseBolus(rh.gs(R.string.garmin_bolus_refused_by_limits, asked))
+            return BOLUS_REFUSED_JSON
+        }
+        lastWatchBolusMs = now
+        if (given < bolus) {
+            refuseBolus(rh.gs(R.string.garmin_bolus_limited, asked, rh.gs(CoreUiR.string.format_insulin_units, given)))
+        }
+        return "{\"ok\":true,\"bolus\":$given}"
+    }
+
+    /** When the last watch bolus was sent on, see [BOLUS_REPEAT_BLOCK_MS]. */
+    @Volatile
+    private var lastWatchBolusMs: Long? = null
+
+    private fun refuseBolus(text: String) {
+        aapsLogger.warn(LTag.GARMIN, text)
+        notificationManager.post(id = GARMIN_BOLUS_NOTIFICATION, text = text, level = NotificationLevel.IMPORTANT, validMinutes = 0)
     }
 
     /** Handles temp targets from the device. */
@@ -723,6 +819,28 @@ class GarminPlugin @Inject constructor(
         val duration: Int = getQueryParameter(uri, "duration", 0)
         loopHub.postTempTarget(target, duration)
         return ""
+    }
+
+    /**
+     * Activates an AIMI mode from the watch.
+     * NOTE text = keyword only; duration query sets TherapyEvent.duration.
+     * FCL also starts a temporary target 80 mg/dL for 30 minutes.
+     * Query: /mode?mode=lunch&duration=60&key=...
+     */
+    @VisibleForTesting
+    fun onPostMode(uri: URI): CharSequence {
+        val rawMode = getQueryParameter(uri, "mode")?.trim()?.lowercase().orEmpty()
+        if (rawMode.isEmpty() || rawMode !in ALLOWED_THERAPY_MODES) {
+            aapsLogger.warn(LTag.GARMIN, "Rejected therapy mode '$rawMode'")
+            return """{"ok":false,"error":"invalid_mode"}"""
+        }
+        val defaultDuration = DEFAULT_MODE_DURATIONS_MIN[rawMode] ?: 60
+        val duration = getQueryParameter(uri, "duration", defaultDuration).coerceIn(0, 480)
+        loopHub.postTherapyMode(rawMode, duration)
+        if (rawMode == "fcl") {
+            loopHub.postTempTarget(FCL_TEMP_TARGET_MGDL, FCL_TEMP_TARGET_DURATION_MIN)
+        }
+        return """{"ok":true,"mode":"$rawMode","duration":$duration}"""
     }
     // end mod
 
@@ -774,9 +892,12 @@ class GarminPlugin @Inject constructor(
             jo.addProperty("date", glucose.timestamp)
             jo.addProperty("sgv", glucose.value.roundToInt())
             if (i + 1 < glucoseValues.size) {
-                // Compute the 5 minute delta.
+                // 5-minute normalized delta (mg/dL). Round to nearest int so ±1 survives
+                // JSON + watch `.toNumber()` / `format("%.0f")` without collapsing to 0.
                 val delta = 300_000.0 * glucoseSlopeMgDlPerMilli(glucoseValues[i + 1], glucose)
-                jo.addProperty("delta", BigDecimal(delta, MathContext(3, RoundingMode.HALF_UP)))
+                if (delta.isFinite()) {
+                    jo.addProperty("delta", delta.roundToInt())
+                }
             }
             jo.addProperty("direction", glucose.trendArrow.text)
             glucose.noise?.let { n -> jo.addProperty("noise", n) }
@@ -786,38 +907,78 @@ class GarminPlugin @Inject constructor(
                     GlucoseUnit.MMOL -> jo.addProperty("units_hint", "mmol")
                 }
                 jo.addProperty("iob", loopHub.insulinOnboard + loopHub.insulinBasalOnboard)
-                loopHub.temporaryBasal.also {
-                    if (!it.isNaN()) {
-                        val temporaryBasalRateInPercent = (it * 100.0).toInt()
-                        jo.addProperty("tbr", temporaryBasalRateInPercent)
+                // Nightscout-style watch payload: "U/h/%" so the face can show absolute rate + percent.
+                // temporaryBasal is a factor (1.0 = 100%); NaN → omit property (watch keeps last value).
+                loopHub.temporaryBasal.also { tbrFactor ->
+                    if (!tbrFactor.isNaN()) {
+                        val safeFactor = if (tbrFactor.isFinite()) tbrFactor else 0.0
+                        val profileBasal = loopHub.currentProfile?.getBasal() ?: 0.0
+                        val rateUph = profileBasal * safeFactor
+                        val percent = (safeFactor * 100.0).toInt()
+                        if (rateUph != 0.0 || percent != 0) {
+                            jo.addProperty("tbr", String.format(Locale.US, "%.1f/%d", rateUph, percent))
+                        } else {
+                            jo.addProperty("tbr", "0")
+                        }
                     }
                 }
                 jo.addProperty("cob", loopHub.carbsOnboard)
+                // Pilot / TIR ring: % of returned SGVs in profile target range
+                val low = loopHub.lowGlucoseMark.takeIf { it > 0.0 } ?: 70.0
+                val high = loopHub.highGlucoseMark.takeIf { it > 0.0 } ?: 180.0
+                jo.addProperty("tir", calcTirPercent(glucoseValues, low, high))
+                // Blueprint / Cockpit / Atelier: target (mg/dL), AIMI mode, TBR remaining mins
+                loopHub.currentTargetMgdl?.takeIf { it.isFinite() && it > 0.0 }?.let {
+                    jo.addProperty("target", it.roundToInt())
+                }
+                loopHub.activeTherapyMode?.takeIf { it.isNotBlank() }?.let {
+                    jo.addProperty("mode", it)
+                }
+                loopHub.temporaryBasalRemainingMinutes?.takeIf { it > 0 }?.let {
+                    jo.addProperty("tbrMins", it)
+                }
+                // Millimétré: 3h basal staircase + SMB tick timestamps
+                val basalArr = JsonArray()
+                for (step in loopHub.temporaryBasalHistory()) {
+                    val s = JsonObject()
+                    s.addProperty("t", step.t)
+                    s.addProperty("p", step.p)
+                    basalArr.add(s)
+                }
+                jo.add("basalHistory", basalArr)
+                val smbArr = JsonArray()
+                for (step in loopHub.smbHistory()) {
+                    val s = JsonObject()
+                    s.addProperty("t", step.t)
+                    s.addProperty("u", step.u)
+                    smbArr.add(s)
+                }
+                jo.add("smbHistory", smbArr)
             }
             joa.add(jo)
         }
         return joa.toString()
     }
 
-    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null) return
-        val category = PreferenceCategory(context)
-        parent.addPreference(category)
-        category.apply {
-            key = "garmin_settings"
-            title = rh.gs(R.string.garmin)
-            initialExpandedChildrenCount = 0
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = GarminBooleanKey.LocalHttpServer, title = R.string.garmin_local_http_server))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = GarminIntKey.LocalHttpPort, title = R.string.garmin_local_http_server_port))
-            addPreference(
-                AdaptiveStringPreference(
-                    ctx = context,
-                    stringKey = GarminStringKey.RequestKey,
-                    title = R.string.garmin_request_key,
-                    summary = R.string.garmin_request_key_summary,
-                    validatorParams = DefaultEditTextValidator.Parameters(emptyAllowed = true)
-                )
-            )
-        }
+    /** % of glucose samples in [low, high] (mg/dL), for Garmin Pilot outer ring. */
+    private fun calcTirPercent(values: List<GV>, low: Double, high: Double): Int {
+        if (values.isEmpty()) return 0
+        val lo = minOf(low, high)
+        val hi = maxOf(low, high)
+        val inRange = values.count { it.value in lo..hi }
+        return ((inRange * 100.0) / values.size).roundToInt().coerceIn(0, 100)
     }
+
+    override fun getPreferenceScreenContent() = PreferenceSubScreenDef(
+        key = "garmin_settings",
+        titleResId = R.string.garmin,
+        items = listOf(
+            GarminBooleanKey.LocalHttpServer,
+            GarminIntKey.LocalHttpPort,
+            GarminStringKey.RequestKey
+
+        ),
+        icon = pluginDescription.icon
+    )
+
 }

@@ -1,0 +1,171 @@
+<WatchFace clipShape="CIRCLE" height="450" width="450">
+    <Metadata key="CLOCK_TYPE" value="ANALOG" />
+    <Scene backgroundColor="#ff000000">
+
+        <!-- Ambient-only clock, drawn by the runtime rather than by AAPS.
+             It has to exist because in ambient the watch reports DOZE_SUSPEND: the display refreshes
+             itself while the CPU sleeps and our process is frozen, so nothing of ours runs to produce
+             a new picture. The image below would sit frozen for minutes, showing a stale time and a
+             stopped second hand. The runtime keeps drawing regardless, so in ambient the time comes
+             from here.
+             Invisible while active (alpha 0) and revealed only in ambient, so the user's own design
+             owns the clock whenever the watch is awake. -->
+        <DigitalClock alpha="0" height="150" width="450" x="0" y="150">
+            <Variant mode="AMBIENT" target="alpha" value="255" />
+            <TimeText align="CENTER" format="hh:mm" height="150" hourFormat="SYNC_TO_DEVICE"
+                width="450" x="0" y="0">
+                <Font color="#ffe6e6e6" family="SYNC_TO_DEVICE" size="110" slant="NORMAL"
+                    weight="NORMAL" />
+            </TimeText>
+        </DigitalClock>
+
+        <!-- Lower half of the Custom watch face: background, images and the chart.
+             Refreshed slowly, because that is what changes slowly.
+             Hidden in ambient, together with the upper half, so the stale picture disappears the
+             instant the watch dozes - the runtime applies this at the mode switch, without waiting
+             for any render of ours to arrive. -->
+        <ComplicationSlot
+            name="CwfLower"
+            slotId="0"
+            displayName="Custom Watchface"
+            isCustomizable="FALSE"
+            supportedTypes="SMALL_IMAGE EMPTY"
+            alpha="255"
+            x="0" y="0" width="450" height="450">
+            <Variant mode="AMBIENT" target="alpha" value="0" />
+            <DefaultProviderPolicy
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY"
+                primaryProvider="AAPS_WEAR_APP_ID/app.aaps.wear.complications.CwfLowerComplication"
+                primaryProviderType="SMALL_IMAGE" />
+            <BoundingBox x="0" y="0" width="450" height="450" />
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="0" y="0" width="450" height="450">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+            <Complication type="EMPTY" />
+        </ComplicationSlot>
+
+        <!-- Upper half: clock, date fields, cover plate and hands, transparent elsewhere so the
+             lower half shows through. Declared after the lower one, so it paints on top. -->
+        <ComplicationSlot
+            name="CwfUpper"
+            slotId="1"
+            displayName="Custom Watchface clock"
+            isCustomizable="FALSE"
+            supportedTypes="SMALL_IMAGE EMPTY"
+            alpha="255"
+            x="0" y="0" width="450" height="450">
+            <Variant mode="AMBIENT" target="alpha" value="0" />
+            <DefaultProviderPolicy
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY"
+                primaryProvider="AAPS_WEAR_APP_ID/app.aaps.wear.complications.CwfUpperComplication"
+                primaryProviderType="SMALL_IMAGE" />
+            <BoundingBox x="0" y="0" width="450" height="450" />
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="0" y="0" width="450" height="450">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+            <Complication type="EMPTY" />
+        </ComplicationSlot>
+
+        <!-- Ambient-only readouts, drawn by the runtime like the clock above.
+             Both slots are declared full screen and their contents placed where they should appear.
+             That is deliberate: it was not clear whether a Complication's children are positioned
+             relative to the slot or to the screen, and with the slot covering the screen the two
+             coincide - so the layout is right either way. The first attempt used a small slot and the
+             glucose value never appeared, consistent with its child being placed at the screen's top
+             edge and clipped by the bezel. Invisible while awake
+             (alpha 0) so the user's own design is never disturbed, revealed in ambient.
+             Grey rather than white: an always-on display wants few bright pixels.
+             Note the BG slot's title is the reading's age, which the runtime keeps counting on its
+             own - so even though the value itself goes stale while our process sleeps, the reader can
+             always see how old it is. That is the half that matters. -->
+        <!-- Deliberately slot 4, not slot 2 which this readout used until now.
+             DefaultProviderPolicy only applies to a slot the runtime has never bound: measured on
+             device, changing primaryProvider on an existing slotId did nothing at all - the slot
+             stayed wired to the previous provider and the new one was never asked for data even
+             once. A fresh slotId is what makes the runtime apply the policy again. -->
+        <ComplicationSlot
+            name="AmbientBg"
+            slotId="4"
+            displayName="Ambient glucose"
+            isCustomizable="FALSE"
+            supportedTypes="SHORT_TEXT EMPTY"
+            alpha="0"
+            x="0" y="0" width="450" height="450">
+            <Variant mode="AMBIENT" target="alpha" value="255" />
+            <DefaultProviderPolicy
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY"
+                primaryProvider="AAPS_WEAR_APP_ID/app.aaps.wear.complications.CwfAmbientBgComplication"
+                primaryProviderType="SHORT_TEXT" />
+            <!-- Bounds the readout, and nothing more. A one-pixel box was tried here to make the
+                 slot untappable while it still drew full size; everything in the slot then vanished,
+                 so the runtime evidently clips content to the BoundingShape rather than only
+                 hit-testing against it. Kept tight around the text instead: the rest of the face
+                 stays owned by the image slots, and a tap on the glucose readout reaching the
+                 glucose screen is reasonable. -->
+            <BoundingBox x="0" y="40" width="450" height="112" />
+            <Complication type="SHORT_TEXT">
+                <PartText alpha="255" height="72" width="450" x="0" y="40">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font color="#ffdcdcdc" family="SYNC_TO_DEVICE" size="64" slant="NORMAL" weight="NORMAL">
+                            <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                        </Font>
+                    </Text>
+                </PartText>
+                <PartText alpha="255" height="40" width="450" x="0" y="112">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font color="#ffb4b4b4" family="SYNC_TO_DEVICE" size="30" slant="NORMAL" weight="NORMAL">
+                            <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+            <Complication type="EMPTY" />
+        </ComplicationSlot>
+
+        <!-- Slot 5, not the 3 this row used before: a slot the runtime has already bound keeps
+             its provider whatever the policy says. Same reason as the glucose slot above. -->
+        <ComplicationSlot
+            name="AmbientStatus"
+            slotId="5"
+            displayName="Ambient status"
+            isCustomizable="FALSE"
+            supportedTypes="SHORT_TEXT EMPTY"
+            alpha="0"
+            x="0" y="0" width="450" height="450">
+            <Variant mode="AMBIENT" target="alpha" value="255" />
+            <DefaultProviderPolicy
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY"
+                primaryProvider="AAPS_WEAR_APP_ID/app.aaps.wear.complications.CwfAmbientStatusComplication"
+                primaryProviderType="SHORT_TEXT" />
+            <BoundingBox x="0" y="300" width="450" height="84" />
+            <Complication type="SHORT_TEXT">
+                <PartText alpha="255" height="44" width="450" x="0" y="300">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font color="#ffb4b4b4" family="SYNC_TO_DEVICE" size="32" slant="NORMAL" weight="NORMAL">
+                            <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                        </Font>
+                    </Text>
+                </PartText>
+                <!-- BrCobIobComplication puts the basal rate in TEXT and "cob iob" in TITLE, so
+                     without this line the carbs and insulin on board are sent and then dropped. -->
+                <PartText alpha="255" height="40" width="450" x="0" y="344">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font color="#ffb4b4b4" family="SYNC_TO_DEVICE" size="30" slant="NORMAL" weight="NORMAL">
+                            <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+            <Complication type="EMPTY" />
+        </ComplicationSlot>
+
+    </Scene>
+</WatchFace>

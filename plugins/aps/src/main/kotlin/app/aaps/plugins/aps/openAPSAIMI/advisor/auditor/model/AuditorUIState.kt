@@ -154,14 +154,14 @@ data class AuditorUIState(
          */
         @JvmStatic
         @JvmOverloads
-        fun warning(message: String = "Warning"): AuditorUIState = AuditorUIState(
+        fun warning(message: String = "Warning", shouldNotify: Boolean = true): AuditorUIState = AuditorUIState(
             type = StateType.WARNING,
             iconTintColor = CoreR.color.warning,  // Orange
             badgeBackgroundColor = CoreR.color.warning,
             badgeText = "!",
             badgeVisible = true,
             shouldAnimate = false,
-            shouldNotify = true,
+            shouldNotify = shouldNotify,
             insightCount = 1,
             statusMessage = message,
             timestampMs = System.currentTimeMillis()

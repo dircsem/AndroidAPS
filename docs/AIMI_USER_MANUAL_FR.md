@@ -2,7 +2,7 @@
 ## Advanced Intelligent Mathematical Insulin (AIMI)
 
 **Version**: 3.4.0  
-**Dernière mise à jour**: Janvier 2026
+**Dernière mise à jour**: Mai 2026
 
 ---
 
@@ -18,8 +18,9 @@
    - [AIMI Auditor](#aimi-auditor-auditeur-ia)
    - [AIMI Trajectory](#aimi-trajectory-trajectoire-predictive)
    - [PKPD](#pkpd-pharmacocinetiquepharmacodynamie)
-8. [Dépannage](#depannage)
-9. [Réglages Recommandés](#reglages-recommandes-par-type-dutilisateur)
+8. [Capteur Eversense (E3 / 365)](#capteur-eversense-e3--365) 📡
+9. [Dépannage](#depannage)
+10. [Réglages Recommandés](#reglages-recommandes-par-type-dutilisateur)
 
 ---
 
@@ -423,6 +424,84 @@ Au lieu d'utiliser une courbe DIA fixe, PKPD modélise l'insuline de façon **dy
 
 ---
 
+## 📡 Capteur Eversense (E3 / 365)
+
+OpenApsAIMI intègre le **plugin CGM natif Eversense** (série CAPTCG), compatible avec la boucle AIMI comme toute autre source de glycémie. Ce plugin est **expérimental** : vérifiez toujours vos lectures au doigt avant toute décision thérapeutique.
+
+Documentation technique upstream : [CAPTCG/AndroidAPS-Eversense-](https://github.com/CAPTCG/AndroidAPS-Eversense-)
+
+### E3 vs 365
+
+| Transmetteur | Durée capteur | App officielle Eversense | Notes |
+|--------------|---------------|--------------------------|-------|
+| **Eversense E3** (180 j) | 180 jours | **Requise** au départ (warm-up, insertion) puis **déconnectée** pour le BLE AAPS | DMS **EU** (`ousiamapialpha`) |
+| **Eversense 365** (1 an) | 365 jours | **Non requise** — AAPS seul suffit | DMS **US** |
+
+### Prérequis avant AIMI
+
+1. **Insertion** réalisée par un professionnel formé Senseonics (warm-up dans l’app officielle).
+2. **Ne pas calibrer** pendant la phase de warm-up / initialisation.
+3. Dans l’app officielle : **Connections → votre transmetteur → Disconnect** (libère le BLE pour AAPS).
+4. Dans **Générateur de configuration → Source BG** : choisir **Eversense**.
+5. Ouvrir les **réglages du plugin Eversense** et saisir les **identifiants DMS** (login / mot de passe du portail Eversense) — obligatoires pour l’authentification cloud et le certificat de sécurité à chaque nouvelle connexion.
+6. **Scanner** et **appairer** le transmetteur en Bluetooth.
+
+Sans glycémie active, **AIMI ne peut pas boucler** (prébolus modes repas, SMB, etc.).
+
+### Réglages du plugin (résumé)
+
+| Réglage | Rôle |
+|---------|------|
+| **Identifiants DMS** | Connexion cloud Eversense (E3 EU et 365 US) |
+| **Calibration** | Phase, dernière / prochaine cal, bouton **Calibrer** si `READY` |
+| **Signal de placement** | Excellent ≥75 · Bon 48–74 · Faible 30–47 · Très faible 1–24 |
+| **Use ESEL smoothing** | Lissage optionnel des courbes (préférence fork) |
+| **Enable Eversense cloud upload** | Envoi des données vers le portail DMS (équipe soignante) |
+| **Show cloud upload result** | Toast de confirmation d’upload (optionnel) |
+
+**Signal faible** : 3 lectures consécutives en dessous du seuil → notification urgente + guide de placement.
+
+### Calibration
+
+- Le transmetteur doit être en état **CalibrationReadiness = READY** (affiché dans le plugin).
+- Appuyer sur **Calibrer**, saisir la glycémie capillaire ; la valeur est envoyée en **Bluetooth** (commande E3 corrigée **0x3C**, double horodatage).
+- **Refusée** pendant warm-up, initialisation ou si non prêt.
+- Après une cal réussie, la date de dernière calibration est mise à jour localement (certains firmwares E3 ne la renvoient pas correctement en flash).
+
+### Utilisation quotidienne avec AIMI
+
+1. **Patch adhésif** neuf chaque matin ; transmetteur porté sur le bras.
+2. **Charger le transmetteur chaque jour** — aucune glycémie pendant la charge.
+3. Vérifier la glycémie et les flèches de tendance dans AAPS ; la boucle AIMI utilise ces valeurs comme toute source CGM.
+4. **Calibrer** quand c’est dû ; en cas de symptômes discordants, **toujours un contrôle au doigt**.
+5. Pour une **mise à jour firmware** via l’app officielle : supprimer la source CGM dans AAPS, reconnecter dans l’app Senseonics, puis reconfigurer Eversense dans AAPS.
+
+### Sync DMS (portail soignant)
+
+Si **cloud upload** est activé :
+
+- **E3** : `PutCurrentValues` + `PutDeviceEvents` vers les serveurs **EU**.
+- **365** : upload diagnostic + portail **US** (comportement 365 classique).
+
+Chaque lecture peut alimenter le portail (glycémie, tendance, signal, batterie, historique).
+
+### Dépannage Eversense
+
+| Problème | Pistes |
+|----------|--------|
+| Pas de connexion BLE | App officielle déconnectée ? Bluetooth / localisation autorisés ? |
+| Calibration refusée | Phase warm-up / init ? Attendre `READY` |
+| Valeurs aberrantes après cal | Mettre à jour vers la dernière version AIMI (correctif packet 0x3C) |
+| Upload cloud échoué | Identifiants DMS, Internet ; E3 = compte EU |
+| Boucle AIMI inactive | Vérifier source BG active et lectures récentes |
+
+### Compatibilité AIMI
+
+- Eversense comme **SourceSensor** `EVERSENSE_E3` ou `EVERSENSE_365` — compatible OpenAPS AIMI, lissage adaptatif et export habituels.
+- Même exigence que Dexcom/xDrip : **données CGM fraîches** pour SMB, modes repas et Auditor.
+
+---
+
 ## 🔧 Dépannage
 
 ### "Trop d'hypos"
@@ -492,7 +571,7 @@ Prébolus Autodrive : 1.0
 
 ---
 
-**Dernière Mise à Jour** : 4 Janvier 2026  
-**Version du Manuel** : 2.0  
+**Dernière Mise à Jour** : Mai 2026  
+**Version du Manuel** : 2.1  
 **Version AIMI** : 3.4.0
 

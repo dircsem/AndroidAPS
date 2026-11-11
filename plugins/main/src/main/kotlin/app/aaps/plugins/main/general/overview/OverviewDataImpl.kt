@@ -4,12 +4,15 @@ import android.content.Context
 import androidx.annotation.AttrRes
 import androidx.annotation.DrawableRes
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BarGraphSeries
 import app.aaps.core.graph.data.DataPointWithLabelInterface
-import app.aaps.core.graph.data.DeviationDataPoint
+import app.aaps.core.graph.data.DeviationDataPointLegacy
 import app.aaps.core.graph.data.FixedLineGraphSeries
 import app.aaps.core.graph.data.LineGraphSeries
+import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.RunningModeDataPoint
 import app.aaps.core.graph.data.ScaledDataPoint
@@ -19,18 +22,22 @@ import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.graph.Scale
 import app.aaps.core.interfaces.graph.SeriesData
 import app.aaps.core.interfaces.overview.OverviewData
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.objects.R
 import app.aaps.core.objects.extensions.convertedToPercent
 import app.aaps.core.objects.extensions.isInProgress
 import app.aaps.core.objects.extensions.toStringFull
 import app.aaps.core.objects.extensions.toStringShort
+import app.aaps.plugins.main.R
 import com.jjoe64.graphview.series.DataPoint
+import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -48,6 +55,7 @@ class OverviewDataImpl @Inject constructor(
     private val preferences: Preferences,
     private val activePlugin: ActivePlugin,
     private val profileFunction: ProfileFunction,
+    private val profileUtil: ProfileUtil,
     private val persistenceLayer: PersistenceLayer,
     private val processedTbrEbData: ProcessedTbrEbData
 ) : OverviewData {
@@ -70,7 +78,7 @@ class OverviewDataImpl @Inject constructor(
         basalLineGraphSeries = LineGraphSeries<ScaledDataPoint>()
         absoluteBasalGraphSeries = LineGraphSeries<ScaledDataPoint>()
         temporaryTargetSeries = LineGraphSeries<DataPoint>()
-        runningModesSeries = PointsWithLabelGraphSeries< RunningModeDataPoint>()
+        runningModesSeries = PointsWithLabelGraphSeries<RunningModeDataPoint>()
         maxIAValue = 0.0
         activitySeries = FixedLineGraphSeries<ScaledDataPoint>()
         activityPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -86,7 +94,7 @@ class OverviewDataImpl @Inject constructor(
         cobSeries = FixedLineGraphSeries<ScaledDataPoint>()
         cobMinFailOverSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxDevValueFound = Double.MIN_VALUE
-        deviationsSeries = BarGraphSeries<DeviationDataPoint>()
+        deviationsSeries = BarGraphSeries<DeviationDataPointLegacy>()
         maxRatioValueFound = 5.0                    //even if sens data equals 0 for all the period, minimum scale is between 95% and 105%
         minRatioValueFound = -maxRatioValueFound
         ratioSeries = LineGraphSeries<ScaledDataPoint>()
@@ -138,52 +146,60 @@ class OverviewDataImpl @Inject constructor(
     */
 
     override fun temporaryBasalText(): String =
-        profileFunction.getProfile()?.let { profile ->
-            var temporaryBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())
-            if (temporaryBasal?.isInProgress == false) temporaryBasal = null
-            temporaryBasal?.let { rh.gs(app.aaps.plugins.main.R.string.temp_basal_overview_short_name) + " " + it.toStringShort(rh) }
-                ?: rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())
-        } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        runBlocking {
+            profileFunction.getProfile()?.let { profile ->
+                var temporaryBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())
+                if (temporaryBasal?.isInProgress == false) temporaryBasal = null
+                temporaryBasal?.let { rh.gs(app.aaps.core.ui.R.string.temp_basal_overview_short_name) + " " + it.toStringShort(rh) }
+                    ?: rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())
+            } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        }
 
     override fun temporaryBasalDialogText(): String =
-        profileFunction.getProfile()?.let { profile ->
-            processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
-                "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}" +
-                    "\n" + rh.gs(app.aaps.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil, rh)
-            }
-                ?: "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}"
-        } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        runBlocking {
+            profileFunction.getProfile()?.let { profile ->
+                processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
+                    "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}" +
+                        "\n" + rh.gs(app.aaps.core.ui.R.string.tempbasal_label) + ": " + temporaryBasal.toStringFull(profile, dateUtil, rh)
+                }
+                    ?: "${rh.gs(app.aaps.core.ui.R.string.base_basal_rate_label)}: ${rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, profile.getBasal())}"
+            } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        }
 
     @DrawableRes override fun temporaryBasalIcon(): Int =
-        profileFunction.getProfile()?.let { profile ->
-            processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
-                val percentRate = temporaryBasal.convertedToPercent(dateUtil.now(), profile)
-                when {
-                    percentRate > 100 -> R.drawable.ic_cp_basal_tbr_high
-                    percentRate < 100 -> R.drawable.ic_cp_basal_tbr_low
-                    else              -> R.drawable.ic_cp_basal_no_tbr
+        runBlocking {
+            profileFunction.getProfile()?.let { profile ->
+                processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let { temporaryBasal ->
+                    val percentRate = temporaryBasal.convertedToPercent(dateUtil.now(), profile)
+                    when {
+                        percentRate > 100 -> R.drawable.ic_cp_basal_tbr_high
+                        percentRate < 100 -> R.drawable.ic_cp_basal_tbr_low
+                        else              -> R.drawable.ic_cp_basal_no_tbr
+                    }
                 }
-            }
-        } ?: R.drawable.ic_cp_basal_no_tbr
+            } ?: R.drawable.ic_cp_basal_no_tbr
+        }
 
     @AttrRes override fun temporaryBasalColor(context: Context?): Int =
-        processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let {
-            rh.gac(context, app.aaps.core.ui.R.attr.basal)
-        } ?: rh.gac(context, app.aaps.core.ui.R.attr.defaultTextColor)
+        runBlocking {
+            processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.let {
+                rh.gac(context, app.aaps.core.ui.R.attr.basal)
+            } ?: rh.gac(context, app.aaps.core.ui.R.attr.defaultTextColor)
+        }
 
     /*
      * EXTENDED BOLUS
     */
 
     override fun extendedBolusText(): String =
-        persistenceLayer.getExtendedBolusActiveAt(dateUtil.now())?.let { extendedBolus ->
+        runBlocking { persistenceLayer.getExtendedBolusActiveAt(dateUtil.now()) }?.let { extendedBolus ->
             if (!extendedBolus.isInProgress(dateUtil)) ""
             else if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) rh.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, extendedBolus.rate)
             else ""
         } ?: ""
 
     override fun extendedBolusDialogText(): String =
-        persistenceLayer.getExtendedBolusActiveAt(dateUtil.now())?.toStringFull(dateUtil, rh) ?: ""
+        runBlocking { persistenceLayer.getExtendedBolusActiveAt(dateUtil.now()) }?.toStringFull(dateUtil, rh) ?: ""
 
     /*
      * Graphs
@@ -202,7 +218,7 @@ class OverviewDataImpl @Inject constructor(
     override var absoluteBasalGraphSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
     override var temporaryTargetSeries: SeriesData = LineGraphSeries<DataPoint>()
-    override var runningModesSeries: SeriesData = PointsWithLabelGraphSeries< RunningModeDataPoint>()
+    override var runningModesSeries: SeriesData = PointsWithLabelGraphSeries<RunningModeDataPoint>()
     override var maxIAValue = 0.0
     override val actScale = Scale()
     override var activitySeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
@@ -234,7 +250,7 @@ class OverviewDataImpl @Inject constructor(
 
     override var maxDevValueFound = Double.MIN_VALUE
     override val devScale = Scale()
-    override var deviationsSeries: SeriesData = BarGraphSeries<DeviationDataPoint>()
+    override var deviationsSeries: SeriesData = BarGraphSeries<DeviationDataPointLegacy>()
 
     override var maxRatioValueFound = 5.0                    //even if sens data equals 0 for all the period, minimum scale is between 95% and 105%
     override var minRatioValueFound = -maxRatioValueFound
@@ -256,4 +272,34 @@ class OverviewDataImpl @Inject constructor(
     override var minVarSensValueFound = 50.0
     override val varSensScale = Scale()
     override var varSensSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+
+    override fun replacePredictionGraphSeriesFromWorker(points: List<BgDataPoint>) {
+        if (points.isEmpty()) {
+            predictionsGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+            return
+        }
+        val arr = points.map { p ->
+            val mgdl = p.value
+            val gv = GV(
+                timestamp = p.timestamp,
+                raw = mgdl,
+                value = mgdl,
+                trendArrow = TrendArrow.NONE,
+                noise = 0.0,
+                sourceSensor = sourceSensorForBgType(p.type),
+            )
+            GlucoseValueDataPoint(gv, profileUtil, rh, dateUtil)
+        }.toTypedArray()
+        predictionsGraphSeries = PointsWithLabelGraphSeries(arr)
+    }
+
+    private fun sourceSensorForBgType(type: BgType): SourceSensor = when (type) {
+        BgType.IOB_PREDICTION   -> SourceSensor.IOB_PREDICTION
+        BgType.COB_PREDICTION   -> SourceSensor.COB_PREDICTION
+        BgType.A_COB_PREDICTION -> SourceSensor.A_COB_PREDICTION
+        BgType.UAM_PREDICTION   -> SourceSensor.UAM_PREDICTION
+        BgType.ZT_PREDICTION    -> SourceSensor.ZT_PREDICTION
+        BgType.REGULAR,
+        BgType.BUCKETED         -> SourceSensor.IOB_PREDICTION
+    }
 }

@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAIMI.advisor
 
 import android.content.Context
 import org.json.JSONArray
+import app.aaps.plugins.aps.openAPSAIMI.llm.claude.ClaudeModelResolver
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -13,6 +14,10 @@ import javax.inject.Singleton
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmHttpRetry
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmWorldConservativePreamble
+import app.aaps.plugins.aps.openAPSAIMI.model.AimiAction
+import java.util.Locale
 
 /**
  * =============================================================================
@@ -31,7 +36,7 @@ class AiCoachingService @Inject constructor() {
     companion object {
         private const val OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
-        private const val OPENAI_MODEL = "gpt-4o-mini" // Efficient model for coaching logic
+        private const val OPENAI_MODEL = "gpt-5.4-mini" // Efficient current GA tier for coaching (gpt-4o-mini is legacy)
         
 
         
@@ -39,26 +44,26 @@ class AiCoachingService @Inject constructor() {
         private const val DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
         private const val DEEPSEEK_MODEL = "deepseek-chat"
         
-        // Claude Haiku (Fast & Cheap)
         private const val CLAUDE_URL = "https://api.anthropic.com/v1/messages"
-        private const val CLAUDE_MODEL = "claude-3-haiku-20240307"
     }
 
     /**
      * Fetch advice asynchronously.
      */
-    suspend fun fetchAdvice(
+    internal suspend fun fetchAdvice(
         androidContext: Context,
         context: AdvisorContext, 
         report: AdvisorReport, 
         apiKey: String,
         provider: Provider,
-        history: List<app.aaps.plugins.aps.openAPSAIMI.advisor.data.AdvisorHistoryRepository.AdvisorActionLog> = emptyList()
+        history: List<app.aaps.plugins.aps.openAPSAIMI.advisor.data.AdvisorHistoryRepository.AdvisorActionLog> = emptyList(),
+        includeRichOref: Boolean = true,
+        causalInsights: List<AimiBehaviorCausalInsight> = emptyList(),
     ): String = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext "Clé API manquante. Veuillez configurer votre clé ${provider.name}."
 
         try {
-            val prompt = buildPrompt(androidContext, context, report, history)
+            val prompt = buildPrompt(androidContext, context, report, history, includeRichOref, causalInsights)
             
             return@withContext when (provider) {
                 Provider.GEMINI -> callGemini(androidContext, apiKey, prompt)
@@ -106,11 +111,12 @@ class AiCoachingService @Inject constructor() {
     // ... (keep private methods)
 
 
-    private fun callOpenAI(apiKey: String, prompt: String): String {
+    private fun callOpenAI(apiKey: String, prompt: String): String = LlmHttpRetry.withTransientRetry {
         val jsonBody = buildOpenAiJson(prompt)
+        jsonBody.put("max_completion_tokens", 4096) // GPT-5.x requires this (rejects legacy max_tokens)
         val url = URL(OPENAI_URL)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         connection.apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
@@ -132,37 +138,33 @@ class AiCoachingService @Inject constructor() {
             var line: String?
             while (reader.readLine().also { line = it } != null) response.append(line)
             reader.close()
-            return parseOpenAiResponse(response.toString())
+            parseOpenAiResponse(response.toString())
         } else {
-             // Try read error stream
+            // Try read error stream
             val reader = BufferedReader(InputStreamReader(connection.errorStream ?: connection.inputStream))
             val err = StringBuilder()
             var line: String?
             while (reader.readLine().also { line = it } != null) err.append(line)
-            return "Erreur OpenAI ($responseCode): $err"
+            if (LlmHttpRetry.isTransientStatus(responseCode)) throw java.io.IOException("OpenAI Error ($responseCode): $err")
+            "Erreur OpenAI ($responseCode): $err"
         }
     }
 
     private fun callGemini(context: Context, apiKey: String, prompt: String): String {
         val resolver = app.aaps.plugins.aps.openAPSAIMI.llm.gemini.GeminiModelResolver(context)
         
-        // 1. Try Preferred Model (Efficient: Gemini 3 Flash)
-        val primaryModel = resolver.resolveGenerateContentModel(apiKey, "gemini-3-flash-preview")
+        // 1. Try Preferred Model (efficient flash tier; durable *-latest alias tracks current GA)
+        val primaryModel = resolver.resolveGenerateContentModel(apiKey, "gemini-flash-latest")
         
         try {
-            return executeGeminiRequest(resolver, apiKey, prompt, primaryModel)
+            // Transient overload (503/UNAVAILABLE) is retried with bounded backoff on the same model.
+            return LlmHttpRetry.withTransientRetry { executeGeminiRequest(resolver, apiKey, prompt, primaryModel) }
         } catch (e: Exception) {
-            // 2. Check for Quota Exhaustion (429)
-            // Error message usually contains "429" or "RESOURCE_EXHAUSTED" or "quota"
-            val msg = e.message?.lowercase() ?: ""
-            if (msg.contains("429") || msg.contains("resource_exhausted") || msg.contains("quota")) {
-                
-                // 3. Fallback to Efficient Model (High Quota: Gemini 3 Flash)
-                // Flash models typically have 15 RPM free tier vs 2 RPM for Pro
-                val fallbackModel = "gemini-3-flash-preview" // Hardcoded safe fallback
-                android.util.Log.w("AIMI_GEMINI", "⚠️ Quota exceeded on $primaryModel. Auto-fallback to $fallbackModel")
-                
-                return executeGeminiRequest(resolver, apiKey, prompt, fallbackModel)
+            // 2. Quota (429) OR still-overloaded after retries → fallback to the resilient flash alias (also retried).
+            if (LlmHttpRetry.isQuota(e) || LlmHttpRetry.isTransient(e)) {
+                val fallbackModel = "gemini-flash-latest" // Durable flash alias (current GA)
+                android.util.Log.w("AIMI_GEMINI", "⚠️ $primaryModel failed (${e.message?.take(80)}). Fallback to $fallbackModel")
+                return LlmHttpRetry.withTransientRetry { executeGeminiRequest(resolver, apiKey, prompt, fallbackModel) }
             }
             throw e // Re-throw other errors
         }
@@ -230,15 +232,19 @@ class AiCoachingService @Inject constructor() {
         androidContext: Context, 
         ctx: AdvisorContext, 
         report: AdvisorReport,
-        history: List<app.aaps.plugins.aps.openAPSAIMI.advisor.data.AdvisorHistoryRepository.AdvisorActionLog>
+        history: List<app.aaps.plugins.aps.openAPSAIMI.advisor.data.AdvisorHistoryRepository.AdvisorActionLog>,
+        includeRichOref: Boolean,
+        causalInsights: List<AimiBehaviorCausalInsight>,
     ): String {
         val sb = StringBuilder()
         val deviceLang = java.util.Locale.getDefault().displayLanguage
         
         // Persona
         sb.append("You are AIMI, an expert 'Certified Diabetes Educator' specializing in Automated Insulin Delivery (AID).\n")
-        sb.append("Your Goal: Analyze the patient's 7-day glucose & insulin data to identify patterns and suggest specific algorithm tuning.\n")
+        sb.append("Your Goal: Analyze the patient's recent glucose & insulin data to identify patterns and suggest specific algorithm tuning.\n")
         sb.append("Tone: Professional, encouraging, precise, and safety-first.\n\n")
+        sb.append(LlmWorldConservativePreamble.FOR_NARRATIVE)
+        sb.append("\n\n")
 
         // 0.5 STABILITY CONTEXT (History)
         sb.append("--- HISTORY & STABILITY CONTEXT ---\n")
@@ -254,14 +260,27 @@ class AiCoachingService @Inject constructor() {
         }
 
         // 1. Context: Metrics
-        sb.append("--- PATIENT METRICS (7 Days) ---\n")
-        sb.append("Score: ${report.overallScore}/10 | GMI: ${ctx.metrics.gmi}%\n")
-        sb.append("TIR (70-180): ${(ctx.metrics.tir70_180 * 100).roundToInt()}%\n")
-        sb.append("Hypo (<70): ${(ctx.metrics.timeBelow70 * 100).roundToInt()}% | Severe (<54): ${(ctx.metrics.timeBelow54 * 100).roundToInt()}%\n")
-        sb.append("Hyper (>180): ${(ctx.metrics.timeAbove180 * 100).roundToInt()}%\n")
-        sb.append("Mean Glucose: ${ctx.metrics.meanBg.roundToInt()} mg/dL\n")
-        sb.append("Total Daily Dose (TDD): ${ctx.metrics.tdd.roundToInt()} U\n")
-        sb.append("Basal/Bolus Split: ${(ctx.metrics.basalPercent * 100).roundToInt()}% Basal | ${(100 - (ctx.metrics.basalPercent * 100).roundToInt())}% Bolus\n\n")
+        sb.append("--- PATIENT METRICS (Advisor period) ---\n")
+        // "unknown" is written out on purpose: the model must never read a made-up number as a fact.
+        val unknown = "unknown"
+        fun percentOrUnknown(value: Double?): String = value?.let { "${(it * 100).roundToInt()}%" } ?: unknown
+        sb.append("Score: ${report.overallScore ?: unknown}/10 | GMI-style index: ${ctx.metrics.gmi?.let { String.format(Locale.US, "%.1f", it) } ?: unknown}\n")
+        sb.append("TIR (70-180): ${percentOrUnknown(ctx.metrics.tir70_180)}\n")
+        sb.append("Hypo (<70): ${percentOrUnknown(ctx.metrics.timeBelow70)} | Severe (<54): ${percentOrUnknown(ctx.metrics.timeBelow54)}\n")
+        sb.append("Hyper (>180): ${percentOrUnknown(ctx.metrics.timeAbove180)}\n")
+        sb.append("Mean Glucose: ${ctx.metrics.meanBg?.roundToInt() ?: unknown} mg/dL\n")
+        sb.append("Total Daily Dose (TDD): ${ctx.metrics.tdd?.roundToInt() ?: unknown} U\n")
+        val basalPct = ctx.metrics.basalPercent?.let { (it * 100).roundToInt() }
+        sb.append("Basal/Bolus Split: ${basalPct?.let { "$it% Basal | ${100 - it}% Bolus" } ?: unknown}\n\n")
+
+        report.orefAnalysis?.let { oref ->
+            sb.append(oref.toPromptSection())
+            sb.append("CRITICAL: Treat this block as factual telemetry + heuristics only; do not invent LGBM percentages.\n\n")
+            if (includeRichOref) {
+                sb.append(oref.toCoachUserInsightsSection())
+                sb.append("\n")
+            }
+        }
 
         // 1.5 Context: Active Profile & Preferences
         sb.append("--- ACTIVE PROFILE & SETTINGS ---\n")
@@ -271,29 +290,52 @@ class AiCoachingService @Inject constructor() {
         sb.append("Basal (Night): ${ctx.profile.nightBasal} U/h\n")
         sb.append("Total Basal (Profile): ${ctx.profile.totalBasal} U/day\n")
         sb.append("DIA (Profile): ${ctx.profile.dia} h\n")
-        sb.append("Target BG: ${ctx.profile.targetBg} mg/dL\n\n")
+        sb.append("Target BG: ${ctx.profile.targetBg} mg/dL\n")
+        sb.append("Unified reactivity factor: ${String.format(Locale.US, "%.3f", ctx.prefs.unifiedReactivityFactor)}\n")
+        if (ctx.prefs.autodriveEnabled) {
+            sb.append(
+                "AutoDrive: enabled | autodrive max basal pref: ${ctx.prefs.autodriveMaxBasal} U/h | MPC insulin/kg/5min step: ${String.format(Locale.US, "%.3f", ctx.prefs.mpcInsulinUPerKgPerStep)}\n",
+            )
+        } else {
+            sb.append("AutoDrive: off (per preference)\n")
+        }
+        sb.append("\n")
+
+        if (causalInsights.isNotEmpty()) {
+            sb.append("--- FAMILY-LEVEL CAUSAL MAP ---\n")
+            sb.append(
+                formatAimiBehaviorCausalInsightsForCoach(
+                    insights = causalInsights,
+                    familyTitle = { familyId ->
+                        when (familyId) {
+                            app.aaps.plugins.aps.openAPSAIMI.compose.AimiBehaviorFamilyId.Protection -> "Protection vs correction"
+                            app.aaps.plugins.aps.openAPSAIMI.compose.AimiBehaviorFamilyId.MealCapture -> "Meal capture and fast rises"
+                            app.aaps.plugins.aps.openAPSAIMI.compose.AimiBehaviorFamilyId.Stability -> "Stability and damping"
+                            app.aaps.plugins.aps.openAPSAIMI.compose.AimiBehaviorFamilyId.Physio -> "Physio influence"
+                            app.aaps.plugins.aps.openAPSAIMI.compose.AimiBehaviorFamilyId.Autonomy -> "Autonomy"
+                        }
+                    },
+                ),
+            )
+            sb.append("\n\n")
+        }
 
         // 2. PKPD Context
         if (ctx.pkpdPrefs.pkpdEnabled) {
-             sb.append("--- PARAMETRES PKPD (Adaptatif) ---\n")
-             sb.append("DIA: ${ctx.pkpdPrefs.initialDiaH}h\n")
-             sb.append("Peak Time: ${ctx.pkpdPrefs.initialPeakMin}min\n")
-             sb.append("IsfFusionMax: x${ctx.pkpdPrefs.isfFusionMaxFactor}\n\n")
+             sb.append("--- PKPD (adaptive) ---\n")
+             sb.append("DIA: ${ctx.pkpdPrefs.initialDiaH} h (bounds ${ctx.pkpdPrefs.boundsDiaMinH}–${ctx.pkpdPrefs.boundsDiaMaxH} h)\n")
+             sb.append("Peak time: ${ctx.pkpdPrefs.initialPeakMin} min (bounds ${ctx.pkpdPrefs.boundsPeakMinMin}–${ctx.pkpdPrefs.boundsPeakMinMax} min)\n")
+             // smbTailDamping is the effective runtime value (raw ≤ 0.55 is rewritten to 0.85 neutral at runtime).
+             sb.append("ISF fusion max: x${ctx.pkpdPrefs.isfFusionMaxFactor} | SMB tail damping (effective runtime): ${ctx.pkpdPrefs.smbTailDamping}\n\n")
         }
 
         // 3. System Observations (Recommendations + PKPD)
         sb.append("--- SYSTEM OBSERVATIONS ---\n")
         if (report.recommendations.isNotEmpty()) {
-            report.recommendations.forEach { 
-                val title = try { androidContext.getString(it.titleResId) } catch(e:Exception) { "Issue" }
-                val desc = try { 
-                    if (it.descriptionArgs.isNotEmpty()) {
-                        androidContext.getString(it.descriptionResId, *it.descriptionArgs.toTypedArray())
-                    } else {
-                        androidContext.getString(it.descriptionResId)
-                    }
-                } catch (e: Exception) { "" }
-                sb.append("- [Priority ${it.priority}] $title: $desc\n") 
+            report.recommendations.forEach {
+                val title = try { androidContext.getString(it.titleResId) } catch (e: Exception) { "Issue" }
+                val desc = formatRecommendationDescription(androidContext, it)
+                sb.append("- [Priority ${it.priority}] $title: $desc\n")
             }
         } else {
             sb.append("- No specific algorithmic issues detected.\n")
@@ -303,14 +345,38 @@ class AiCoachingService @Inject constructor() {
         // 4. Instructions
         sb.append("--- COACHING TASK ---\n")
         sb.append("Respond in '$deviceLang'. Structure your answer exactly as follows:\n")
-        sb.append("1. 🔍 **Diagnostics**: Summarize the main glycemic patterns (e.g., 'Post-prandial spikes', 'Nighttime hypos', 'Basal heavy').\n")
-        sb.append("2. 📉 **Root Cause**: Hypothesize the 'Why' (e.g., 'DIA too short', 'ISF too aggressive', 'Carb ratio needs checking'). Consider the History context.\n")
-        sb.append("3. 🛠️ **Action Plan**: Propose 2-3 concrete, actionable steps. If Hypo > 4%, prioritize safety (reduce aggressiveness). If suggestions above exist, evaluate them.\n")
-        sb.append("\nConstraint: Keep it under 150 words. Use emojis.")
+        sb.append("1. 🔍 **Diagnostics**: Main glycemic patterns (night vs day, post-meal, basal-heavy split).\n")
+        sb.append("2. 📉 **Root Cause**: Link to levers — ISF/IC/basal segments, profile DIA, PKPD DIA/peak/damping, unified reactivity, AutoDrive MPC — using ONLY facts from metrics, OREF block, PKPD snapshot, and SYSTEM OBSERVATIONS. Do not invent model percentages.\n")
+        sb.append("3. 🛠️ **Action Plan**: 2–4 prudent, clinician-supervised steps. When OREF priority is HYPO, prioritize reducing aggressiveness (ISF/basal/MPC) before chasing hyper fixes. When HYPER dominates and hypos are rare, mention IC verification and PKPD DIA/peak before large basal moves.\n")
+        sb.append("4. **Tuning direction (no doses)**: For each relevant domain (ISF, IC, basal, PKPD DIA, peak, damping, MPC), state at most ONE cautious direction. Directions must match context (e.g. higher vs lower ISF, increase vs decrease damping/MPC headroom)—never assume everything should only go \"up\".\n")
+        sb.append("\nConstraints: Under ~220 words; safety-first; emojis optional; end with a short reminder to confirm with a clinician.\n")
+        sb.append("Do not output numeric dose targets, unit amounts, or specific profile values to apply — directions and reasoning only.\n")
 
         return sb.toString()
     }
 
+    private fun formatRecommendationDescription(ctx: Context, rec: AimiRecommendation): String {
+        if (rec.descriptionResId == 0) {
+            val act = rec.action
+            return when (act) {
+                is AimiAction.PreferenceUpdate -> act.reason
+                else -> rec.descriptionArgs.joinToString(" ").ifBlank { "(plugin suggestion — see apply action if shown)" }
+            }
+        }
+        return try {
+            if (rec.descriptionArgs.isNotEmpty()) {
+                ctx.getString(rec.descriptionResId, *rec.descriptionArgs.toTypedArray())
+            } else {
+                ctx.getString(rec.descriptionResId)
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    // Builds the shared OpenAI-compatible body (model + messages). The token-limit parameter is set by the
+    // caller because it differs by provider: GPT-5.x rejects `max_tokens` and requires `max_completion_tokens`,
+    // whereas DeepSeek (older OpenAI-compatible spec) expects `max_tokens`.
     private fun buildOpenAiJson(prompt: String): JSONObject {
         val root = JSONObject()
         root.put("model", OPENAI_MODEL)
@@ -319,9 +385,6 @@ class AiCoachingService @Inject constructor() {
         val usr = JSONObject().put("role", "user").put("content", prompt)
         messages.put(usr)
         root.put("messages", messages)
-        root.put("messages", messages)
-        root.put("max_tokens", 4096)
-        
         return root
     }
 
@@ -346,13 +409,14 @@ class AiCoachingService @Inject constructor() {
         }
     }
     
-    private fun callDeepSeek(apiKey: String, prompt: String): String {
+    private fun callDeepSeek(apiKey: String, prompt: String): String = LlmHttpRetry.withTransientRetry {
         val jsonBody = buildOpenAiJson(prompt) // DeepSeek uses OpenAI-compatible format
         jsonBody.put("model", DEEPSEEK_MODEL) // Override model
-        
+        jsonBody.put("max_tokens", 4096) // DeepSeek uses the legacy max_tokens parameter
+
         val url = URL(DEEPSEEK_URL)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         connection.apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
@@ -374,25 +438,25 @@ class AiCoachingService @Inject constructor() {
             var line: String?
             while (reader.readLine().also { line = it } != null) response.append(line)
             reader.close()
-            return parseOpenAiResponse(response.toString()) // Same format
+            parseOpenAiResponse(response.toString()) // Same format
         } else {
             val reader = BufferedReader(InputStreamReader(connection.errorStream ?: connection.inputStream))
             val err = StringBuilder()
             var line: String?
             while (reader.readLine().also { line = it } != null) err.append(line)
-            return "Erreur DeepSeek ($responseCode): $err"
+            if (LlmHttpRetry.isTransientStatus(responseCode)) throw java.io.IOException("DeepSeek Error ($responseCode): $err")
+            "Erreur DeepSeek ($responseCode): $err"
         }
     }
     
-    private fun callClaude(apiKey: String, prompt: String): String {
+    private fun callClaude(apiKey: String, prompt: String): String = LlmHttpRetry.withTransientRetry {
         val url = URL(CLAUDE_URL)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         val jsonBody = JSONObject()
-        jsonBody.put("model", CLAUDE_MODEL)
-        jsonBody.put("max_tokens", 4096)
-        jsonBody.put("temperature", 0.7)
-        
+        jsonBody.put("model", ClaudeModelResolver.current())
+        jsonBody.put("max_tokens", 8192) // thinking tokens count in this limit on newer Claude models
+
         // Claude expects messages array with role/content
         val messages = JSONArray()
         val userMessage = JSONObject()
@@ -400,7 +464,7 @@ class AiCoachingService @Inject constructor() {
         userMessage.put("content", prompt)
         messages.put(userMessage)
         jsonBody.put("messages", messages)
-        
+
         connection.apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
@@ -408,7 +472,7 @@ class AiCoachingService @Inject constructor() {
             setRequestProperty("anthropic-version", "2023-06-01")
             doOutput = true
             connectTimeout = 15000
-            readTimeout = 60000
+            readTimeout = 120000 // Sonnet 5 / Fable 5.1 can take more than 60 s on long coaching prompts
         }
 
         val writer = OutputStreamWriter(connection.outputStream)
@@ -423,21 +487,22 @@ class AiCoachingService @Inject constructor() {
             var line: String?
             while (reader.readLine().also { line = it } != null) response.append(line)
             reader.close()
-            return parseClaudeResponse(response.toString())
+            parseClaudeResponse(response.toString())
         } else {
             val reader = BufferedReader(InputStreamReader(connection.errorStream ?: connection.inputStream, java.nio.charset.StandardCharsets.UTF_8))
             val err = StringBuilder()
             var line: String?
             while (reader.readLine().also { line = it } != null) err.append(line)
-            return "Erreur Claude ($responseCode): $err"
+            // 503/529/500… → throw so it is retried with backoff; other errors surface as-is.
+            if (LlmHttpRetry.isTransientStatus(responseCode)) throw java.io.IOException("Claude Error ($responseCode): $err")
+            "Erreur Claude ($responseCode): $err"
         }
     }
     
     private fun parseClaudeResponse(jsonStr: String): String {
         return try {
             val root = JSONObject(jsonStr)
-            val content = root.getJSONArray("content")
-            content.getJSONObject(0).getString("text").trim()
+            ClaudeModelResolver.extractText(root)
         } catch (e: Exception) {
             "Erreur lecture Claude."
         }

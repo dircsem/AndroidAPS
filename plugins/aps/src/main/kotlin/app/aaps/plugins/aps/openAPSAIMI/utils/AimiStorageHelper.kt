@@ -137,10 +137,12 @@ class AimiStorageHelper @Inject constructor(
     /**
      * Liste tous les fichiers AIMI susceptibles d'être sauvegardés.
      * Scanne récursivement le répertoire AAPS pour les modèles (.json), datasets (.csv) et logs (.jsonl).
+     * Files larger than [AimiBackupManager.MAX_BACKUP_FILE_BYTES] are omitted (OOM guard).
      */
     fun listBackupCandidates(): List<File> {
         val root = getAimiDirectory()
         val candidates = mutableListOf<File>()
+        val maxBytes = AimiBackupManager.MAX_BACKUP_FILE_BYTES
         
         log.info(LTag.APS, "AimiStorageHelper: Scanning legacy directory for backup: ${root.absolutePath}")
         
@@ -153,7 +155,15 @@ class AimiStorageHelper @Inject constructor(
                     if (name.endsWith(".json") || name.endsWith(".csv") || name.endsWith(".jsonl")) {
                         // Exclure les fichiers temporaires ou backups automatiques si nécessaire
                         if (!name.contains(".tmp") && !name.contains(".pending")) {
-                            candidates.add(file)
+                            val len = file.length()
+                            if (len > maxBytes) {
+                                log.warn(
+                                    LTag.APS,
+                                    "AimiStorageHelper: Skipping oversized backup candidate ${file.name} ($len bytes)",
+                                )
+                            } else {
+                                candidates.add(file)
+                            }
                         }
                     }
                 }

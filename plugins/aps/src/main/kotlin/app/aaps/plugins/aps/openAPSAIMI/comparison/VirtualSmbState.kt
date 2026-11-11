@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.openAPSAIMI.comparison
 
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TB
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.IobTotal
@@ -45,7 +46,8 @@ class VirtualInsulinReservoir {
                 timestamp = timestamp,
                 amount = decision.units!!,
                 type = BS.Type.SMB,
-                isBasalInsulin = false
+                isBasalInsulin = false,
+                iCfg = ICfg(insulinLabel = "VirtualSMB", peak = 75, dia = 5.0, concentration = 1.0)
             )
             virtualBoluses.add(bolus)
         }
@@ -113,6 +115,11 @@ class VirtualIobCalculator(
         for ((pos, i) in (0 until len).withIndex()) {
             val t = now + i * 5 * 60000
             val iob = calculateTotalIob(t, profile)
+            // DetermineBasalSMB requires iobWithZeroTemp on each tick; virtual IOB does not model
+            // a separate zero-temp curve — mirror current IOB/activity for ZT predictions (comparator only).
+            if (iob.iobWithZeroTemp == null) {
+                iob.iobWithZeroTemp = iob.copy(iobWithZeroTemp = null)
+            }
             array[pos] = iob
         }
         return array
@@ -163,7 +170,12 @@ class VirtualIobCalculator(
                         val term = time - dia * 60 * 60 * 1000
                         if (calcDate > term && calcDate <= time) {
                             val tempBolusSize = netRate * tempBolusSpacing / 60.0
-                            val tempBolusPart = BS(timestamp = calcDate, amount = tempBolusSize, type = BS.Type.NORMAL)
+                            val tempBolusPart = BS(
+                                timestamp = calcDate,
+                                amount = tempBolusSize,
+                                type = BS.Type.NORMAL,
+                                iCfg = ICfg(insulinLabel = "VirtualSMB", peak = 75, dia = profile.dia, concentration = 1.0)
+                            )
                             val aIOB = calculateIobForTreatment(tempBolusPart, time, dia)
                             total.basaliob += aIOB.iobContrib
                             total.activity += aIOB.activityContrib

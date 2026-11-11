@@ -4,12 +4,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 @Suppress("ConstPropertyName")
 object Versions {
 
-    const val appVersion = "3.4.2.2-Master.AIMI.160426"
+    // On change edit aaps-ci.yml (fork builds use AIMI suffix; base tracks upstream 4.0.0-dev-b)
+    const val appVersion = "4.0.0.0-dev.AIMI.211026"
     const val versionCode = 1500
 
-    const val compileSdk = 36  // Back to original - SDK 34 breaks omnipod and other modules
+    const val compileSdk = 37
     const val minSdk = 31
-    const val targetSdk = 34 // Bumped to 34 for Health Connect compatibility on Android 14
+    const val targetSdk = 34 // Health Connect / Android 14 compatibility
     const val wearMinSdk = 30
     const val wearTargetSdk = 30
 

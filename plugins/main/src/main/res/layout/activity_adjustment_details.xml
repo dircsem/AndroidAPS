@@ -47,7 +47,7 @@
                         android:gravity="end"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
-                        android:textColor="@color/defaultTextColor"/>
+                        android:textColor="?attr/defaultTextColor"/>
 
                     <TextView
                         android:text="DIA"
@@ -60,7 +60,7 @@
                         android:gravity="end"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
-                        android:textColor="@color/defaultTextColor"/>
+                        android:textColor="?attr/defaultTextColor"/>
 
                     <TextView
                         android:text="Target BG"
@@ -73,7 +73,7 @@
                         android:gravity="end"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
-                        android:textColor="@color/defaultTextColor"/>
+                        android:textColor="?attr/defaultTextColor"/>
 
                     <TextView
                         android:text="SMB"
@@ -86,7 +86,7 @@
                         android:gravity="end"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
-                        android:textColor="@color/defaultTextColor"/>
+                        android:textColor="?attr/defaultTextColor"/>
 
                     <TextView
                         android:text="Basal"
@@ -99,7 +99,7 @@
                         android:gravity="end"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
-                        android:textColor="@color/defaultTextColor"/>
+                        android:textColor="?attr/defaultTextColor"/>
 
                 </GridLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -137,7 +137,7 @@
                             android:layout_weight="1"
                             android:text="🌀 Trajectory Analysis"
                             android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
-                            android:textColor="@color/defaultTextColor" />
+                            android:textColor="?attr/defaultTextColor" />
                             
                         <TextView
                             android:id="@+id/trajectory_title"
@@ -159,7 +159,7 @@
                         android:lineSpacingExtra="2dp"
                         android:gravity="center"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"
-                        android:textColor="@color/defaultTextColor" />
+                        android:textColor="?attr/defaultTextColor" />
 
                     <TextView
                         android:id="@+id/trajectory_metrics"
@@ -194,7 +194,7 @@
                         android:layout_height="wrap_content"
                         android:text="Reasoning (rT)"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
-                        android:textColor="@color/defaultTextColor" />
+                        android:textColor="?attr/defaultTextColor" />
 
                     <TextView
                         android:id="@+id/reason_text"
@@ -203,7 +203,7 @@
                         android:layout_marginTop="8dp"
                         android:fontFamily="monospace"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"
-                        android:textColor="@color/defaultTextColor" />
+                        android:textColor="?attr/defaultTextColor" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -224,7 +224,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/dashboard_adjustments_details_decisions"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
-                        android:textColor="@color/defaultTextColor" />
+                        android:textColor="?attr/defaultTextColor" />
 
                     <LinearLayout
                         android:id="@+id/decisions_container"
@@ -240,7 +240,7 @@
                         android:layout_marginTop="12dp"
                         android:text="@string/dashboard_adjustments_details_empty"
                         android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"
-                        android:textColor="@color/defaultTextColor" />
+                        android:textColor="?attr/defaultTextColor" />
 
                 </LinearLayout>
 

@@ -4,7 +4,7 @@ import android.content.Context
 import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.sync.DataSyncSelector
-import app.aaps.core.ui.toast.ToastUtils.showToastInUiThread
+import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
 import app.aaps.pump.medtronic.data.dto.BasalProfile
@@ -32,8 +32,8 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
             val profile = parser.parseProfile(answer, medLinkMedtronicPumpPlugin.basalProfile)
             result = MedLinkStandardReturn(answer, profile)
             (medLinkMedtronicPumpPlugin.medLinkPumpStatus as MedLinkMedtronicPumpStatus).basalProfileStatus = BasalProfileStatus.ProfileOK
-            if (profile != null &&  !medLinkMedtronicPumpPlugin.isThisProfileSet(profile)) {
-                showToastInUiThread(
+            if (profile != null &&  !medLinkMedtronicPumpPlugin.isMedLinkProfileSet(profile)) {
+                ToastUtils.errorToast(
                     ctx,
                     medLinkMedtronicPumpPlugin.rh.gs(app.aaps.pump.medtronic.R.string.medtronic_cmd_basal_profile_could_not_be_set)
                 )

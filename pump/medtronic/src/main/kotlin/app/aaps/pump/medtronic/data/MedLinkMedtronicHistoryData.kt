@@ -60,9 +60,10 @@ class MedLinkMedtronicHistoryData @Inject constructor(
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
     uiInteraction: UiInteraction,
-    profileUtil: ProfileUtil
-): MedtronicHistoryData( aapsLogger, preferences, rh, medtronicUtil, medtronicPumpHistoryDecoder, medtronicPumpStatus, pumpSync, pumpSyncStorage,
-uiInteraction, profileUtil ) {
+    profileUtil: ProfileUtil,
+    notificationManager: app.aaps.core.interfaces.notifications.NotificationManager
+): MedtronicHistoryData(aapsLogger, preferences, medtronicUtil, medtronicPumpHistoryDecoder, medtronicPumpStatus, pumpSync, pumpSyncStorage,
+    notificationManager, profileUtil) {
 
     private var newHistory: MutableList<PumpHistoryEntry> = ArrayList<PumpHistoryEntry>()
     private var isInit = false

@@ -35,4 +35,23 @@ class NotificationUiBinder @Inject constructor(
                 notificationStore.updateNotifications(notificationsView)
             }, fabricPrivacy::logException)
     }
+
+    fun bindCompose(
+        overviewBus: RxBus,
+        onSnapshot: (List<NotificationStore.NotificationComposeItem>) -> Unit,
+        disposable: CompositeDisposable,
+    ) {
+        onSnapshot(notificationStore.snapshotForCompose())
+        disposable += overviewBus
+            .toObservable(EventUpdateOverviewNotification::class.java)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({
+                onSnapshot(notificationStore.snapshotForCompose())
+            }, fabricPrivacy::logException)
+    }
+
+    fun dismissCompose(id: Int): List<NotificationStore.NotificationComposeItem> {
+        notificationStore.dismissFromCompose(id)
+        return notificationStore.snapshotForCompose()
+    }
 }

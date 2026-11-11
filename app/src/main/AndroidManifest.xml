@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="com.google.android.permission.PROVIDE_BACKGROUND" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -22,11 +22,23 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="com.dexcom.cgm.EXTERNAL_PERMISSION" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- DND override for URGENT medical alarms: lets a bypass-DND notification channel ring through
+         Do Not Disturb / bedtime modes. Special access — the user must still grant it in system settings. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-permission-sdk-23 android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Remove legacy storage permissions pulled in by library manifest merge.
+         App uses scoped storage / SAF (minSdk 31). -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:node="remove" />
 
     <!-- To receive data from xdrip. -->
     <permission android:name="com.eveningoutpost.dexdrip.permissions.RECEIVE_BG_ESTIMATE" />
@@ -40,13 +52,16 @@
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
-    
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />
+    <uses-permission android:name="android.permission.health.READ_BASAL_BODY_TEMPERATURE" />
+
     <!-- Health Connect availability query -->
     <!-- Health Connect availability query (Android 14+ requirement) -->
     <queries>
         <!-- Detect if Health Connect is installed -->
         <package android:name="com.google.android.apps.healthdata" />
-        
+
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
@@ -60,11 +75,11 @@
         android:fullBackupOnly="false"
         android:icon="${appIcon}"
         android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:restoreAnyVersion="true"
         android:roundIcon="${appIconRound}"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme.Launcher"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:theme="@style/AppTheme.Launcher">
         <profileable android:shell="true" />
 
         <meta-data
@@ -80,8 +95,9 @@
             android:resource="@xml/automotive_app_desc" />
 
         <activity
-            android:name="app.aaps.MainActivity"
+            android:name="app.aaps.ComposeMainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -90,23 +106,35 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name="app.aaps.activities.PreferencesActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
-        <activity
-            android:name="app.aaps.activities.HistoryBrowseActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
+        <!-- AIMI / tooling: classic activities (Dagger Android), parent = Compose shell -->
         <activity
             android:name="app.aaps.activities.DashboardPreviewActivity"
             android:exported="false"
+            android:parentActivityName="app.aaps.ComposeMainActivity"
             android:theme="@style/AppTheme" />
         <activity
             android:name="app.aaps.activities.ComparatorActivity"
+            android:exported="false"
             android:label="@string/comparator_title"
-            android:parentActivityName="app.aaps.MainActivity"
+            android:parentActivityName="app.aaps.ComposeMainActivity"
             android:theme="@style/AppTheme" />
+
+        <!-- Powers the screen on for a background alarm without USE_FULL_SCREEN_INTENT.
+             Fired by AlarmManager.setAlarmClock() from AlarmNotificationManager. -->
+        <receiver
+            android:name="app.aaps.implementation.androidNotification.AlarmScreenWakeReceiver"
+            android:exported="false" />
+
+        <!-- "Mute" action on the background alarm notification → silences the looping alarm. -->
+        <receiver
+            android:name="app.aaps.implementation.androidNotification.AlarmMuteReceiver"
+            android:exported="false" />
+
+        <!-- "Hypo treated" action on the low glucose alarm notification → holds the alarm 20 min. -->
+        <receiver
+            android:name="app.aaps.implementation.androidNotification.HypoTreatedReceiver"
+            android:exported="false" />
+
         <!-- Receive new BG readings from other local apps -->
         <receiver
             android:name="app.aaps.receivers.DataReceiver"
@@ -138,6 +166,9 @@
                 <action android:name="cn.diyaps.sharing.SI_APP" />
                 <!-- Receiver from patched Sino app -->
                 <action android:name="cn.diyaps.sharing.SINO_APP" />
+                <!-- Receiver from Instara App -->
+                <!-- NOTE: The action name for Instara App is still called Teljane -->
+                <action android:name="info.nightscout.androidaps.action.Teljane_APP" />
             </intent-filter>
         </receiver>
 
@@ -204,6 +235,28 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <!-- WorkManager on-demand initialization: remove the default initializer so MainApp's
+             Configuration.Provider (with HiltWorkerFactory) is used instead. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <!-- WorkManager (Android 14+): SystemForegroundService must declare a type when targetSdk >= 34.
+             Without this merge, startForeground() can run as FGS type "none" and throw InvalidForegroundServiceTypeException. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:directBootAware="false"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
     </application>
 

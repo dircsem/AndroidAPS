@@ -21,7 +21,7 @@ class MechanismAttentionGate @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val storageHelper: AimiStorageHelper
 ) {
-    private val weightsFileName = "autodrive_attention_weights.json"
+    private val weightsFileName = AutodriveNeuralTrainer.WEIGHTS_FILE_NAME
     
     // Cache en mémoire pour ne pas tuer les I/O à chaque tique de 5 minutes
     private var weightsCache: AttentionWeights? = null
@@ -54,6 +54,10 @@ class MechanismAttentionGate @Inject constructor(
         if (mask.size > 0) z += weights.wHr * mask[0]
         if (mask.size > 1) z += weights.wInflammation * mask[1]
         if (mask.size > 2) z += weights.wHormonal * mask[2]
+        // Inference always happens on an engaged tick, so this feature is 1 here. It exists so the
+        // model can separate "risk given this physiology" from "risk given the gate opened", instead
+        // of the training set carrying that difference silently.
+        z += weights.wEngaged * 1.0
         
         // 2. Fonction d'activation (Sigmoid) -> Probabilité de Crash (Hypo)
         val hypoRiskScore = sigmoid(z)
@@ -65,9 +69,23 @@ class MechanismAttentionGate @Inject constructor(
             // Amplification défensive (Ex: risque très fort = x1.5 sensibilité)
             1.0 + (hypoRiskScore - 0.5)
         } else {
-            // Le patient est safe, mais on peut réduire la prudence (jusqu'à x0.8 SI)
-            // pour taper un peu plus fort si on sait qu'il résiste
-            1.0 - (0.5 - hypoRiskScore) * 0.4 
+            // ⚠️ Defensive-only until the classifier is validated.
+            //
+            // This arm used to return `1.0 - (0.5 - hypoRiskScore) * 0.4`, down to ×0.8 — "the patient
+            // is safe, we can lower caution to hit a bit harder". Lowering `estimatedSI` does not only
+            // push the MPC: it shrinks `lgh = -siMetabolic * bg` in `ControlBarrierShield`, so the
+            // safety barrier permits a **larger** dose.
+            //
+            // The classifier is trained from scratch each run on a ~3 % positive class with no feature
+            // normalisation, so its fitted probability sits below 0.5 almost always — meaning that arm
+            // would fire on essentially every engaged tick, driven by the base rate of hypoglycaemia
+            // rather than by any measured resistance. It never actually ran, because the trainer was
+            // never instantiated and the weights file never existed; this keeps it that way rather
+            // than switching on an untested permissive path.
+            //
+            // Restore it only with per-feature normalisation, a class-balance-aware objective, and the
+            // barrier reading the un-attenuated SI — the same rule already applied to `estimatedRa`.
+            1.0
         }
 
         val modulatedSI = state.estimatedSI * attentionMultiplier
@@ -103,7 +121,10 @@ class MechanismAttentionGate @Inject constructor(
                 bias = json.optDouble("bias", 0.0),
                 wHr = json.optDouble("weight_hr", 0.0),
                 wInflammation = json.optDouble("weight_inflammation", 0.0),
-                wHormonal = json.optDouble("weight_hormonal", 0.0)
+                wHormonal = json.optDouble("weight_hormonal", 0.0),
+                // Absent from weight files written before the dataset carried the engagement column.
+                // 0.0 keeps those files behaving exactly as they did.
+                wEngaged = json.optDouble("weight_engaged", 0.0)
             )
             lastLoadTime = System.currentTimeMillis()
             aapsLogger.info(LTag.APS, "IA Attention Gate: Nouveaux Poids d'Apprentissage chargés en mémoire.")
@@ -117,6 +138,8 @@ class MechanismAttentionGate @Inject constructor(
         val bias: Double,
         val wHr: Double,
         val wInflammation: Double,
-        val wHormonal: Double
+        val wHormonal: Double,
+        /** Weight of the "Autodrive engaged" feature. 0.0 for weight files written before it existed. */
+        val wEngaged: Double = 0.0,
     )
 }

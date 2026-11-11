@@ -28,9 +28,18 @@ data class SleepDataMTR(
     val remSleepMinutes: Int = 0,
     val lightSleepMinutes: Int = 0,
     val awakeMinutes: Int = 0,
-    val fragmentationScore: Double = 0.0 // Higher = more fragmented
+    val fragmentationScore: Double = 0.0, // Higher = more fragmented
+    /** HC session covering [now] when both bounds set (live asleep). */
+    val ongoingStartMs: Long? = null,
+    val ongoingEndMs: Long? = null,
 ) {
     fun hasValidData(): Boolean = durationHours > 0.0
+
+    fun isOngoingAt(nowMs: Long): Boolean {
+        val start = ongoingStartMs ?: return false
+        val end = ongoingEndMs ?: return false
+        return nowMs in start..end
+    }
     
     companion object {
         val EMPTY = SleepDataMTR(0, 0)
@@ -108,6 +117,7 @@ data class PhysioFeaturesMTR(
     val sleepDurationHours: Double = 0.0,
     val sleepEfficiency: Double = 0.0, // 0-1
     val sleepFragmentation: Double = 0.0, // 0-1, higher = worse
+    val sleepQualityScore: Double = 0.0, // 0-1, higher = better
     val deepSleepPercent: Double = 0.0, // 0-1
     
     // HRV metrics
@@ -131,6 +141,7 @@ data class PhysioFeaturesMTR(
     fun toJSON(): JSONObject = JSONObject().apply {
         put("sleepDuration", sleepDurationHours)
         put("sleepEfficiency", sleepEfficiency)
+        put("sleepQuality", sleepQualityScore)
         put("hrvMean", hrvMeanRMSSD)
         put("hrvTrend", hrvTrend)
         put("rhrDeviation", rhrDeviation)
@@ -146,6 +157,7 @@ data class PhysioFeaturesMTR(
             PhysioFeaturesMTR(
                 sleepDurationHours = json.optDouble("sleepDuration", 0.0),
                 sleepEfficiency = json.optDouble("sleepEfficiency", 0.0),
+                sleepQualityScore = json.optDouble("sleepQuality", 0.0),
                 hrvMeanRMSSD = json.optDouble("hrvMean", 0.0),
                 hrvTrend = json.optDouble("hrvTrend", 0.0),
                 rhrDeviation = json.optDouble("rhrDeviation", 0.0),
@@ -432,7 +444,9 @@ data class PhysioMultipliersMTR(
     val confidence: Double = 0.0,     // Confidence in these multipliers
     val appliedCaps: String = "",     // Description of applied limits
     val source: String = "Deterministic", // "Deterministic" or "LLM-Assisted"
-    val detailedReason: String = ""       // 🌀 Internal Debug Info (e.g. Cosine Gate breakdown)
+    val detailedReason: String = "",       // 🌀 Internal Debug Info (e.g. Cosine Gate breakdown)
+    val physiologicalPhase: PhysiologicalPhase = PhysiologicalPhase.OFF,
+    val phaseConfidence: Double = 0.0,
 ) {
     fun isNeutral(): Boolean = 
         isfFactor == 1.0 && 
@@ -471,3 +485,147 @@ data class AimiPhysioInputs(
     val isMealActive: Boolean = false,
     val activityState: String = "IDLE" // e.g., "WALKING", "RUNNING"
 )
+
+/**
+ * Standardized trace payload for study/export pipelines.
+ * Captures a single physio decision event from adapter runtime.
+ */
+data class PhysioDecisionTraceMTR(
+    val timestamp: Long = System.currentTimeMillis(),
+    val physioState: String = PhysioStateMTR.UNKNOWN.name,
+    val physioConfidence: Double = 0.0,
+    val physioDataQuality: Double = 0.0,
+    val sleepQualityScore: Double? = null,
+    val isfFactor: Double = 1.0,
+    val basalFactor: Double = 1.0,
+    val smbFactor: Double = 1.0,
+    val reactivityFactor: Double = 1.0,
+    val inflammationLatentIndex: Double = 0.0,
+    val inflammationConfidence: Double = 0.0,
+    val inflammationTimescale: String = "UNKNOWN",
+    val inflammationDrivers: List<String> = emptyList(),
+    val shadowOrchestratorEnabled: Boolean = false,
+    val shadowBudgetedIsfFactor: Double = 1.0,
+    val shadowBudgetedBasalFactor: Double = 1.0,
+    val shadowBudgetedSmbFactor: Double = 1.0,
+    val shadowOverlapPenalty: Double = 1.0,
+    val shadowContributions: Map<String, Double> = emptyMap(),
+    val shadowNotes: List<String> = emptyList(),
+    val vetoReason: String? = null,
+    val finalLoopDecisionType: String? = null,
+    val smbActionType: String? = null,
+    val basalActionType: String? = null,
+    val decisionConflictFlags: List<String> = emptyList(),
+    val source: String = "Deterministic"
+) {
+    fun toJSON(): JSONObject = JSONObject().apply {
+        put("timestamp", timestamp)
+        put("physio_state", physioState)
+        put("physio_confidence", physioConfidence)
+        put("physio_data_quality", physioDataQuality)
+        put("sleep_quality_score", sleepQualityScore ?: JSONObject.NULL)
+        put("isf_factor", isfFactor)
+        put("basal_factor", basalFactor)
+        put("smb_factor", smbFactor)
+        put("reactivity_factor", reactivityFactor)
+        put("inflammation_latent_index", inflammationLatentIndex)
+        put("inflammation_confidence", inflammationConfidence)
+        put("inflammation_timescale", inflammationTimescale)
+        put("inflammation_drivers", org.json.JSONArray(inflammationDrivers))
+        put("shadow_orchestrator_enabled", shadowOrchestratorEnabled)
+        put("shadow_budgeted_isf_factor", shadowBudgetedIsfFactor)
+        put("shadow_budgeted_basal_factor", shadowBudgetedBasalFactor)
+        put("shadow_budgeted_smb_factor", shadowBudgetedSmbFactor)
+        put("shadow_overlap_penalty", shadowOverlapPenalty)
+        put("shadow_contributions", JSONObject(shadowContributions))
+        put("shadow_notes", org.json.JSONArray(shadowNotes))
+        put("physio_veto_reason", vetoReason ?: JSONObject.NULL)
+        put("final_loop_decision_type", finalLoopDecisionType ?: JSONObject.NULL)
+        put("smb_action_type", smbActionType ?: JSONObject.NULL)
+        put("basal_action_type", basalActionType ?: JSONObject.NULL)
+        put("decision_conflict_flags", org.json.JSONArray(decisionConflictFlags))
+        put("source", source)
+    }
+}
+
+data class InflammationLatentStateMTR(
+    val index: Double = 0.0,                // 0..1
+    val confidence: Double = 0.0,           // 0..1
+    val timescale: InflammationTimescaleMTR = InflammationTimescaleMTR.UNKNOWN,
+    val drivers: List<String> = emptyList()
+)
+
+enum class InflammationTimescaleMTR {
+    ACUTE,
+    SUBACUTE,
+    CHRONIC,
+    UNKNOWN
+}
+
+/**
+ * Shadow estimator only: computes an explicit latent inflammation index from
+ * already available proxy signals, without modifying insulin dosing logic.
+ */
+class InflammationLatentEstimatorMTR {
+    fun estimate(
+        context: PhysioContextMTR,
+        snapshot: HealthContextSnapshot
+    ): InflammationLatentStateMTR {
+        val drivers = mutableListOf<String>()
+        var weighted = 0.0
+        var totalWeight = 0.0
+
+        fun add(weight: Double, score: Double, label: String, active: Boolean) {
+            totalWeight += weight
+            weighted += weight * score.coerceIn(0.0, 1.0)
+            if (active) drivers.add(label)
+        }
+
+        val poorSleepScore = when {
+            context.poorSleepDetected -> 0.8
+            snapshot.sleepDebtMinutes >= 90 -> 0.7
+            snapshot.sleepDebtMinutes >= 45 -> 0.45
+            else -> 0.1
+        }
+        add(0.30, poorSleepScore, "sleep_burden", context.poorSleepDetected || snapshot.sleepDebtMinutes >= 45)
+
+        val autonomicScore = when {
+            context.hrvDepressed && context.rhrElevated -> 0.9
+            context.hrvDepressed || context.rhrElevated -> 0.6
+            // Was `hrvRmssd in 1.0..22.0`, a fixed RMSSD band that a person with a naturally low
+            // RMSSD never left. hrvDepression says the same thing about the person instead of about
+            // the number. 0.5 is one sigma below their own mean, about where the old band sat for
+            // a typical adult.
+            snapshot.hrvDepression >= 0.5 -> 0.55
+            else -> 0.15
+        }
+        add(0.35, autonomicScore, "autonomic_stress", context.hrvDepressed || context.rhrElevated)
+
+        val lowActivityScore = if (context.activityReduced) 0.55 else 0.2
+        add(0.20, lowActivityScore, "reduced_activity", context.activityReduced)
+
+        val anomalyPressure = (listOf(
+            context.poorSleepDetected,
+            context.hrvDepressed,
+            context.rhrElevated,
+            context.activityReduced
+        ).count { it } / 4.0)
+        add(0.15, anomalyPressure, "multi_signal_pressure", anomalyPressure >= 0.5)
+
+        val index = if (totalWeight > 0.0) (weighted / totalWeight).coerceIn(0.0, 1.0) else 0.0
+        val confidence = ((context.confidence * 0.6) + (snapshot.confidence * 0.4)).coerceIn(0.0, 1.0)
+        val timescale = when {
+            context.state == PhysioStateMTR.INFECTION_RISK || (index >= 0.75 && context.rhrElevated) -> InflammationTimescaleMTR.ACUTE
+            index >= 0.55 -> InflammationTimescaleMTR.SUBACUTE
+            index >= 0.30 -> InflammationTimescaleMTR.CHRONIC
+            else -> InflammationTimescaleMTR.UNKNOWN
+        }
+
+        return InflammationLatentStateMTR(
+            index = index,
+            confidence = confidence,
+            timescale = timescale,
+            drivers = drivers
+        )
+    }
+}

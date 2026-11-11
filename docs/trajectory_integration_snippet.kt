@@ -22,7 +22,10 @@
                     iobNow = iob.toDouble(),
                     pkpdStage = insulinActionState.stage,
                     timeSinceLastBolus = if (lastBolusAgeMinutes.isFinite()) lastBolusAgeMinutes.toInt() else 120,
-                    cobNow = cob.toDouble()
+                    cobNow = cob.toDouble(),
+                    // Production: pass EffectiveProfile from provider (see DetermineBasalAIMI2).
+                    effectiveProfile = null,
+                    historicalInsulinPeakMinutes = profile.peakTime.toInt().coerceAtLeast(35),
                 )
                 
                 // 2. Define stable orbit from profile

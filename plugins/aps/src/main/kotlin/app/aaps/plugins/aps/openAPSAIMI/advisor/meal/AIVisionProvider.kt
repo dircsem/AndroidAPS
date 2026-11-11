@@ -1,8 +1,9 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor.meal
 
 import android.graphics.Bitmap
-import org.json.JSONObject
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmWorldConservativePreamble
 import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.round
 
 /**
@@ -42,9 +43,11 @@ data class EstimationResult(
 )
 
 object FoodAnalysisPrompt {
-    const val SYSTEM_PROMPT = """
+    val SYSTEM_PROMPT = """
 You are a Clinical Nutritionist and Diabetic Carb-Counting expert.
 Analyze the meal image and return STRICT JSON ONLY.
+
+${LlmWorldConservativePreamble.FOR_JSON_CONTRACT}
 
 ## NUTRITION PROTOCOL
 1. Identify visible items and volume cues.
@@ -52,6 +55,8 @@ Analyze the meal image and return STRICT JSON ONLY.
 3. Assess Glycemic Impact and confidence levels.
 4. If uncertain about volume or ingredients, lean conservative on 'estimate'.
 5. Protein/Fat: Do NOT hallucinate hidden oils; be realistic/conservative.
+6. Separate clearly visible items from uncertain_items; never move uncertain food into visible_items.
+7. If the image is unusable, still return valid JSON with needs_manual_confirmation=true and conservative estimates.
 
 ## JSON SCHEMA
 {
@@ -73,11 +78,20 @@ Analyze the meal image and return STRICT JSON ONLY.
 """
 
     fun cleanJsonResponse(raw: String): String {
-        return raw.trim()
-            .removePrefix("```json").removePrefix("```")
+        var s = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```JSON")
+            .removePrefix("```")
             .removeSuffix("```")
             .trim()
-            .let { if (!it.startsWith("{")) it.substringAfter("{").let { s -> "{$s" }.substringBeforeLast("}").let { s -> "$s}" } else it }
+        s = s.replace("\r\n", " ").replace('\n', ' ').replace('\r', ' ')
+        val start = s.indexOf('{')
+        val end = s.lastIndexOf('}')
+        return if (start >= 0 && end > start) {
+            s.substring(start, end + 1)
+        } else {
+            s
+        }
     }
 
     private fun roundToHalf(value: Double): Double = round(value * 2.0) / 2.0
@@ -155,7 +169,7 @@ Analyze the meal image and return STRICT JSON ONLY.
             }
         }
 
-        return EstimationResult(
+        val parsed = EstimationResult(
             description = root.optString("food_name", "Unknown Food"),
             visibleItems = visibleItems,
             uncertainItems = root.optJSONArray("uncertain_items").toStringList(),
@@ -174,11 +188,12 @@ Analyze the meal image and return STRICT JSON ONLY.
             recommendedCarbsForDose = roundToHalf(recCarbs),
             recommendedCarbsReason = recReason
         )
+        return MealAdvisorResponseSanitizer.secureEstimationResult(parsed)
     }
 
     fun emptyErrorResult(desc: String, reason: String): EstimationResult {
         val zero = MacroRange(0.0, 0.0, 0.0)
-        return EstimationResult(
+        val err = EstimationResult(
             description = desc,
             visibleItems = emptyList(),
             uncertainItems = emptyList(),
@@ -197,5 +212,6 @@ Analyze the meal image and return STRICT JSON ONLY.
             recommendedCarbsForDose = 0.0,
             recommendedCarbsReason = "Error recovery"
         )
+        return MealAdvisorResponseSanitizer.secureEstimationResult(err)
     }
 }

@@ -75,6 +75,7 @@ class AIMIPhysioFeatureExtractorMTR @Inject constructor(
             sleepDurationHours = sleepFeatures.duration,
             sleepEfficiency = sleepFeatures.efficiency,
             sleepFragmentation = sleepFeatures.fragmentation,
+            sleepQualityScore = sleepFeatures.qualityScore,
             deepSleepPercent = sleepFeatures.deepPercent,
             
             // HRV
@@ -109,12 +110,13 @@ class AIMIPhysioFeatureExtractorMTR @Inject constructor(
         val duration: Double,
         val efficiency: Double,
         val fragmentation: Double,
+        val qualityScore: Double,
         val deepPercent: Double
     )
     
     private fun extractSleepFeatures(sleep: SleepDataMTR?): SleepFeatures {
         if (sleep == null || !sleep.hasValidData()) {
-            return SleepFeatures(0.0, 0.0, 0.0, 0.0)
+            return SleepFeatures(0.0, 0.0, 0.0, 0.0, 0.0)
         }
         
         val totalSleepMinutes = sleep.deepSleepMinutes + sleep.remSleepMinutes + sleep.lightSleepMinutes
@@ -122,10 +124,25 @@ class AIMIPhysioFeatureExtractorMTR @Inject constructor(
             sleep.deepSleepMinutes.toDouble() / totalSleepMinutes
         } else 0.0
         
+        val durationScore = (sleep.durationHours / NORMAL_SLEEP_HOURS).coerceIn(0.0, 1.0)
+        val efficiencyScore = sleep.efficiency.coerceIn(0.0, 1.0)
+        val fragmentationScore = (1.0 - sleep.fragmentationScore).coerceIn(0.0, 1.0)
+        val deepScore = when {
+            totalSleepMinutes <= 0 -> 0.0
+            sleep.deepSleepMinutes <= 0 -> 0.5
+            else -> (deepPercent / 0.20).coerceIn(0.0, 1.0)
+        }
+        val qualityScore =
+            (durationScore * 0.35) +
+                (efficiencyScore * 0.30) +
+                (fragmentationScore * 0.20) +
+                (deepScore * 0.15)
+
         return SleepFeatures(
             duration = sleep.durationHours,
             efficiency = sleep.efficiency,
             fragmentation = sleep.fragmentationScore.coerceIn(0.0, 1.0),
+            qualityScore = qualityScore.coerceIn(0.0, 1.0),
             deepPercent = deepPercent
         )
     }
@@ -330,6 +347,7 @@ class AIMIPhysioFeatureExtractorMTR @Inject constructor(
             LTag.APS,
             "[$TAG] ✅ Features extracted | " +
             "Sleep: ${features.sleepDurationHours.format(1)}h (eff=${(features.sleepEfficiency * 100).toInt()}%), " +
+            "SleepQ: ${(features.sleepQualityScore * 100).toInt()}%, " +
             "HRV: ${features.hrvMeanRMSSD.format(1)}ms, " +
             "RHR: ${features.rhrMorning} bpm, " +
             "Quality: ${(features.dataQuality * 100).toInt()}%"

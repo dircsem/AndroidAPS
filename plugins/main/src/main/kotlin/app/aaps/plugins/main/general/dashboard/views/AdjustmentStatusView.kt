@@ -30,7 +30,22 @@ class AdjustmentStatusView @JvmOverloads constructor(
         binding.predictionLine.text = state.predictionLine
         binding.iobActivityLine.text = state.iobActivityLine
         binding.decisionLine.text = state.decisionLine
-        binding.pumpLine.text = androidx.core.text.HtmlCompat.fromHtml(state.pumpLine, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY)
+        val dash = context.getString(app.aaps.core.ui.R.string.value_unavailable_short)
+        val resV = state.pumpReservoirPlain.ifBlank { dash }
+        val siteV = state.pumpSitePlain.ifBlank { dash }
+        val sensV = state.pumpSensorPlain.ifBlank { dash }
+        binding.pumpBadgeReservoir.text =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_reservoir, resV)
+        binding.pumpBadgeReservoir.contentDescription =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_reservoir_a11y, resV)
+        binding.pumpBadgeSite.text =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_site, siteV)
+        binding.pumpBadgeSite.contentDescription =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_site_a11y, siteV)
+        binding.pumpBadgeSensor.text =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_sensor, sensV)
+        binding.pumpBadgeSensor.contentDescription =
+            context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_sensor_a11y, sensV)
         binding.safetyLine.text = state.safetyLine
         if (state.modeLine.isNullOrBlank()) {
             binding.modeLine.visibility = View.GONE

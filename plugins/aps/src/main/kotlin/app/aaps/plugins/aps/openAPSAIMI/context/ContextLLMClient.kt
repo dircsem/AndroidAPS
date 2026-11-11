@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.plugins.aps.openAPSAIMI.advisor.AiCoachingService
 import app.aaps.plugins.aps.openAPSAIMI.context.ContextIntent.*
+import app.aaps.plugins.aps.openAPSAIMI.llm.LlmWorldConservativePreamble
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -65,11 +66,13 @@ Your ONLY job is to extract structured context information regarding specific in
 4. If uncertain, set confidence < 0.7
 5. Duration and intensity should be realistic
 
+${LlmWorldConservativePreamble.FOR_JSON_CONTRACT}
+
 **OUTPUT SCHEMA** (JSON array of intents):
 ```json
 [
   {
-    "type": "Activity" | "Illness" | "Stress" | "UnannouncedMealRisk" | "Alcohol" | "Travel" | "MenstrualCycle" | "Custom",
+    "type": "Activity" | "Illness" | "Stress" | "UnannouncedMealRisk" | "SlowCarbMeal" | "HypoRecovery" | "Alcohol" | "Travel" | "MenstrualCycle" | "Custom",
     "intensity": "LOW" | "MEDIUM" | "HIGH" | "EXTREME",
     "durationMinutes": <number>,
     "confidence": <0.0-1.0>,
@@ -85,6 +88,23 @@ Your ONLY job is to extract structured context information regarding specific in
     }
   }
 ]
+```
+
+**ROUTING RULES**:
+- For fat/protein-rich or slow-absorbing meals (pizza, fries, chips, cheese, creamy/greasy food),
+  use "SlowCarbMeal", NOT "UnannouncedMealRisk". UnannouncedMealRisk is only for fast/sugary unannounced spikes.
+- If the user reports being low / treating a hypo / just recovered from a low, use "HypoRecovery".
+
+User: "just ate a big plate of fries and cheese"
+Output:
+```json
+[{ "type": "SlowCarbMeal", "intensity": "MEDIUM", "durationMinutes": 300, "confidence": 0.9, "metadata": {} }]
+```
+
+User: "just had a hypo, treated it, watch me for the next hour"
+Output:
+```json
+[{ "type": "HypoRecovery", "intensity": "MEDIUM", "durationMinutes": 60, "confidence": 0.9, "metadata": {} }]
 ```
 
 **EXAMPLES**:
@@ -336,6 +356,8 @@ Output:
                 appendLine("3. Infer activity timing (e.g., 'just finished' + dropping BG)")
                 appendLine("4. Detect patterns (e.g., luteal phase + rising BG → increased resistance)")
                 appendLine("5. Adjust intensity/duration based on current state")
+                appendLine("6. Reconstruct user intent vs medical context before extracting intents")
+                appendLine("7. If the message is unintelligible or unrelated, return an empty JSON array []")
                 appendLine()
             }
         } else {
@@ -467,7 +489,25 @@ Output:
                         riskWindow = durationMin.minutes
                     )
                 }
-                
+
+                "SlowCarbMeal", "SlowMeal", "FatMeal" -> {
+                    SlowCarbMeal(
+                        startTimeMs = baseTimeMs,
+                        durationMs = durationMs,
+                        intensity = intensity,
+                        confidence = confidence
+                    )
+                }
+
+                "HypoRecovery", "Hypo", "Hypoglycemia" -> {
+                    HypoRecovery(
+                        startTimeMs = baseTimeMs,
+                        durationMs = durationMs,
+                        intensity = intensity,
+                        confidence = confidence
+                    )
+                }
+
                 "Alcohol" -> {
                     val units = metadata.optDouble("units", 0.0).toFloat()
                     Alcohol(

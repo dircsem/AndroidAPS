@@ -30,6 +30,21 @@ class BasalDecisionEngine @Inject constructor(
         val tdd7Days: Double,
         val variableSensitivity: Double,
         val profileSens: Double,
+        /**
+         * Commanded sensitivity before any floor, mg/dL per U, or null when unknown.
+         *
+         * The numerator of the meal-window boost. Not [profileSens]: that one is the commanded value
+         * AFTER the floors, so the stress floor raised it and made a protective gesture add insulin —
+         * on the tick of 2026-09-21 22:12 the boost was 2.78x instead of 1.69x, 65 % larger.
+         *
+         * Not the static profile block either, which was the first attempt: the commanded value is
+         * bounded below at 0.5 x profile and therefore usually sits UNDER the profile block. Measured
+         * on 3083 ticks of three packages, the static value is the larger one on 32.7 % of them, and
+         * using it would have grown this basal by a median factor of 1.69, with the largest boost
+         * going from 5.13 to 9.31. This value can never be larger than [profileSens], so the fix can
+         * only ever make the basal smaller or leave it where it was.
+         */
+        val preFloorCommandedSens: Double? = null,
         val predictedBg: Double,
         val targetBg: Double, // Added targetBg
         val minBg: Double, // Min BG from profile for LGS fallback
@@ -69,7 +84,8 @@ class BasalDecisionEngine @Inject constructor(
         val highCarbRuntimeMin: Int,
         val timenow: Int,
         val sixAmHour: Int,
-        val recentSteps5Minutes: Int,
+        /** Steps in the last 5 minutes. `null` means unknown: no step-driven branch may fire on it. */
+        val recentSteps5Minutes: Int?,
         val nightMode: Boolean,
         val modesCondition: Boolean,
         val autodrive: Boolean,
@@ -80,7 +96,26 @@ class BasalDecisionEngine @Inject constructor(
         val zeroSinceMin: Int,
         val minutesSinceLastChange: Int,
         val pumpCaps: PumpCaps,
-        val auditorConfidence: Double = 0.0
+        val auditorConfidence: Double = 0.0,
+        /**
+         * Horizon de projection du lot 1, en minutes ; `null` = ancienne formulation P+D du
+         * [DynamicBasalController]. Renseigné depuis `BooleanKey.OApsAIMIBasalProjectedError`.
+         */
+        val projectionHorizonMin: Double? = null,
+        /**
+         * Predicted 5-min delta for the meal-onset detector of the forced early-meal TBR. `null` = the
+         * old behaviour, which passed [delta] twice, so one noisy 5-min step decided alone.
+         * Set from `BooleanKey.OApsAIMIForcedTbrRealPredDelta`.
+         */
+        val predictedDelta: Double? = null,
+        /** Hold the PI fallback multiplier at ×1.0 when the stack can reach 70, see [DynamicBasalStackCap]. */
+        val dynamicStackCapArmed: Boolean = false,
+        /** A meal is declared (mode active or note in the last 3–4 h): the stack cap never acts. */
+        val declaredMealActive: Boolean = false,
+        /** ISF used by the stack cap; `null` disables it. */
+        val stackCapIsf: Double? = null,
+        /** Bound "Slow rise" and "Eventual BG>110" by [EngineHyperRateBound]. Off = shadow only. */
+        val engineHyperBoundArmed: Boolean = false,
     )
 
     data class Helpers(
@@ -93,8 +128,21 @@ class BasalDecisionEngine @Inject constructor(
     data class Decision(
         val rate: Double,
         val duration: Int,
-        val overrideSafety: Boolean
+        val overrideSafety: Boolean,
+        /** Stack cap verdict on the PI fallback, `null` when that path did not run. Export only. */
+        val piStackCap: DynamicBasalStackCap.Verdict? = null,
+        /** [EngineHyperRateBound] verdict, `null` when neither hyper branch ran. Export only. */
+        val hyperBound: EngineHyperRateBound.Verdict? = null,
     )
+
+    companion object {
+        /** Absolute IOB ceiling (U) above which the early-meal forced TBR is suppressed (anti-stacking). */
+        private const val FORCED_TBR_MAX_IOB_U = 3.0
+        /** eventualBg must clear the LGS threshold by this margin (mg/dL) before forcing a high TBR. */
+        private const val FORCED_TBR_HYPO_MARGIN_MGDL = 15.0
+        /** At night, only a genuinely steep rise (delta ≥ this, mg/dL/5m) may force the meal TBR. */
+        private const val FORCED_TBR_NIGHT_MIN_DELTA = 8.0
+    }
 
     fun decide(
         input: Input,
@@ -177,6 +225,7 @@ class BasalDecisionEngine @Inject constructor(
 
         var overrideSafety = false
         var chosenRate: Double? = null
+        var hyperBound: EngineHyperRateBound.Verdict? = null
 
         val lastTempIsZero = input.currentTemp.rate == 0.0
         val zeroSinceMin = input.zeroSinceMin
@@ -230,17 +279,26 @@ class BasalDecisionEngine @Inject constructor(
             return Decision(input.profileCurrentBasal, 30, false)
         }
 
-        if (helpers.detectMealOnset(
-                input.delta.toFloat(),
-                input.delta.toFloat(), // predictedDelta placeholder
-                input.bgAcceleration.toFloat(),
-                input.predictedBg.toFloat(),
-                input.targetBg.toFloat()
-            ) &&
-            input.modesCondition &&
-            input.bg > 100 &&
-            input.predictedBg > 110 && // Added safety check
-            input.autodrive
+        val mealOnsetDetected = helpers.detectMealOnset(
+            input.delta.toFloat(),
+            (input.predictedDelta ?: input.delta).toFloat(),
+            input.bgAcceleration.toFloat(),
+            input.predictedBg.toFloat(),
+            input.targetBg.toFloat()
+        )
+        // Early-meal forced TBR (overrideSafety, 4–5 U/h) fires on a no-carb-announcement user where a
+        // dawn rise, sensor noise or post-hypo rebound trips detectMealOnset just like a real meal.
+        // These guards are strictly conservative — they can only SUPPRESS the forced boost, never raise it.
+        val forcedTbrContextOk = input.modesCondition && input.bg > 100 && input.predictedBg > 110 && input.autodrive
+        val forcedTbrIobHeadroomOk = input.iob < FORCED_TBR_MAX_IOB_U                                  // anti-stacking (absolute cap)
+        val forcedTbrNotDroppingHypo = input.eventualBg > input.lgsThreshold + FORCED_TBR_HYPO_MARGIN_MGDL
+        val forcedTbrNightOk = !input.nightMode || input.delta >= FORCED_TBR_NIGHT_MIN_DELTA           // at night, only a steep rise
+
+        if (mealOnsetDetected &&
+            forcedTbrContextOk &&
+            forcedTbrIobHeadroomOk &&
+            forcedTbrNotDroppingHypo &&
+            forcedTbrNightOk
         ) {
 
             chosenRate = input.forcedBasal
@@ -250,6 +308,16 @@ class BasalDecisionEngine @Inject constructor(
                  rT.reason.append(" [AD_EARLY_TBR_TRIGGER rate=${input.forcedBasal}]")
             }
         } else {
+            if (mealOnsetDetected && forcedTbrContextOk) {
+                // Detector fired but a safety guard suppressed the forced TBR — surface which one for field triage.
+                rT.reason.append(
+                    " [AD_EARLY_TBR_BLOCKED" +
+                        (if (!forcedTbrIobHeadroomOk) " iob=${"%.1f".format(input.iob)}>=${"%.1f".format(FORCED_TBR_MAX_IOB_U)}" else "") +
+                        (if (!forcedTbrNotDroppingHypo) " evBG=${input.eventualBg.toInt()}<=lgs+${FORCED_TBR_HYPO_MARGIN_MGDL.toInt()}" else "") +
+                        (if (!forcedTbrNightOk) " nightDelta=${"%.1f".format(input.delta)}<${"%.1f".format(FORCED_TBR_NIGHT_MIN_DELTA)}" else "") +
+                        "]"
+                )
+            }
             chosenRate = when {
                 input.snackTime && input.snackRuntimeMin in 0..30 && input.delta < 10 -> {
                     helpers.calculateRate(input.basalEstimate, input.profileCurrentBasal, 4.0, "SnackTime")
@@ -354,26 +422,30 @@ class BasalDecisionEngine @Inject constructor(
                 input.combinedDelta > 1 && !input.sportTime &&
                 input.bgAcceleration > 1.0
             ) {
-                chosenRate = helpers.calculateBasalRate(finalBasalRate, input.profileCurrentBasal, input.combinedDelta)
+                val raw = helpers.calculateBasalRate(finalBasalRate, input.profileCurrentBasal, input.combinedDelta)
                 rT.reason.append(context.getString(R.string.slow_rise_proportional_adjustment))
+                hyperBound = boundHyperBranch(EngineHyperRateBound.Branch.SLOW_RISE, raw, input, basalAdjustmentFactor, rT)
+                chosenRate = hyperBound.rateOutUph
             } else if (input.eventualBg > 110 && !input.sportTime && input.bg > 150 &&
                 input.combinedDelta in -2.0..15.0 &&
                 input.bgAcceleration > 0.0
             ) {
-                chosenRate = helpers.calculateBasalRate(finalBasalRate, input.profileCurrentBasal, basalAdjustmentFactor)
+                val raw = helpers.calculateBasalRate(finalBasalRate, input.profileCurrentBasal, basalAdjustmentFactor)
                 rT.reason.append(context.getString(R.string.eventual_bg_over_110_hyper_factor))
+                hyperBound = boundHyperBranch(EngineHyperRateBound.Branch.EVENTUAL_BG_110, raw, input, basalAdjustmentFactor, rT)
+                chosenRate = hyperBound.rateOutUph
             }
         }
 
         if (chosenRate == null) {
             if ((input.timenow in 11..13 || input.timenow in 18..21) &&
-                input.iob < 0.8 && input.recentSteps5Minutes < 100 &&
+                input.iob < 0.8 && input.recentSteps5Minutes != null && input.recentSteps5Minutes < 100 &&
                 input.combinedDelta > -1 && input.slopeFromMinDeviation > 0.3 &&
                 input.bgAcceleration > 0.0
             ) {
                 chosenRate = input.profileCurrentBasal * 1.5
                 rT.reason.append(context.getString(R.string.calm_meal_and_timing))
-            } else if (input.timenow > input.sixAmHour && input.recentSteps5Minutes > 100) {
+            } else if (input.timenow > input.sixAmHour && input.recentSteps5Minutes != null && input.recentSteps5Minutes > 100) {
                 chosenRate = input.profileCurrentBasal * 0.5
                 rT.reason.append("Morning activity: 50%")
             } else if (input.timenow <= input.sixAmHour && input.delta > 0 && input.bgAcceleration > 0.0) {
@@ -431,8 +503,21 @@ class BasalDecisionEngine @Inject constructor(
                     rT.reason.append(" [MODE_TBR_TRIGGER rate=${chosenRate} reason=ModeActiveFirst30min]")
                     break
                 } else if (runtimeMin > 30 && input.delta > 0) {
-                    val sensitivityRatio = if (input.variableSensitivity > 0.1) {
-                        input.profileSens / input.variableSensitivity
+                    // The numerator is the commanded sensitivity BEFORE any floor. The commanded
+                    // value itself carries the stress ISF floor, and a floor that exists to make
+                    // doses smaller was making this basal 65 % larger. A missing or non-positive
+                    // pre-floor value gives no boost at all, which is the only safe answer: it can
+                    // never add insulin on a number nobody could read. This correction is a bug fix
+                    // and is NOT behind `BooleanKey.OApsAIMIStressIsfFloor` — the direction was wrong
+                    // with the key off too, through the unconditional 0.5 x profile bound.
+                    val preFloorSens = input.preFloorCommandedSens
+                    val sensitivityRatio = if (
+                        input.variableSensitivity > 0.1 &&
+                        preFloorSens != null &&
+                        preFloorSens.isFinite() &&
+                        preFloorSens > 0.0
+                    ) {
+                        preFloorSens / input.variableSensitivity
                     } else 1.0
                     val boost = max(1.0, sensitivityRatio)
                     val multiplier = input.delta * boost
@@ -529,6 +614,7 @@ class BasalDecisionEngine @Inject constructor(
         // All rule blocks above returned null. Instead of silently falling back to
         // profile basal, use the DynamicBasalController to compute a continuously
         // modulated rate based on BG error, trajectory, and IOB.
+        var piStackCap: DynamicBasalStackCap.Verdict? = null
         if (chosenRate == null) {
             val piInput = DynamicBasalController.Input(
                 bg = input.bg,
@@ -542,16 +628,48 @@ class BasalDecisionEngine @Inject constructor(
                 variableSensitivity = input.variableSensitivity,
                 duraISFminutes = input.glucoseStatus?.duraISFminutes ?: 0.0,
                 predictedBgOverride = if (input.eventualBg > 0) input.eventualBg else null,
-                mode = DynamicBasalController.Mode.STANDARD
+                mode = DynamicBasalController.Mode.STANDARD,
+                projectionHorizonMin = input.projectionHorizonMin,
             )
             val piDecision = DynamicBasalController.compute(piInput)
             chosenRate = piDecision.rate
             rT.duration = piDecision.durationMin
             rT.reason.append(" | ").append(piDecision.reason)
+            if (input.profileCurrentBasal > 0.0) {
+                val verdict = DynamicBasalStackCap.evaluate(
+                    multiplier = piDecision.rate / input.profileCurrentBasal,
+                    bgMgdl = input.bg,
+                    iobU = input.iob,
+                    isfMgdlPerU = input.stackCapIsf,
+                    declaredMealActive = input.declaredMealActive,
+                    armed = input.dynamicStackCapArmed,
+                )
+                piStackCap = verdict
+                if (verdict.applied) {
+                    chosenRate = input.profileCurrentBasal
+                    rT.reason.append(" | STACK_CAP: Mult=%.2fx→1.00x (IOB×ISF=%.0f ≥ BG−70)".format(
+                        verdict.multiplierIn, verdict.stackDropMgdl ?: 0.0,
+                    ))
+                }
+            }
         }
 
         val finalRate = chosenRate ?: input.profileCurrentBasal
-        return Decision(finalRate, rT.duration ?: 30, overrideSafety)
+        return Decision(finalRate, rT.duration ?: 30, overrideSafety, piStackCap, hyperBound)
+    }
+
+    private fun boundHyperBranch(
+        branch: EngineHyperRateBound.Branch,
+        raw: Double,
+        input: Input,
+        glucoseFactor: Double,
+        rT: RT,
+    ): EngineHyperRateBound.Verdict {
+        val v = EngineHyperRateBound.evaluate(branch, raw, input.profileCurrentBasal, glucoseFactor, input.engineHyperBoundArmed)
+        if (v.applied) {
+            rT.reason.append(" | ENGINE_BOUND %.2f→%.2f U/h".format(v.rawUph, v.rateOutUph))
+        }
+        return v
     }
 
     // ===== utilitaires existants inchangés =====

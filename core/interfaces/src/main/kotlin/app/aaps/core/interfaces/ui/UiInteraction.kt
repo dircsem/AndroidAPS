@@ -1,10 +1,11 @@
 package app.aaps.core.interfaces.ui
 
 import android.content.Context
+import androidx.annotation.DrawableRes
+import androidx.fragment.app.FragmentActivity
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
-import androidx.fragment.app.FragmentManager
-import app.aaps.core.interfaces.nsclient.NSAlarm
+import app.aaps.core.interfaces.R
 
 /**
  * Interface to use activities located in different modules
@@ -12,117 +13,178 @@ import app.aaps.core.interfaces.nsclient.NSAlarm
  */
 interface UiInteraction {
 
-    val mainActivity: Class<*>
-    val tddStatsActivity: Class<*>
-    val historyBrowseActivity: Class<*>
-    val errorHelperActivity: Class<*>
-    val bolusProgressHelperActivity: Class<*>
-    val singleFragmentActivity: Class<*>
-    val preferencesActivity: Class<*>
-    val myPreferenceFragment: Class<*>
-    val quickWizardListActivity: Class<*>
-
     companion object {
 
-        const val PLUGIN_NAME = "PluginName"
-
-        /**
-         * Preference from [Preferences]
-         */
-        const val PREFERENCE = "Preference"
+        /** Intent extra: plugin [Class.simpleName] for plugin-specific preference screens. */
+        const val PLUGIN_NAME = "plugin"
     }
 
-    enum class Preferences { PROTECTION }
+    /** The main activity of the application. */
+    val mainActivity: Class<*>
+
+    /** The activity for displaying error information. */
+    val errorHelperActivity: Class<*>
 
     /**
-     * Arrays for preferences
+     * Display names for units preferences.
      */
     val unitsEntries: Array<CharSequence>
+
+    /**
+     * Value names for units preferences.
+     */
     val unitsValues: Array<CharSequence>
 
     /**
-     * Show ErrorHelperActivity and start alarm
-     * @param ctx Context
+     * Show ErrorHelperActivity and start alarm.
      * @param status message inside dialog
      * @param title title of dialog
      * @param soundId sound resource. if == 0 alarm is not started
      */
     fun runAlarm(status: String, title: String, @RawRes soundId: Int = 0)
 
-    fun updateWidget(context: Context, from: String)
-
-    fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int? = null, name: String? = null)
-    fun runLoopDialog(fragmentManager: FragmentManager, showOkCancel: Int)
-    fun runProfileSwitchDialog(fragmentManager: FragmentManager, profileName: String? = null)
-    fun runTempBasalDialog(fragmentManager: FragmentManager)
-    fun runTreatmentDialog(fragmentManager: FragmentManager)
-    fun runInsulinDialog(fragmentManager: FragmentManager)
-    fun runCalibrationDialog(fragmentManager: FragmentManager)
-    fun runCarbsDialog(fragmentManager: FragmentManager)
-    fun runTempTargetDialog(fragmentManager: FragmentManager)
-    fun runExtendedBolusDialog(fragmentManager: FragmentManager)
-    fun runFillDialog(fragmentManager: FragmentManager)
+    /**
+     * Defines modes for the site rotation dialog.
+     */
     enum class SiteMode(val i: Int) {
+
+        /** View existing site change history. */
         VIEW(1),
+
+        /** Record a new site change. */
         EDIT(2)
     }
-    fun runSiteRotationDialog(fragmentManager: FragmentManager)
-    fun runBolusProgressDialog(fragmentManager: FragmentManager)
-    enum class Mode(val i: Int) {
-        RUNNING_PROFILE(1),
-        CUSTOM_PROFILE(2),
-        DB_PROFILE(3),
-        PROFILE_COMPARE(4)
-    }
 
-    fun runProfileViewerDialog(fragmentManager: FragmentManager, time: Long, mode: Mode, customProfile: String? = null, customProfileName: String? = null, customProfile2: String? = null)
+    /**
+     * Defines types of care portal events.
+     */
     enum class EventType {
+
+        /** A blood glucose check. */
         BGCHECK,
+
+        /** A CGM sensor insertion. */
         SENSOR_INSERT,
+
+        /** A pump battery change. */
         BATTERY_CHANGE,
+
+        /** A general note. */
         NOTE,
+
+        /** An exercise event. */
         EXERCISE,
+
+        /** A question/prompt. */
         QUESTION,
+
+        /** An announcement. */
         ANNOUNCEMENT
     }
 
-    fun runCareDialog(fragmentManager: FragmentManager, options: EventType, @StringRes event: Int)
+    /**
+     * Posts a sound-bearing notification for an in-app notification (overview/dashboard list).
+     * Replaces the old foreground AlarmSoundService path.
+     */
+    fun postNotificationSoundAlarm(notificationKey: Int, @RawRes soundId: Int, title: String, body: String, urgent: Boolean)
 
     /**
-     * Remove notification
-     * @param id if of notification
+     * Cancels the sound notification for a single in-app notification key without stopping other active alarms.
      */
-    fun dismissNotification(id: Int)
-    fun addNotification(id: Int, text: String, level: Int)
-    fun addNotificationValidFor(id: Int, text: String, level: Int, validMinutes: Int)
-    fun addNotificationWithSound(id: Int, text: String, level: Int, @RawRes soundId: Int?)
-    fun addNotificationValidTo(id: Int, date: Long, text: String, level: Int, validTo: Long)
-    fun addNotificationWithAction(nsAlarm: NSAlarm)
-    fun addNotificationWithAction(id: Int, text: String, level: Int, @StringRes buttonText: Int, action: Runnable, validityCheck: (() -> Boolean)?, @RawRes soundId: Int? = null, date: Long = System.currentTimeMillis(), validTo: Long = 0)
+    fun cancelNotificationSoundAlarm(notificationKey: Int)
 
     /**
-     * Add notification that shows dialog after clicking button
-     * @param id if of notification
-     * @text text of notification
-     * @level urgency level of notification
-     * @actionButtonId label of button
-     * @title Dialog title
-     * @message Dialog body
+     * Stops any currently playing alarm (cancels FSI + all sound notifications).
+     * Per-AAPS-notification cancellation happens internally inside the implementation module.
+     * @param reason A string describing why the alarm is being stopped.
      */
-    fun addNotificationWithDialogResponse(id: Int, text: String, level: Int, @StringRes buttonText: Int, title: String, message: String, validityCheck: (() -> Boolean)?)
-
-    /**
-     * Add notification that executes [Runnable] after clicking button
-     * @param id if of notification
-     * @text text of notification
-     * @level urgency level of notification
-     * @actionButtonId label of button
-     * @action Runnable to be run
-     */
-    fun addNotification(id: Int, text: String, level: Int, @StringRes actionButtonId: Int, action: Runnable, validityCheck: (() -> Boolean)?)
-
-    fun showToastAndNotification(ctx: Context, string: String, @RawRes soundID: Int)
-
-    fun startAlarm(@RawRes sound: Int, reason: String)
     fun stopAlarm(reason: String)
+
+    /** *******************************************************************************
+     * Displays a simple alert dialog with a title, a message, and an OK button.
+     *
+     * @param context The context to use for displaying the dialog.
+     * @param title The title of the dialog.
+     * @param message The message to display in the dialog. HTML formatted text is accepted.
+     * @param onFinish The action to perform when the OK button is clicked or the dialog is dismissed. Run in UI thread.
+     */
+    fun showOkDialog(context: Context, title: String, message: String, onFinish: (() -> Unit)? = null)
+
+    /** @see showOkDialog */
+    fun showOkDialog(context: Context, @StringRes title: Int, @StringRes message: Int, onFinish: (() -> Unit)? = null)
+
+    /**
+     * Displays a confirmation dialog with a title, a message, and OK/Cancel buttons.
+     *
+     * @param context The host activity.
+     * @param title The title of the dialog.
+     * @param message The message to display in the dialog. HTML formatted text is accepted.
+     * @param ok The action to perform when the OK button is clicked. Run in UI thread.
+     * @param cancel The action to perform when the Cancel button is clicked or the dialog is dismissed. Run in UI thread.
+     * @param icon Add icon if providec
+     */
+    fun showOkCancelDialog(context: Context, @StringRes title: Int = R.string.confirmation, @StringRes message: Int, ok: (() -> Unit)?, cancel: (() -> Unit)? = null, @DrawableRes icon: Int? = null)
+
+    /** @see showOkCancelDialog */
+    fun showOkCancelDialog(context: Context, title: String = context.getString(R.string.confirmation), message: String, ok: (() -> Unit)?, cancel: (() -> Unit)? = null, @DrawableRes icon: Int? = null)
+
+    /**
+     * Displays an alert dialog with a title, two messages, a custom icon, and OK/Cancel buttons.
+     *
+     * @param context The context to use for displaying the dialog.
+     * @param title The title of the dialog.
+     * @param message The primary message to display in the dialog. HTML formatted text is accepted.
+     * @param secondMessage The secondary message to display in the dialog (styled with accent color).
+     * @param ok The action to perform when the OK button is clicked. Run in UI thread.
+     * @param cancel The action to perform when the Cancel button is clicked or the dialog is dismissed. Run in UI thread.
+     * @param icon The drawable resource ID for the custom icon. Defaults to a check icon if null.1
+     */
+    fun showOkCancelDialog(context: Context, title: String = context.getString(R.string.confirmation), message: String, secondMessage: String, ok: (() -> Unit)?, cancel: (() -> Unit)? = null, @DrawableRes icon: Int? = null)
+
+    /**
+     * Displays a dialog with a title, a message, and Yes/No/Cancel buttons.
+     *
+     * @param context The context to use for displaying the dialog.
+     * @param title The title of the dialog.
+     * @param message The message to display in the dialog. HTML formatted text is accepted.
+     * @param yes The action to perform when the Yes button is clicked. Run in UI thread.
+     * @param no The action to perform when the No button is clicked. The dialog is dismissed on cancel. Run in UI thread.
+     */
+    fun showYesNoCancel(context: Context, @StringRes title: Int, @StringRes message: Int, yes: (() -> Unit)?, no: (() -> Unit)? = null)
+
+    /** @see showYesNoCancel */
+    fun showYesNoCancel(context: Context, title: String, message: String, yes: (() -> Unit)?, no: (() -> Unit)? = null)
+
+    /**
+     * Displays a error dialog with a title, a message, a warning icon, and Dismiss/optional positive button.
+     *
+     * @param context The context to use for displaying the dialog.
+     * @param title The title of the dialog.
+     * @param message The message to display in the dialog. HTML formatted text is accepted.
+     * @param positiveButton The resource ID for the positive button text, or -1 if no positive button.
+     * @param ok The action to perform when the positive button is clicked. Run in UI thread.
+     * @param cancel The action to perform when the Dismiss button is clicked or the dialog is dismissed. Run in UI thread.
+     */
+    fun showError(context: Context, title: String, message: String, @StringRes positiveButton: Int? = null, ok: (() -> Unit)? = null, cancel: (() -> Unit)? = null)
+
+    /** Opens running mode management in the Compose-based main activity. */
+    fun openRunningModeScreen(activity: FragmentActivity)
+
+    /** Opens the insulin bolus screen in the Compose main activity. */
+    fun openInsulinScreen(activity: FragmentActivity)
+
+    /** Opens temp target management in the Compose main activity. */
+    fun openTempTargetManagementScreen(activity: FragmentActivity)
+
+    /** Opens profile management in the Compose main activity. */
+    fun openProfileManagementScreen(activity: FragmentActivity)
+
+    /** Opens the profile activation / switch flow in the Compose main activity (legacy long-press on active profile). */
+    fun openProfileActivationScreen(activity: FragmentActivity, profileIndex: Int = 0)
+
+    /** Opens plugin preferences in the Compose-based preference UI. */
+    fun runPreferencesForPlugin(activity: FragmentActivity, pluginSimpleName: String)
+
+    /** Brings [mainActivity] to front and requests navigation to the given route (see Compose host extras). */
+    fun openComposeMainAtRoute(context: Context, navRoute: String)
 }

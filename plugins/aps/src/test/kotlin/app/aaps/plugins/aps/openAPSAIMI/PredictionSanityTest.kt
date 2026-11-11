@@ -1,8 +1,9 @@
 package app.aaps.plugins.aps.openAPSAIMI
 
 import app.aaps.core.interfaces.aps.Predictions
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import app.aaps.plugins.aps.openAPSAIMI.prediction.sanitizePredictionValues
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 class PredictionSanityTest {
 

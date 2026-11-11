@@ -9,7 +9,7 @@ data class GV(
     override var isValid: Boolean = true,
     override var referenceId: Long? = null,
     override var ids: IDs = IDs(),
-    var timestamp: Long,
+    override var timestamp: Long,
     var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     var raw: Double?,
     var value: Double,
@@ -20,4 +20,4 @@ data class GV(
     var delta: Double? = null,
     var calibrationFactor: Double? = null,
 var sensorUptime: Int? = null
-) : HasIDs
+) : HasIDs, TimeStamped

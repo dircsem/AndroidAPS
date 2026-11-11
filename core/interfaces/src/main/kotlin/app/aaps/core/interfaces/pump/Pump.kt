@@ -4,10 +4,10 @@ import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.pump.defs.TimeChangeType
-import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.interfaces.pump.actions.CustomActionType
 import app.aaps.core.interfaces.queue.CustomCommand
+import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
 
 /**
@@ -19,6 +19,23 @@ import org.json.JSONObject
 interface Pump {
 
     /**
+     * Whether the pump has been set up by the user and is ready for connection attempts.
+     *
+     * Examples: device address stored after BLE pairing, pod activated, patch attached.
+     * The command queue will not attempt to connect to an unconfigured pump.
+     *
+     * This is distinct from [isInitialized] which requires a successful first communication.
+     * State hierarchy: isConfigured → isConnected → isInitialized
+     *
+     * Contract: any action that makes isConfigured() return false (e.g. unpair, deactivate)
+     * MUST also reset pump state so that isInitialized() returns false. This ensures
+     * !isConfigured() implies !isInitialized() at all times.
+     *
+     * @return true if user setup is complete. Default is true for backward compatibility.
+     */
+    fun isConfigured(): Boolean = true
+
+    /**
      * @return true if pump status has been read and is ready to accept commands
      */
     fun isInitialized(): Boolean
@@ -27,6 +44,19 @@ interface Pump {
      * @return true if suspended (not delivering insulin)
      */
     fun isSuspended(): Boolean
+
+    /**
+     * Whether delivery is halted in a way that should drive [app.aaps.core.data.model.RM.Mode.SUSPENDED_BY_PUMP]
+     * reconciliation. Defaults to [isSuspended]; drivers with a coarse [isSuspended] (e.g. Medtrum patch
+     * setup states) should override to avoid false suspend/resume cycles during BLE reconnect.
+     */
+    fun isSuspendedForRunningModeReconciliation(): Boolean = isSuspended()
+
+    /**
+     * When false, [app.aaps.receivers.KeepAliveWorker] skips [readStatus] while the link is down so the
+     * driver can own reconnect (e.g. Medtrum auto-reconnect) without competing BLE connect attempts.
+     */
+    fun keepAliveShouldReadStatusWhenDisconnected(): Boolean = true
 
     /**
      * @return true if pump is not ready to accept commands right now
@@ -79,36 +109,36 @@ interface Pump {
      * Force reading of full pump status
      * @param reason originator identification
      */
-    fun getPumpStatus(reason: String)
+    suspend fun getPumpStatus(reason: String)
 
     /**
      *  Upload to pump new basal profile (and IC/ISF if supported by pump)
      *
      *  @param profile new profile
      */
-    fun setNewBasalProfile(profile: Profile): PumpEnactResult
+    suspend fun setNewBasalProfile(profile: PumpProfile): PumpEnactResult
 
     /**
      * @param profile profile to check
      *
      * @return true if pump is running the same profile as in param
      */
-    fun isThisProfileSet(profile: Profile): Boolean
+    fun isThisProfileSet(profile: PumpProfile): Boolean
 
     /**
      * timestamp of last connection to the pump in milliseconds
      */
-    val lastDataTime: Long
+    val lastDataTime: StateFlow<Long>
 
     /**
      * timestamp of last bolus delivered in milliseconds
      */
-    val lastBolusTime: Long?
+    val lastBolusTime: StateFlow<Long?>
 
     /**
      * amount of last bolus delivered in units of insulin
      */
-    val lastBolusAmount: Double?
+    val lastBolusAmount: StateFlow<PumpInsulin?>
 
     /**
      * Currently running base basal rate [U/h]
@@ -116,17 +146,17 @@ interface Pump {
      * This _must not_ be affected by current pump states
      * (TBRs, pump suspended/running etc.)
      */
-    val baseBasalRate: Double
+    val baseBasalRate: PumpRate
 
     /**
      * Reservoir level at time of last connection [Units of insulin]
      */
-    val reservoirLevel: Double
+    val reservoirLevel: StateFlow<PumpInsulin>
 
     /**
      * Battery level at time of last connection [%]
      */
-    val batteryLevel: Int?
+    val batteryLevel: StateFlow<Int?>
 
     /**
      * Request a bolus to be delivered, carbs to be stored on pump or both.
@@ -135,7 +165,7 @@ interface Pump {
      *                          e.g. DBI will not contain carbs if the pump can't store carbs.
      * @return PumpEnactResult
      */
-    fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult
+    suspend fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult
 
     /**
      *  Stopping of performed bolus requested by user
@@ -149,7 +179,6 @@ interface Pump {
      *
      * @param absoluteRate          rate in U/h
      * @param durationInMinutes     duration
-     * @param profile               only help for for U/h -> % transformation
      * @param enforceNew            if true drive should force new TBR (ie. stop current,
      *                              and set new even if the same rate is requested
      * @param tbrType               tbrType for storing to DB [NORMAL,EMULATED_PUMP_SUSPEND,PUMP_SUSPEND,SUPERBOLUS]
@@ -158,7 +187,7 @@ interface Pump {
      *                              (if the same TBR rate is requested && enforceNew == false driver can keep
      *                              running TBR. In this case return will be success = true, enacted = false)
      */
-    fun setTempBasalAbsolute(absoluteRate: Double, durationInMinutes: Int, profile: Profile, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult
+    suspend fun setTempBasalAbsolute(absoluteRate: Double, durationInMinutes: Int, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult
 
     /**
      * Request a TRB in %
@@ -167,7 +196,6 @@ interface Pump {
      *
      * @param percent               rate in % (100% is equal to not running TBR, 0% is zero temping)
      * @param durationInMinutes     duration
-     * @param profile               only help for for U/h -> % transformation
      * @param enforceNew            if true drive should force new TBR (ie. stop current,
      *                              and set new even if the same rate is requested
      * @param tbrType               tbrType for storing to DB [NORMAL,EMULATED_PUMP_SUSPEND,PUMP_SUSPEND,SUPERBOLUS]
@@ -176,7 +204,7 @@ interface Pump {
      *                              (if the same TBR rate is requested && enforceNew == false driver can keep
      *                              running TBR. In this case return will be success = true, enacted = false)
      */
-    fun setTempBasalPercent(percent: Int, durationInMinutes: Int, profile: Profile, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult
+    suspend fun setTempBasalPercent(percent: Int, durationInMinutes: Int, enforceNew: Boolean, tbrType: PumpSync.TemporaryBasalType): PumpEnactResult
 
     /**
      * Cancel current TBR if a TBR is running
@@ -187,10 +215,10 @@ interface Pump {
      * @param enforceNew            if true disable workaround above
      * @return                      PumpEnactResult.success if TBR is canceled
      */
-    fun cancelTempBasal(enforceNew: Boolean): PumpEnactResult
+    suspend fun cancelTempBasal(enforceNew: Boolean): PumpEnactResult
 
-    fun setExtendedBolus(insulin: Double, durationInMinutes: Int): PumpEnactResult
-    fun cancelExtendedBolus(): PumpEnactResult
+    suspend fun setExtendedBolus(insulin: Double, durationInMinutes: Int): PumpEnactResult
+    suspend fun cancelExtendedBolus(): PumpEnactResult
 
     /**
      * Status to be passed to NS.
@@ -243,7 +271,7 @@ interface Pump {
     /**
      * Load TDDs and store them to the database
      */
-    fun loadTDDs(): PumpEnactResult
+    suspend fun loadTDDs(): PumpEnactResult
 
     /**
      * @return true if pump handles DST changes by it self. In this case it's not necessary stop the loop
@@ -279,7 +307,7 @@ interface Pump {
      * This method will be called when time or Timezone changes, and pump driver can then do a specific action (for
      * example update clock on pump).
      */
-    fun timezoneOrDSTChanged(timeChangeType: TimeChangeType) {}
+    suspend fun timezoneOrDSTChanged(timeChangeType: TimeChangeType) {}
 
     /**
      * Only used for pump types where hasCustomUnreachableAlertCheck=true

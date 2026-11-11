@@ -65,11 +65,13 @@ class HighBgOverrideTest {
 
     @Test
     fun `test apply blocked by hypo risk`() {
+        // HypoGuard strongFuture requires both predicted and eventual at/below floor (hypo − 5).
+        // Use BG below hyper-artefact margin (hypo + 40) so predictive block remains active.
         val result = HighBgOverride.apply(
-            bg = 250.0,
+            bg = 100.0,
             delta = 0.0,
-            predictedBg = 60.0, // Predicted low
-            eventualBg = 250.0,
+            predictedBg = 60.0,
+            eventualBg = 60.0,
             hypoGuard = 70.0,
             iob = 0.0,
             maxSmb = 2.0,
@@ -77,6 +79,22 @@ class HighBgOverrideTest {
             pumpStep = 0.05
         )
         assertFalse(result.overrideUsed)
+    }
+
+    @Test
+    fun `hyper BG with low predictions allows override when hyper artefact suppresses predictive block`() {
+        val result = HighBgOverride.apply(
+            bg = 250.0,
+            delta = 0.0,
+            predictedBg = 60.0,
+            eventualBg = 60.0,
+            hypoGuard = 70.0,
+            iob = 0.0,
+            maxSmb = 2.0,
+            currentDose = 0.5,
+            pumpStep = 0.05
+        )
+        assertTrue(result.overrideUsed)
     }
 
     @Test

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="riley_link_ble_config_remove_riley_link">删除</string>
+    <string name="riley_link_ble_config_scan_error">扫描错误: %1$d</string>
+    <string name="riley_link_ble_config_scan_finished">扫描完成</string>
+    <string name="rileylink_error_pump_unreachable">泵无法连接</string>
+    <string name="rileylink_settings_tab1">设置</string>
+    <string name="rileylink_settings_tab2">历史</string>
+</resources>

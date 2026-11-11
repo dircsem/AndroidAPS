@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAIMI.autodrive.safety
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.plugins.aps.openAPSAIMI.autodrive.InsulinActionModel
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.models.AutoDriveCommand
 import app.aaps.plugins.aps.openAPSAIMI.autodrive.models.AutoDriveState
 import javax.inject.Inject
@@ -24,12 +25,60 @@ import kotlin.math.min
 class ControlBarrierShield @Inject constructor(
     private val aapsLogger: AAPSLogger
 ) {
-    // --- ⚖️ METABOLIC_SI_BASE (Phase 3 Synchronization) ---
-    private val METABOLIC_SI_BASE = 0.05
+    // --- ⚖️ Insulin action: one shared model, see InsulinActionModel ---
 
     
-    // État persistant pour le calcul de l'accélération
+    // État persistant pour le calcul de l'accélération, et l'observation à laquelle il se rapporte.
+    //
+    // ⚠️ `lastBgVelocity` est un état de singleton. Quand `enforce` était appelé deux fois dans le
+    // même tick — ce qui arrivait dès que T3C et la branche engagée tournaient ensemble — le second
+    // appel lisait `accel = (v - v) / 5 = 0`, ce qui désarmait le garde-fou d'accélération qui divise
+    // gamma par deux en chute rapide, **et** écrasait définitivement la vitesse d'il y a cinq minutes
+    // par celle de l'instant. La dérivée tick-à-tick était détruite, en desserrant la barrière.
     private var lastBgVelocity: Double? = null
+    private var lastVelocityObservationId: Long = 0L
+
+    /**
+     * The barrier's own arithmetic for the last [enforce] call. Diagnostic only, never dosed on.
+     *
+     * `cbf_permitted_u` records what came *out*, already bounded by what the solver asked for, so a
+     * zero there cannot say whether the barrier suspended everything or the solver asked for nothing.
+     * The terms below say which, and why. The insulin term of [lfhMgdlPerMin] is
+     * `-siMetabolic * iob * bg`; on the 2026-08-14 lunch it reached -11.2 mg/dL/min — a predicted
+     * fall of 56 mg/dL per 5 minutes against a measured 9 — which is what drove [safeU] negative and
+     * suspended the dose for the whole plateau.
+     */
+    data class Diagnostics(
+        val hMgdl: Double,
+        val lfhMgdlPerMin: Double,
+        val lghMgdlPerUPerMin: Double,
+        val insulinTermMgdlPerMin: Double,
+        val activeGamma: Double,
+        val safetyBoundary: Double,
+        val systemEvolution: Double,
+        val safeU: Double?,
+        val siMetabolic: Double,
+        val fullySuspended: Boolean,
+        /**
+         * Whether the sensitivity handed to the barrier was the **dynamic** ISF.
+         *
+         * Read this before reading anything else about the anchor. The comment on [enforce] used to
+         * promise that `safetySi` was anchored on the profile ISF, so that a learner able to lower
+         * sensitivity could not loosen the barrier. That promise is not kept today: the only
+         * production caller passes `profile.sens`, which is the dynamic ISF, so the "anchor" and the
+         * value it is supposed to protect against are the same number. On the 2026-09-05 night
+         * `cbf_profile_isf_mgdl`, `profile_isf_mgdl` and `command_isf_mgdl` were equal on 281 of 281
+         * ticks, and that shared value moved from 28.2 to 62.4 in ten minutes.
+         *
+         * `true` here means "the number below carries no independent information". It changes
+         * nothing in the arithmetic; it only makes the hole visible from the export.
+         */
+        val anchorIsDynamicIsf: Boolean,
+    )
+
+    /** Set on every [enforce] call. */
+    var lastDiagnostics: Diagnostics? = null
+        private set
 
     // Paramètres de Sécurité CBF
     private val bgDangerThreshold = 80.0 // Marge renforcée pour la limite absolue
@@ -42,7 +91,37 @@ class ControlBarrierShield @Inject constructor(
     /**
      * Vérifie et modifie si besoin la commande brute proposée par le MPC.
      */
-    fun enforce(rawCommand: AutoDriveCommand, state: AutoDriveState, profileBasal: Double): AutoDriveCommand {
+    /**
+     * @param safetySi Sensitivity the barrier must use, in the same ISF/10000 units as
+     *   `state.estimatedSI`. Passed in rather than read off the state so the caller can hand the
+     *   barrier a different number from the one the controller optimised against, without a second
+     *   sensitivity field in the domain model — and without a `copy()` re-running the state's `init`
+     *   checks on the dosing path. `null` falls back to `state.estimatedSI`.
+     * @param siMetabolicOverride Coefficient to use instead of deriving one from [safetySi], or
+     *   `null` for the normal path. It exists for the unfloored counterfactual described in
+     *   `AutodriveEngine.recordCoefficientShadow`: expressing that counterfactual as a sensitivity
+     *   was algebraically impossible, because whatever sensitivity is passed in goes back through
+     *   `InsulinActionModel.controlCoefficient`, which re-applies the very floor being measured.
+     *   Non-finite or non-positive values are ignored, so a bad shadow can never widen the barrier.
+     * @param anchorIsDynamicIsf What the caller knows about the sensitivity it just handed over:
+     *   `true` when it is the dynamic ISF, `false` when it is an independent profile block. Recorded
+     *   in [Diagnostics] only, never used in the arithmetic. Defaults to `true` because that is what
+     *   production passes today.
+     */
+    fun enforce(
+        rawCommand: AutoDriveCommand,
+        state: AutoDriveState,
+        profileBasal: Double,
+        safetySi: Double? = null,
+        /**
+         * CGM sample this call is judging, or 0 when unknown.
+         *
+         * Used only to keep the acceleration memory one-per-observation — see [lastBgVelocity].
+         */
+        observationId: Long = 0L,
+        siMetabolicOverride: Double? = null,
+        anchorIsDynamicIsf: Boolean = true,
+    ): AutoDriveCommand {
         
         // --- 1. Définition de la distance à la zone de danger, h(x) ---
         // h(x) > 0 signifie "On est safe"
@@ -63,7 +142,35 @@ class ControlBarrierShield @Inject constructor(
         val totalProposedDose = proposedIobIncrement + tbrIncrement
         
         // Lie Derivative L_f(h) : Évolution naturelle sans insuline actionnée (Dose = 0)
-        val siMetabolic = state.estimatedSI * METABOLIC_SI_BASE
+        //
+        // 🛡️ On lit `safetySi`, jamais `estimatedSI`.
+        //
+        // `lgh = -siMetabolic * bg` ci-dessous : plus la sensibilité est **basse**, plus `|lgh|` est
+        // petit, et plus la dose autorisée `safeU = (-γh - lfh) / lgh` est **grande**. Tout ce qui
+        // sait baisser la sensibilité sait donc desserrer cette barrière — c'est vrai du
+        // multiplicateur d'agressivité de `PkPdIntegration` comme d'un futur learner.
+        //
+        // ⚠️ `safetySi` n'est PAS une ancre indépendante aujourd'hui.
+        //
+        // `AutodriveEngine.profileAnchoredSafetySi` prend bien le plus restrictif des deux valeurs,
+        // mais la seule valeur "profil" qu'on lui passe en production est `profile.sens`, c'est-à-dire
+        // l'ISF **dynamique** — le même nombre que les learners font bouger. La protection annoncée
+        // ("tout ce qui sait baisser la sensibilité sait desserrer cette barrière, donc on l'ancre au
+        // profil") n'est donc pas en place: mesuré sur la nuit du 2026-09-05, l'ancre était égale à
+        // l'ISF commandé sur 281 ticks sur 281, et passait de 28,2 à 62,4 en dix minutes.
+        // Le drapeau [Diagnostics.anchorIsDynamicIsf] rend ce fait lisible dans l'export. Changer
+        // l'ancre changerait les doses et demande un rejeu, donc ce n'est pas fait ici.
+        //
+        // Le repli sur `estimatedSI` conserve le comportement d'avant pour les états construits hors
+        // du moteur.
+        //
+        // `siMetabolicOverride` court-circuite ce calcul pour le contrefactuel sans plancher: repasser
+        // par `controlCoefficient` y réappliquerait le plancher qu'on cherche justement à mesurer.
+        val siMetabolic = siMetabolicOverride?.takeIf { it.isFinite() && it > 0.0 }
+            ?: InsulinActionModel.controlCoefficient(
+                isfMgdlPerU = InsulinActionModel.isfFromStateSi(safetySi ?: state.estimatedSI),
+                tauMin = InsulinActionModel.MPC_TAU_MIN,
+            )
         val lfh = - p1 * (state.bg - 100.0) - (siMetabolic * state.iob * state.bg) + state.estimatedRa
 
         // Lie Derivative L_g(h) : Impact de l'action de contrôle (Dose_u)
@@ -74,7 +181,12 @@ class ControlBarrierShield @Inject constructor(
         // Si la chute s'accélère (a < 0), on réduit gamma pour durcir le bouclier.
         val currentVelocity = state.bgVelocity
         val accel = lastBgVelocity?.let { (currentVelocity - it) / 5.0 } ?: 0.0
-        lastBgVelocity = currentVelocity
+        // On ne mémorise qu'une fois par observation CGM : un second `enforce` sur le même
+        // échantillon doit voir la même accélération, pas zéro.
+        if (observationId == 0L || observationId != lastVelocityObservationId) {
+            lastBgVelocity = currentVelocity
+            lastVelocityObservationId = observationId
+        }
         
         var activeGamma = if (accel < -0.05 && currentVelocity < 0) {
             // Accélération vers le bas détectée : On divise gamma par 2 (Bouclier Rigide)
@@ -142,6 +254,21 @@ class ControlBarrierShield @Inject constructor(
             currentReason += " | [🛡️ ACCEL_GUARD]"
         }
         
+        val diagnosticSafeU = if (systemEvolution >= safetyBoundary) null else (-activeGamma * h - lfh) / lgh
+        lastDiagnostics = Diagnostics(
+            hMgdl = h,
+            lfhMgdlPerMin = lfh,
+            lghMgdlPerUPerMin = lgh,
+            insulinTermMgdlPerMin = -siMetabolic * state.iob * state.bg,
+            activeGamma = activeGamma,
+            safetyBoundary = safetyBoundary,
+            systemEvolution = systemEvolution,
+            safeU = diagnosticSafeU,
+            siMetabolic = siMetabolic,
+            fullySuspended = diagnosticSafeU != null && diagnosticSafeU <= 0.0,
+            anchorIsDynamicIsf = anchorIsDynamicIsf,
+        )
+
         var (finalTbr, finalSmb) = if (systemEvolution >= safetyBoundary) {
             // 🛡️ CBF SAFE
             Pair(rawCommand.temporaryBasalRate, rawCommand.scheduledMicroBolus)

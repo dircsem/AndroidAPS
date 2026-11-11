@@ -28,7 +28,10 @@ class RealTimeInsulinObserver {
     }
     
     /**
-     * Met à jour l'observateur avec nouvelles données
+     * Met à jour l'observateur avec nouvelles données.
+     *
+     * @param minutesToPeak minutes remaining until insulin activity peak (not absolute peak time).
+     *   Prefer [InsulinActionProfiler] `peakMinutes` / state `timeToPeakMin`. Negative → past peak.
      */
     fun update(
         currentBg: Double,
@@ -36,7 +39,7 @@ class RealTimeInsulinObserver {
         iobTotal: Double,
         iobActivityNow: Double,
         iobActivityIn30: Double,
-        peakMinutesAbs: Int,
+        minutesToPeak: Int,
         diaHours: Double,
         carbsActiveG: Double,
         now: Long
@@ -68,11 +71,15 @@ class RealTimeInsulinObserver {
             0.0
         }
         
-        // 5. Stage détection
-        val stage = detectActivityStage(iobActivityNow, peakMinutesAbs, timeSinceOnset, diaHours)
+        // 5. Stage détection — minutes-to-peak, never absolute peak minutes
+        val stage = detectActivityStage(iobActivityNow, minutesToPeak, timeSinceOnset, diaHours)
         
         // 6. Time-to-peak/end
-        val timeToPeak = if (stage == ActivityStage.RISING) peakMinutesAbs else 0
+        val timeToPeak = if (stage == ActivityStage.RISING || stage == ActivityStage.PEAK) {
+            minutesToPeak.coerceAtLeast(0)
+        } else {
+            0
+        }
         val timeToEnd = estimateTimeToEnd(diaHours, timeSinceOnset)
         
         // 7. Residual effect (aire restante / aire totale)
@@ -141,10 +148,10 @@ class RealTimeInsulinObserver {
         val progressPct = timeSinceOnset / (diaHours * 60.0)
         
         return when {
-            timeToPeak in 1..15 -> ActivityStage.PEAK      // À 15 min du pic
-            timeToPeak > 15 -> ActivityStage.RISING         // Avant pic
-            progressPct > 0.7 || activityNow < 0.2 -> ActivityStage.TAIL  // >70% ou activité faible
-            else -> ActivityStage.FALLING                   // Post-pic normal
+            timeToPeak in 1..15 -> ActivityStage.PEAK      // Within 15 min of peak
+            timeToPeak > 15 -> ActivityStage.RISING         // Still before peak
+            progressPct > 0.7 || activityNow < 0.2 -> ActivityStage.TAIL  // >70% or weak activity
+            else -> ActivityStage.FALLING                   // Post-peak
         }
     }
     

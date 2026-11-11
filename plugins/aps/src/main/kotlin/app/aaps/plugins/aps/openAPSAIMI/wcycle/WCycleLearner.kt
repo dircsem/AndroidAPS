@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAIMI.wcycle
 
 import android.content.Context
 import android.os.Environment
+import app.aaps.plugins.aps.openAPSAIMI.utils.AimiStorageHelper
 import java.io.File
 import java.util.EnumMap
 import org.json.JSONArray
@@ -11,6 +12,7 @@ import kotlin.math.min
 
 class WCycleLearner(
     private val ctx: Context, // <-- on injecte Context pour persister sur disque
+    private val storageHelper: AimiStorageHelper? = null,
     private val alpha: Double = 0.10,
     private val clampMin: Double = 0.70,
     private val clampMax: Double = 1.30
@@ -19,9 +21,10 @@ class WCycleLearner(
     private val learnedSmb   = EnumMap<CyclePhase, Double>(CyclePhase::class.java)
     @Volatile private var initialized = false
 
-    // 🔧 FIX: Use standard /Documents/AAPS path like all other AIMI components
+    // Use AIMI storage helper when available so learning survives missing shared-storage access.
     private val dir by lazy { 
-        File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
+        storageHelper?.getAimiDirectory()
+            ?: File(Environment.getExternalStorageDirectory().absolutePath + "/Documents/AAPS")
     }
     private val learnedFile by lazy { File(dir, "oapsaimi_wcycle_learned.json") }
 
@@ -53,7 +56,7 @@ class WCycleLearner(
         initialized = true
     }
     fun provideWCycleLearner(context: Context): WCycleLearner =
-        WCycleLearner(ctx = context)
+        WCycleLearner(ctx = context, storageHelper = storageHelper)
 
     fun persistToDisk() {
         runCatching {

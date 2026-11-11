@@ -45,6 +45,12 @@ class NotificationStore @Inject constructor(
 ) {
 
     private var store: MutableList<Notification> = ArrayList()
+    data class NotificationComposeItem(
+        val id: Int,
+        val text: String,
+        val dismissText: String,
+        val level: Int,
+    )
 
     companion object {
 
@@ -71,7 +77,19 @@ class NotificationStore @Inject constructor(
         store.add(n)
         if (preferences.get(BooleanKey.AlertUrgentAsAndroidNotification) && n !is NotificationWithAction)
             raiseSystemNotification(n)
-        if (n.soundId != null && n.soundId != 0) uiInteraction.startAlarm(n.soundId!!, n.text)
+        if (n.soundId != null && n.soundId != 0) {
+            val title = if (n.level == Notification.URGENT)
+                rh.gs(app.aaps.core.ui.R.string.urgent_alarm)
+            else
+                rh.gs(app.aaps.core.ui.R.string.info)
+            uiInteraction.postNotificationSoundAlarm(
+                notificationKey = n.id,
+                soundId = n.soundId!!,
+                title = title,
+                body = n.text.orEmpty(),
+                urgent = n.level == Notification.URGENT
+            )
+        }
         Collections.sort(store, NotificationComparator())
         return true
     }
@@ -80,7 +98,7 @@ class NotificationStore @Inject constructor(
     fun remove(id: Int): Boolean {
         for (i in store.indices) {
             if (store[i].id == id) {
-                if (store[i].soundId != null) uiInteraction.stopAlarm("Removed " + store[i].text)
+                if (store[i].soundId != null) uiInteraction.cancelNotificationSoundAlarm(store[i].id)
                 aapsLogger.debug(LTag.NOTIFICATION, "Notification removed: " + store[i].text)
                 store.removeAt(i)
                 return true
@@ -95,7 +113,7 @@ class NotificationStore @Inject constructor(
         while (i < store.size) {
             val n = store[i]
             if (n.validTo != 0L && n.validTo < System.currentTimeMillis()) {
-                if (store[i].soundId != null) uiInteraction.stopAlarm("Expired " + store[i].text)
+                if (store[i].soundId != null) uiInteraction.cancelNotificationSoundAlarm(store[i].id)
                 aapsLogger.debug(LTag.NOTIFICATION, "Notification expired: " + store[i].text)
                 store.removeAt(i)
                 i--
@@ -118,8 +136,8 @@ class NotificationStore @Inject constructor(
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setLargeIcon(largeIcon)
-            .setContentText(n.text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+            .setContentText(n.text.orEmpty())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(n.text.orEmpty()))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setDeleteIntent(deleteIntent(n.id))
             .setContentIntent(notificationHolder.openAppIntent(context))
@@ -158,6 +176,31 @@ class NotificationStore @Inject constructor(
         }
     }
 
+    @Synchronized
+    fun snapshotForCompose(): List<NotificationComposeItem> {
+        removeExpired()
+        return store.map { n ->
+            NotificationComposeItem(
+                id = n.id,
+                text = dateUtil.timeString(n.date) + " " + n.text.orEmpty(),
+                dismissText = if (n.buttonText != 0) rh.gs(n.buttonText) else rh.gs(app.aaps.core.ui.R.string.snooze),
+                level = n.level,
+            )
+        }
+    }
+
+    @Synchronized
+    fun dismissFromCompose(id: Int): Boolean {
+        val n = store.firstOrNull { it.id == id } ?: return false
+        n.contextForAction = context
+        n.action?.run()
+        val removed = remove(id)
+        if (removed) {
+            activePlugin.activeOverview.overviewBus.send(EventUpdateOverviewNotification("NotificationCleared"))
+        }
+        return removed
+    }
+
     inner class NotificationRecyclerViewAdapter internal constructor(private val notificationsList: List<Notification>) :
         RecyclerView.Adapter<NotificationRecyclerViewAdapter.NotificationsViewHolder>() {
 
@@ -170,7 +213,7 @@ class NotificationStore @Inject constructor(
             if (notification.buttonText != 0) holder.binding.dismiss.setText(notification.buttonText)
             else holder.binding.dismiss.setText(app.aaps.core.ui.R.string.snooze)
             @Suppress("SetTextI18n")
-            holder.binding.text.text = dateUtil.timeString(notification.date) + " " + notification.text
+            holder.binding.text.text = dateUtil.timeString(notification.date) + " " + notification.text.orEmpty()
             when (notification.level) {
                 Notification.URGENT       -> holder.binding.cv.setBackgroundColor(rh.gac(app.aaps.core.ui.R.attr.notificationUrgent))
                 Notification.NORMAL       -> holder.binding.cv.setBackgroundColor(rh.gac(app.aaps.core.ui.R.attr.notificationNormal))
@@ -192,8 +235,7 @@ class NotificationStore @Inject constructor(
                 binding.dismiss.setOnClickListener {
                     val notification = it.tag as Notification
                     notification.contextForAction = itemView.context
-                    notification.action?.run()
-                    if (remove(notification.id)) activePlugin.activeOverview.overviewBus.send(EventUpdateOverviewNotification("NotificationCleared"))
+                    dismissFromCompose(notification.id)
                 }
             }
         }

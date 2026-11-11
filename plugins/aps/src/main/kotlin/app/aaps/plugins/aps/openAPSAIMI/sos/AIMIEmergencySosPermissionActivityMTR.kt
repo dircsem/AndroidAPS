@@ -35,9 +35,9 @@ class AIMIEmergencySosPermissionActivityMTR : AppCompatActivity() {
     private lateinit var btnRequestPerms: Button
     private lateinit var btnOpenSettings: Button
 
+    // SMS-only SOS: no CALL_PHONE. Location is used for the maps link in the SMS body.
     private val requiredForegroundPermissions = arrayOf(
         Manifest.permission.SEND_SMS,
-        Manifest.permission.CALL_PHONE,
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
     )

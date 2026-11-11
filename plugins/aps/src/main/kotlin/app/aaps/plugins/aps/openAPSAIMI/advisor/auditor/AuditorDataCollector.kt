@@ -1,15 +1,25 @@
 package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 
+import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.TB
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.GlucoseStatusAIMI
 import app.aaps.core.interfaces.aps.OapsProfileAimi
+import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.plugins.aps.openAPSAIMI.activity.ActivityManager
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaDecision
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaHarmonizer
+import app.aaps.plugins.aps.openAPSAIMI.patient.HarmoniaProductionDecision
+import app.aaps.plugins.aps.openAPSAIMI.patient.MealCertainty
+import app.aaps.plugins.aps.openAPSAIMI.patient.PhysiologicalTreeSnapshot
 import app.aaps.plugins.aps.openAPSAIMI.pkpd.PkPdRuntime
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -42,7 +52,7 @@ class AuditorDataCollector @Inject constructor(
     /**
      * Build complete auditor input from AIMI runtime state
      */
-    fun buildAuditorInput(
+    suspend fun buildAuditorInput(
         // ... params ...
         bg: Double,
         delta: Double,
@@ -70,11 +80,20 @@ class AuditorDataCollector @Inject constructor(
         wcycleFactor: Double?,
         tbrMaxMode: Double?,
         tbrMaxAutoDrive: Double?,
-        physio: PhysioSnapshot? = null
+        physio: PhysioSnapshot? = null,
+        effectiveProfile: EffectiveProfile? = null,
+        physiologicalTree: PhysiologicalTreeSnapshot? = null,
+        harmoniaDecision: HarmoniaDecision? = null,
+        mealCertainty: MealCertainty? = null,
+        harmoniaProduction: HarmoniaProductionDecision? = null,
+        harmonizerOutcome: HarmoniaHarmonizer.Outcome? = null,
+        physiologicalPatterns: JSONObject? = null,
+        harmoniaSmbAuthority: JSONObject? = null,
+        levels: SnapshotIsfTargetLevels? = null,
     ): AuditorInput {
-        
+
         val now = dateUtil.now()
-        
+
         // Build snapshot
         val snapshot = buildSnapshot(
             bg = bg,
@@ -104,10 +123,16 @@ class AuditorDataCollector @Inject constructor(
             tbrMaxMode = tbrMaxMode,
             tbrMaxAutoDrive = tbrMaxAutoDrive,
             physio = physio,
+            levels = levels,
             now = now
         )
-        
+
         // Retrieve robust history from TrajectoryHistoryProvider
+        val timeSinceLastBolusMin = if (iob.lastBolusTime > 0L) {
+            ((now - iob.lastBolusTime) / 60000L).toInt().coerceAtLeast(0)
+        } else {
+            0
+        }
         val trajectoryHistory = trajectoryHistoryProvider.buildHistory(
             nowMillis = now,
             historyMinutes = 90, // Increased to 90 to match Guard requirements
@@ -122,8 +147,10 @@ class AuditorDataCollector @Inject constructor(
                 "FALLING" -> app.aaps.plugins.aps.openAPSAIMI.pkpd.ActivityStage.FALLING
                 else -> app.aaps.plugins.aps.openAPSAIMI.pkpd.ActivityStage.TAIL
             },
-            timeSinceLastBolus = 0, 
-            cobNow = cob ?: 0.0
+            timeSinceLastBolus = timeSinceLastBolusMin,
+            cobNow = cob ?: 0.0,
+            effectiveProfile = effectiveProfile,
+            historicalInsulinPeakMinutes = profile.peakTime.toInt().coerceAtLeast(35),
         )
 
         // Build history object
@@ -143,7 +170,66 @@ class AuditorDataCollector @Inject constructor(
             snapshot = snapshot,
             history = history,
             stats = stats,
-            trajectory = trajectory
+            trajectory = trajectory,
+            physiologicalTree = physiologicalTree,
+            harmoniaDecision = harmoniaDecision,
+            mealCertainty = mealCertainty,
+            harmoniaProduction = harmoniaProduction,
+            harmonizerOutcome = harmonizerOutcome,
+            physiologicalPatterns = physiologicalPatterns,
+            harmoniaSmbAuthority = harmoniaSmbAuthority,
+        )
+    }
+
+    /**
+     * Builds the 30 minutes the profile checker is shown, and the claims are checked against.
+     *
+     * The per-tick values come from the loop's own ring, because they are what the loop really dosed
+     * on: the database holds the raw sensor value, the loop works on the calibrated one. The insulin
+     * and the carbs come from the database, because a decided SMB is not a delivered SMB.
+     *
+     * @param ticks the ring plus the audited tick, oldest first.
+     * @param nowMs the timestamp of the audited tick.
+     */
+    suspend fun buildProfileContext30m(
+        ticks: List<AuditorTickFact>,
+        nowMs: Long,
+        mealCertainty: MealCertainty?,
+        mealModeName: String?,
+        minBg75mMgdl: Double,
+        cgmNoise: Double,
+    ): AuditorProfileContext {
+        val startMs = AuditorProfileContextBuilder.windowStartMs(ticks, nowMs)
+        var bolusU = 0.0
+        var carbsG = 0.0
+        if (startMs != null) {
+            bolusU = try {
+                persistenceLayer.getBolusesFromTimeToTime(startMs + 1, nowMs, true)
+                    .filter { it.isValid }
+                    .sumOf { it.amount }
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.APS, "Auditor profile context: boluses failed", e)
+                0.0
+            }
+            carbsG = try {
+                persistenceLayer.getCarbsFromTimeToTimeExpanded(startMs + 1, nowMs, true)
+                    .filter { it.isValid }
+                    .sumOf { it.amount }
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.APS, "Auditor profile context: carbs failed", e)
+                0.0
+            }
+        }
+        return AuditorProfileContextBuilder.build(
+            ticks = ticks,
+            nowMs = nowMs,
+            bolusU = bolusU,
+            carbsG = carbsG,
+            mealModeName = mealModeName,
+            mealCertaintyLevel = mealCertainty?.level?.name,
+            mealSupport = mealCertainty?.supportsMealSupport == true,
+            minBg75mMgdl = minBg75mMgdl,
+            cgmNoise = cgmNoise,
         )
     }
 
@@ -183,7 +269,7 @@ class AuditorDataCollector @Inject constructor(
     /**
      * Build snapshot from runtime state
      */
-    private fun buildSnapshot(
+    private suspend fun buildSnapshot(
         bg: Double,
         delta: Double,
         shortAvgDelta: Double,
@@ -211,6 +297,7 @@ class AuditorDataCollector @Inject constructor(
         tbrMaxMode: Double?,
         tbrMaxAutoDrive: Double?,
         physio: PhysioSnapshot?,
+        levels: SnapshotIsfTargetLevels?,
         now: Long
     ): Snapshot {
         
@@ -296,7 +383,8 @@ class AuditorDataCollector @Inject constructor(
             states = states,
             limits = limits,
             decisionAimi = decision,
-            lastDelivery = lastDelivery
+            lastDelivery = lastDelivery,
+            levels = levels
         )
     }
     
@@ -321,47 +409,41 @@ class AuditorDataCollector @Inject constructor(
     /**
      * Build last delivery snapshot from database
      */
-    private fun buildLastDeliverySnapshot(now: Long): LastDeliverySnapshot {
+    private suspend fun buildLastDeliverySnapshot(now: Long): LastDeliverySnapshot {
         val lookbackMs = 60 * 60 * 1000L // 1 hour
         val fromTime = now - lookbackMs
-        
-        // Last bolus
-        val boluses = try {
+
+        val boluses: List<BS> = try {
             persistenceLayer.getBolusesFromTime(fromTime, ascending = false)
-                .blockingGet()
-                .filter { it.type != app.aaps.core.data.model.BS.Type.SMB }
+                .filter { it.type != BS.Type.SMB }
         } catch (e: Exception) {
             aapsLogger.debug(app.aaps.core.interfaces.logging.LTag.APS, "Failed to fetch boluses: ${e.message}")
             emptyList()
         }
         val lastBolus = boluses.firstOrNull()
-        
-        // Last SMB
-        val smbs = try {
+
+        val smbs: List<BS> = try {
             persistenceLayer.getBolusesFromTime(fromTime, ascending = false)
-                .blockingGet()
-                .filter { it.type == app.aaps.core.data.model.BS.Type.SMB }
+                .filter { it.type == BS.Type.SMB }
         } catch (e: Exception) {
             aapsLogger.debug(app.aaps.core.interfaces.logging.LTag.APS, "Failed to fetch SMBs: ${e.message}")
             emptyList()
         }
         val lastSmb = smbs.firstOrNull()
-        
-        // Last TBR
-        val tbrs = try {
+
+        val tbrs: List<TB> = try {
             persistenceLayer.getTemporaryBasalsStartingFromTime(fromTime, ascending = false)
-                .blockingGet()
-                .filter { it.duration.toInt() != 0 } // Filter out CANCELs
+                .filter { it.duration != 0L }
         } catch (e: Exception) {
             emptyList()
         }
         val lastTbr = tbrs.firstOrNull()
-        
+
         return LastDeliverySnapshot(
-            lastBolusU = lastBolus?.let { it.amount },
-            lastBolusTime = lastBolus?.let { it.timestamp },
-            lastSmbU = lastSmb?.let { it.amount },
-            lastSmbTime = lastSmb?.let { it.timestamp },
+            lastBolusU = lastBolus?.amount,
+            lastBolusTime = lastBolus?.timestamp,
+            lastSmbU = lastSmb?.amount,
+            lastSmbTime = lastSmb?.timestamp,
             lastTbrRate = lastTbr?.rate,
             lastTbrTime = lastTbr?.timestamp
         )
@@ -415,37 +497,36 @@ class AuditorDataCollector @Inject constructor(
     /**
      * Build 7-day stats from TIR calculator
      */
-    private fun buildStats7d(now: Long): Stats7d {
-        val sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000L
-        
-        // Get TIR stats (using 7 days with standard thresholds)
+    private suspend fun buildStats7d(now: Long): Stats7d {
         val tirData = try {
-            tirCalculator.calculate(7, 70.0, 180.0)
+            tirCalculator.calculate(7L, 70.0, 180.0)
         } catch (e: Exception) {
             null
         }
-        
-        // Average the TIR data
+
         val tirStats = tirData?.let { tirCalculator.averageTIR(it) }
-        
-        // Get TDD stats
+
         val tdd7d = try {
             tddCalculator.averageTDD(
-                tddCalculator.calculate(7, allowMissingDays = true)
-            )?.data?.totalAmount ?: 0.0
+                tddCalculator.calculate(7L, allowMissingDays = true)
+            )?.data?.totalAmount
         } catch (e: Exception) {
-            0.0
+            // A failed read is not a daily dose of zero.
+            null
         }
-        
+
+        // Anything not measured stays null. These numbers reach the auditor, which reasons on them,
+        // so a stand-in would be read as a fact about this person. The four that used to be
+        // hardcoded (a mean of 100, a CV of 0 and a 50/50 basal split) were never measured at all.
         return Stats7d(
-            tir = tirStats?.let { it.inRangePct() } ?: 0.0,
-            hypoPct = tirStats?.let { it.belowPct() } ?: 0.0,
-            hyperPct = tirStats?.let { it.abovePct() } ?: 0.0,
-            meanBG = 100.0,  // TODO: calculate from glucose values when implementing buildHistory()
-            cv = 0.0,  // TODO: calculate CV from std dev when available
+            tir = tirStats?.inRangePct(),
+            hypoPct = tirStats?.belowPct(),
+            hyperPct = tirStats?.abovePct(),
+            meanBG = null,     // TODO: calculate from glucose values when implementing buildHistory()
+            cv = null,         // TODO: calculate CV from std dev when available
             tdd7dAvg = tdd7d,
-            basalPct = 50.0,  // TODO: calculate from actual basal vs bolus ratio
-            bolusPct = 50.0
+            basalPct = null,   // TODO: calculate from actual basal vs bolus ratio
+            bolusPct = null
         )
     }
 }

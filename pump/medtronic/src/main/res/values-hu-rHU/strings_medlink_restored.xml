@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink: strings removed upstream (AAPS 4.0) that the MedLink code still uses -->
+<resources>
+    <string name="medtronic_error_pump_frequency_not_set">Pumpa frekvencia hiányzik.</string>
+    <string name="medtronic_errors">Hibák</string>
+    <string name="medtronic_error_serial_not_set">Sorozatszám hiányzik.</string>
+    <string name="medtronic_pump_status_pump_unreachable">Pumpa nem elérhető</string>
+    <string name="medtronic_warning">Figyelmeztetés</string>
+    <string name="medtronic_pump_history">Medtronic pumpa előzmények</string>
+</resources>

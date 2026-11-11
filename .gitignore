@@ -24,13 +24,20 @@ wear/.classpath
 wear/.settings/org.eclipse.buildship.core.prefs
 app/aapsclient/*
 app/aapsclient2/*
+app/aapsclient3/*
 app/pumpcontrol/*
 wear/aapsclient/*
 wear/aapsclient2/*
+wear/aapsclient3/*
 wear/pumpcontrol/*
 wear/full/
+wear/watchfacepush/aapsclient/*
+wear/watchfacepush/aapsclient2/*
+wear/watchfacepush/aapsclient3/*
+wear/watchfacepush/pumpcontrol/*
 .kotlin/*
 /*.log
+*.bak
 *.preferences_pb
 /buildSrc/.kotlin
 .claude/settings.local.json
@@ -38,3 +45,15 @@ wear/full/
 /logs/
 .claude/CLAUDE_COMMANDS.md
 .aider*
+tmpclaude-*
+.venv_onnx/
+.tmp_eversense_patches/
+eversense_upstream_patches/
+build-xdrip-pin/
+build-libkeks*.txt
+build-oneplus*.log
+build-a*.log
+build-xdrip-tree.json
+
+# AIMI replay: private corpus kept outside the repo (see docs/adr/0001-replay-harness.md)
+aimi-corpus/

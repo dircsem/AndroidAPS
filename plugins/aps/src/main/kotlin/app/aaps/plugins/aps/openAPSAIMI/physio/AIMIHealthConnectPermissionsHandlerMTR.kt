@@ -54,6 +54,7 @@ class AIMIHealthConnectPermissionsHandlerMTR @Inject constructor(
         private const val TAG = "AIMI_HC"
         
         val REQUIRED_PERMISSIONS = AIMIHealthConnectPermissions.ALL_REQUIRED_PERMISSIONS
+        val OPTIONAL_THERMAL_PERMISSIONS = AIMIHealthConnectPermissions.THERMAL_OPTIONAL_PERMISSIONS
     }
     
     /**
@@ -103,15 +104,27 @@ class AIMIHealthConnectPermissionsHandlerMTR @Inject constructor(
         
         try {
             val granted = client.permissionController.getGrantedPermissions()
-            val hasAll = granted.containsAll(REQUIRED_PERMISSIONS)
-            
+            val hasAll = AIMIHealthConnectPermissions.hasCorePermissions(granted)
+
             if (!hasAll) {
-                val missing = REQUIRED_PERMISSIONS - granted
-                aapsLogger.info(LTag.APS, "[$TAG] permsGranted=${granted.size}/${REQUIRED_PERMISSIONS.size} missing=${missing.size}")
+                val missing = AIMIHealthConnectPermissions.getMissingPermissions(granted)
+                aapsLogger.info(
+                    LTag.APS,
+                    "[$TAG] permsGranted=${granted.size}/${REQUIRED_PERMISSIONS.size} missing=${missing.size} " +
+                        AIMIHealthConnectPermissions.getMissingPermissionsSummary(granted),
+                )
             } else {
-                aapsLogger.debug(LTag.APS, "[$TAG] permsGranted=ALL ok=true")
+                val thermalMissing = AIMIHealthConnectPermissions.getMissingOptionalThermalPermissions(granted)
+                if (thermalMissing.isNotEmpty()) {
+                    aapsLogger.info(
+                        LTag.APS,
+                        "[$TAG] corePerms=ok optionalThermalMissing=${thermalMissing.size}",
+                    )
+                } else {
+                    aapsLogger.debug(LTag.APS, "[$TAG] permsGranted=ALL ok=true")
+                }
             }
-            
+
             hasAll
         } catch (e: SecurityException) {
             aapsLogger.warn(LTag.APS, "[$TAG] Permission check denied (SecurityException)")
@@ -210,8 +223,8 @@ class AIMIHealthConnectPermissionsHandlerMTR @Inject constructor(
     suspend fun getStatusLog(): String = withContext(Dispatchers.IO) {
         val state = determineState()
         val granted = getGrantedPermissions()
-        val ok = granted.containsAll(REQUIRED_PERMISSIONS)
-        
+        val ok = AIMIHealthConnectPermissions.hasCorePermissions(granted)
+
         "AIMI HC: state=$state perms=${granted.size}/${REQUIRED_PERMISSIONS.size} ok=$ok"
     }
 }
