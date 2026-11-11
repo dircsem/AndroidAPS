@@ -20,7 +20,8 @@ android {
         }
         named("debug") {
             enableUnitTestCoverage = true
-            enableAndroidTestCoverage = true
+            // -PnoCoverage: JaCoCo cannot instrument the AIMI determine_basal (method too large), so a debug APK needs it off
+            enableAndroidTestCoverage = !project.hasProperty("noCoverage")
         }
     }
 
