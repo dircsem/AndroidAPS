@@ -361,14 +361,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var firstMissedBGTimestamp = 0L
 
     // variables for handling statuses and history
-    private var firstRun = true
-    private var isRefresh = false
-    private val statusRefreshMap: MutableMap<MedLinkMedtronicStatusRefreshType, Long> =
+    // firstRun, isRefresh, hasTimeDateOrTimeZoneChanged: inherited from PumpPluginAbstract (AAPS 3.4.2.2)
+    private val medLinkStatusRefreshMap: MutableMap<MedLinkMedtronicStatusRefreshType, Long> =
         EnumMap(MedLinkMedtronicStatusRefreshType::class.java)
     private var isInitialized = false
     private val lastPumpHistoryEntry: PumpHistoryEntry? = null
     private val busyTimestamps: MutableList<Long> = ArrayList()
-    private var hasTimeDateOrTimeZoneChanged = false
     var tempBasalMicrobolusOperations: TempBasalMicrobolusOperations =
         TempBasalMicrobolusOperations()
     private var percent: Int? = null
@@ -1208,8 +1206,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             aapsLogger.info(LTag.PUMP, "reading profile")
             readPumpProfile()
         }
-        if (statusRefreshMap.isEmpty() || System.currentTimeMillis() - lastTryToConnect >= 600000) {
-            val additionalMillis = if (statusRefreshMap.isEmpty()) {
+        if (medLinkStatusRefreshMap.isEmpty() || System.currentTimeMillis() - lastTryToConnect >= 600000) {
+            val additionalMillis = if (medLinkStatusRefreshMap.isEmpty()) {
                 300000L
             } else 0L
             lastTryToConnect = System.currentTimeMillis()
@@ -1334,7 +1332,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 pumpType,
                 serialNumber()
             )
-            medLinkPumpStatus.tempBasalLength = duration
+            medLinkPumpStatus.tempBasalDuration = duration
             medLinkPumpStatus.tempBasalAmount = dose
             pumpSyncStorage.addTemporaryBasalRateWithTempId(tempData, true, this)
             preferences.inc(MedtronicLongNonKey.TbrsSet)
@@ -1724,13 +1722,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         return 0
     }
 
-    fun getTimeInFutureFromMinutes(minutes: Int): Long {
-        return currentTime.toDateTime().toInstant().millis + getTimeInMs(minutes)
-    }
-
-    fun getTimeInMs(minutes: Int): Long {
-        return minutes * 60 * 1000L
-    }
 
     var hasStarted = false
 
@@ -1746,15 +1737,15 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     LTag.PUMPBTCOMM,
                     DateTime(System.currentTimeMillis() + time).toString()
                 )
-                //                if(!statusRefreshMap.containsKey(statusRefreshType)) {
-                statusRefreshMap[statusRefreshType!!] =
+                //                if(!medLinkStatusRefreshMap.containsKey(statusRefreshType)) {
+                medLinkStatusRefreshMap[statusRefreshType!!] =
                     medLinkPumpStatus.lastConnection + time
                 //                }
                 null
             }
 
             StatusRefreshAction.GetData -> {
-                HashMap(statusRefreshMap)
+                HashMap(medLinkStatusRefreshMap)
             }
 
             else -> null
@@ -1865,13 +1856,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             return false
             //        return (!rileyLinkMedtronicService.getDeviceCommunicationManager().isDeviceReachable());
         }
-    private val logPrefix: String
-        private get() = "MedLinkMedtronicPumpPlugin::"
 
     private fun readTBR(): TempBasalPair {
         return TempBasalPair(
             medLinkPumpStatus.tempBasalAmount ?: 0.0, true,
-            medLinkPumpStatus.tempBasalLength ?: 0
+            medLinkPumpStatus.tempBasalDuration ?: 0
         )
         //        MedtronicUITask responseTask = null;//rileyLinkMedtronicService.getMedtronicUIComm().executeCommand(MedtronicCommandType.ReadTemporaryBasal);
         //
@@ -2562,7 +2551,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     }
                     operationTime = if (currentTime.isAfter(operationTime)) {
                         val refresh =
-                            statusRefreshMap[MedLinkMedtronicStatusRefreshType.PumpHistory]
+                            medLinkStatusRefreshMap[MedLinkMedtronicStatusRefreshType.PumpHistory]
                         if (refresh!! > currentTime.plusMinutes(5).toDateTime().millis) {
                             operationTime.plusMinutes(Constants.INTERVAL_BETWEEN_OPERATIONS)
                         } else {
@@ -4552,7 +4541,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun nextScheduledCommand(): String? {
         val nextCommandStream: Stream<MutableMap.MutableEntry<MedLinkMedtronicStatusRefreshType, Long>>? =
-            statusRefreshMap.entries.stream()
+            medLinkStatusRefreshMap.entries.stream()
                 .sorted { f1: Map.Entry<MedLinkMedtronicStatusRefreshType, Long>, f2: Map.Entry<MedLinkMedtronicStatusRefreshType, Long> ->
                     f1.value.compareTo(
                         f2.value

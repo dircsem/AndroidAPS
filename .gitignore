@@ -36,3 +36,5 @@ wear/full/
 .claude/settings.local.json
 /CLAUDE.md
 /logs/
+.claude/CLAUDE_COMMANDS.md
+.aider*

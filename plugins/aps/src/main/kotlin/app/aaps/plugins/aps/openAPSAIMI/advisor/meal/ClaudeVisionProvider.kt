@@ -10,28 +10,27 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Anthropic Claude 3.5 Sonnet Vision Provider
- * Uses Claude's Messages API with vision capabilities
- */
 class ClaudeVisionProvider : AIVisionProvider {
     override val displayName = "Claude (3.5 Sonnet)"
     override val providerId = "CLAUDE"
     
-    override suspend fun estimateFromImage(bitmap: Bitmap, apiKey: String): EstimationResult = withContext(Dispatchers.IO) {
-        val base64Image = bitmapToBase64(bitmap)
-        val responseJson = callClaudeAPI(apiKey, base64Image)
-        return@withContext parseResponse(responseJson)
+    override suspend fun estimateFromImage(bitmap: Bitmap, userDescription: String, apiKey: String): EstimationResult = withContext(Dispatchers.IO) {
+        try {
+            val base64Image = bitmapToBase64(bitmap)
+            val responseJson = callClaudeAPI(apiKey, base64Image, userDescription)
+            return@withContext parseResponse(responseJson)
+        } catch (e: Exception) {
+            return@withContext FoodAnalysisPrompt.emptyErrorResult("Claude Error", e.message ?: "Unknown error")
+        }
     }
     
     private fun bitmapToBase64(bitmap: Bitmap): String {
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, byteArrayOutputStream)
-        val byteArray = byteArrayOutputStream.toByteArray()
-        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+        val bos = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, bos)
+        return Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
     }
     
-    private fun callClaudeAPI(apiKey: String, base64Image: String): String {
+    private fun callClaudeAPI(apiKey: String, base64Image: String, userDescription: String): String {
         val url = URL("https://api.anthropic.com/v1/messages")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
@@ -39,11 +38,19 @@ class ClaudeVisionProvider : AIVisionProvider {
         connection.setRequestProperty("x-api-key", apiKey)
         connection.setRequestProperty("anthropic-version", "2023-06-01")
         connection.doOutput = true
+        connection.connectTimeout = 30000
+        connection.readTimeout = 45000
         
+        val userPrompt = if (userDescription.isNotBlank()) {
+            "User description: \"$userDescription\". Analyze this meal image and return JSON only according to the required schema."
+        } else {
+            "Analyze this meal image and return JSON only according to the required schema."
+        }
+
         val jsonBody = JSONObject().apply {
-            put("model", "claude-3-5-sonnet-20241022")  // Latest Claude 3.5 Sonnet
-            put("max_tokens", 800)
-            put("temperature", 0.3)
+            put("model", "claude-3-5-sonnet-20240620")
+            put("max_tokens", 2048)
+            put("temperature", 0.0)
             put("system", FoodAnalysisPrompt.SYSTEM_PROMPT)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
@@ -59,7 +66,7 @@ class ClaudeVisionProvider : AIVisionProvider {
                         })
                         put(JSONObject().apply {
                             put("type", "text")
-                            put("text", "Estimate macros and FPU for this food.")
+                            put("text", userPrompt)
                         })
                     })
                 })
@@ -68,26 +75,22 @@ class ClaudeVisionProvider : AIVisionProvider {
         
         connection.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
         
-        val responseCode = connection.responseCode
-        if (responseCode == HttpURLConnection.HTTP_OK) {
+        val code = connection.responseCode
+        if (code == HttpURLConnection.HTTP_OK) {
             return connection.inputStream.bufferedReader().use { it.readText() }
         } else {
-            val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "Unknown error"
-            throw Exception("HTTP $responseCode: $errorBody")
+            val err = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "Empty error"
+            throw Exception("HTTP $code: $err")
         }
     }
     
     private fun parseResponse(jsonStr: String): EstimationResult {
-        try {
-            val root = JSONObject(jsonStr)
-            val content = root.getJSONArray("content")
-                .getJSONObject(0)
-                .getString("text")
-            
-            val cleanedJson = FoodAnalysisPrompt.cleanJsonResponse(content)
-            return FoodAnalysisPrompt.parseJsonToResult(cleanedJson)
-        } catch (e: Exception) {
-            throw Exception("Claude response parsing failed: ${e.message}")
-        }
+        val root = JSONObject(jsonStr)
+        val content = root.getJSONArray("content")
+            .getJSONObject(0)
+            .getString("text")
+        
+        val cleaned = FoodAnalysisPrompt.cleanJsonResponse(content)
+        return FoodAnalysisPrompt.parseJsonToResult(cleaned)
     }
 }

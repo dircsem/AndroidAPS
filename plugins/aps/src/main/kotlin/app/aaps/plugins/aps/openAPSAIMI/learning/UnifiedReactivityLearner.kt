@@ -102,7 +102,7 @@ class UnifiedReactivityLearner @Inject constructor(
      * Retourne le facteur combiné (60% long terme, 40% court terme)
      */
     fun getCombinedFactor(): Double {
-        return (globalFactor * 0.60 + shortTermFactor * 0.40).coerceIn(0.7, 2.5)
+        return (globalFactor * 0.60 + shortTermFactor * 0.40).coerceIn(0.5, 1.5)
     }
     
     /**
@@ -223,7 +223,7 @@ class UnifiedReactivityLearner @Inject constructor(
      * 2. 🟡 EFFICACITÉ : Hyper prolongée → augmentation modérée
      * 3. 🟢 STABILITÉ : Oscillations → légère réduction
      */
-    fun computeAdjustment(perf: GlycemicPerformance): Double {
+    fun computeAdjustment(perf: GlycemicPerformance, isConfirmedRise: Boolean = false): Double {
         var adjustment = 1.0
         val reasons = mutableListOf<String>()
         
@@ -243,30 +243,37 @@ class UnifiedReactivityLearner @Inject constructor(
             }
         }
         
-        // 🟡 PRIORITÉ 2 : Hyperglycémie prolongée (si pas d'hypo)
-        if (perf.hypo_count == 0) {
-            when {
-                perf.tir_above_250 > 20 -> {  // Hyper sévère prolongée
-                    adjustment *= 1.30
-                    reasons.add("Hyper sévère >250: ${perf.tir_above_250.toInt()}% → factor × 1.30")
-                }
-                perf.tir_above_180 > 50 -> {  // Plus de la moitié en hyper
-                    adjustment *= 1.25
-                    reasons.add("Hyper ${perf.tir_above_180.toInt()}% → factor × 1.25")
-                }
-                perf.tir_above_180 > 40 -> {
-                    adjustment *= 1.20
-                    reasons.add("Hyper ${perf.tir_above_180.toInt()}% → factor × 1.20")
-                }
-                perf.tir_above_180 > 30 -> {
-                    adjustment *= 1.15
-                    reasons.add("Hyper ${perf.tir_above_180.toInt()}% → factor × 1.15")
-                }
-                perf.tir_above_180 > 20 -> {
-                    adjustment *= 1.08
-                    reasons.add("Hyper ${perf.tir_above_180.toInt()}% → factor × 1.08")
-                }
+        // 🟡 PRIORITÉ 2 : Hyperglycémie prolongée
+        // MODIFICATION : On autorise l'augmentation même si hypo_count > 0, 
+        // mais avec un amorti de sécurité si des hypos sont présentes.
+        val hyperAdjustment = when {
+            perf.tir_above_250 > 20 -> 1.30
+            perf.tir_above_180 > 50 -> 1.25
+            perf.tir_above_180 > 40 -> 1.20
+            perf.tir_above_180 > 30 -> 1.15
+            perf.tir_above_180 > 20 -> 1.08
+            else -> 1.0
+        }
+
+        if (hyperAdjustment > 1.0) {
+            // SÉCURITÉ : On autorise l'augmentation même si hypo_count > 0, 
+            // mais avec un amorti de sécurité si des hypos sont présentes.
+            // EXCEPTION : Si la montée est confirmée (isConfirmedRise), on ignore l'amorti hypo
+            // car l'urgence hyperglycémique prime sur la prudence passée.
+            val safetyDamping = when {
+                isConfirmedRise -> 1.0
+                perf.hypo_count > 0 -> 0.5
+                else -> 1.0
             }
+            val finalHyperAdj = 1.0 + (hyperAdjustment - 1.0) * safetyDamping
+            adjustment *= finalHyperAdj
+            
+            val hypoWarning = when {
+                isConfirmedRise && perf.hypo_count > 0 -> " (Hypo damping bypassed - Confirmed Rise)"
+                perf.hypo_count > 0 -> " (Damped by hypos)"
+                else -> ""
+            }
+            reasons.add("Hyper detection: adj x${"%.2f".format(finalHyperAdj)}$hypoWarning")
         }
         
         // 🟢 PRIORITÉ 3 : Oscillations (stabilité glycémique)
@@ -304,7 +311,7 @@ class UnifiedReactivityLearner @Inject constructor(
             log.debug(LTag.APS, "UnifiedReactivityLearner: Adaptive α=$alpha (hypo=${perf.hypo_count}, CV=${perf.cv_percent.toInt()}%, hyper=${perf.tir_above_180.toInt()}%)")
             
             // Apply EMA: New = (Target * alpha) + (Old * (1-alpha))
-            globalFactor = (targetFactor * alpha + globalFactor * (1 - alpha)).coerceIn(0.7, 5.0)
+            globalFactor = (targetFactor * alpha + globalFactor * (1 - alpha)).coerceIn(0.5, 1.5)
         }
         
         val reasonsStr = reasons.joinToString(", ")
@@ -333,7 +340,7 @@ class UnifiedReactivityLearner @Inject constructor(
      * Appeler toutes les 5 min depuis DetermineBasalAIMI2.
      * Gère deux échelles de temps: court terme (10 min) et long terme (30 min).
      */
-    fun processIfNeeded() {
+    fun processIfNeeded(isConfirmedRise: Boolean = false) {
         val now = dateUtil.now()
         
         // === SHORT-TERM ANALYSIS (every 10 min on last 2h) ===
@@ -348,7 +355,7 @@ class UnifiedReactivityLearner @Inject constructor(
         // === LONG-TERM ANALYSIS (every 30 min on last 24h) ===
         if (now - lastAnalysisTime >= ANALYSIS_INTERVAL_MS) {
             val perf = analyzeLast24h() ?: return
-            computeAdjustment(perf)
+            computeAdjustment(perf, isConfirmedRise)
             lastAnalysisTime = now
         }
         
@@ -448,7 +455,7 @@ class UnifiedReactivityLearner @Inject constructor(
             else -> 0.40                         // Standard short-term rate
         }
         
-        shortTermFactor = (target * alpha + shortTermFactor * (1 - alpha)).coerceIn(0.7, 2.0)
+        shortTermFactor = (target * alpha + shortTermFactor * (1 - alpha)).coerceIn(0.5, 1.5)
     }
     
     /**
@@ -492,8 +499,8 @@ class UnifiedReactivityLearner @Inject constructor(
         storageHelper.loadFileSafe(file, 
             onSuccess = { content ->
                 val json = JSONObject(content)
-                globalFactor = json.optDouble("globalFactor", 1.0).coerceIn(0.7, 6.0)
-                shortTermFactor = json.optDouble("shortTermFactor", 1.0).coerceIn(0.7, 2.0)
+                globalFactor = json.optDouble("globalFactor", 1.0).coerceIn(0.5, 1.5)
+                shortTermFactor = json.optDouble("shortTermFactor", 1.0).coerceIn(0.5, 1.5)
                 lastAnalysisTime = json.optLong("lastAnalysisTime", 0L)
                 lastShortAnalysisTime = json.optLong("lastShortAnalysisTime", 0L)
                 log.info(LTag.APS, "UnifiedReactivityLearner: ✅ Loaded state")

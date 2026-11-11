@@ -25,7 +25,7 @@ class FoodRecognitionService(
         
         return when (providerName.uppercase()) {
             "OPENAI" -> OpenAIVisionProvider()
-            "GEMINI" -> GeminiVisionProvider()
+            "GEMINI" -> GeminiVisionProvider(context)
             "DEEPSEEK" -> DeepSeekVisionProvider()
             "CLAUDE" -> ClaudeVisionProvider()
             else -> {
@@ -52,31 +52,23 @@ class FoodRecognitionService(
      * Estimate carbs and macros from food image
      * Uses currently selected provider from preferences
      */
-    suspend fun estimateCarbsFromImage(bitmap: Bitmap): EstimationResult = withContext(Dispatchers.IO) {
+    suspend fun estimateCarbsFromImage(bitmap: Bitmap, userDescription: String = ""): EstimationResult = withContext(Dispatchers.IO) {
         val provider = getProvider()
         val apiKey = getApiKey(provider.providerId)
         
         if (apiKey.isBlank()) {
-            return@withContext EstimationResult(
-                description = "API Key Missing",
-                carbsGrams = 0.0,
-                proteinGrams = 0.0,
-                fatGrams = 0.0,
-                fpuEquivalent = 0.0,
-                reasoning = "Please configure ${provider.displayName} API key in AIMI Preferences → Meal Advisor."
+            return@withContext FoodAnalysisPrompt.emptyErrorResult(
+                "API Key Missing",
+                "Please configure ${provider.displayName} API key in AIMI Preferences → Meal Advisor."
             )
         }
         
         try {
-            return@withContext provider.estimateFromImage(bitmap, apiKey)
+            return@withContext provider.estimateFromImage(bitmap, userDescription, apiKey)
         } catch (e: Exception) {
-            return@withContext EstimationResult(
-                description = "Error",
-                carbsGrams = 0.0,
-                proteinGrams = 0.0,
-                fatGrams = 0.0,
-                fpuEquivalent = 0.0,
-                reasoning = "${provider.displayName} Error: ${e.message}"
+            return@withContext FoodAnalysisPrompt.emptyErrorResult(
+                "Error",
+                "${provider.displayName} Error: ${e.message}"
             )
         }
     }

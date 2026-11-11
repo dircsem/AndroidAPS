@@ -56,6 +56,7 @@ import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.pump.medtrum.comm.enums.MedtrumPumpState
 import app.aaps.pump.medtrum.comm.enums.ModelType
 import app.aaps.pump.medtrum.keys.MedtrumBooleanKey
+import app.aaps.pump.medtrum.keys.MedtrumBooleanNonKey
 import app.aaps.pump.medtrum.keys.MedtrumDoubleNonKey
 import app.aaps.pump.medtrum.keys.MedtrumIntKey
 import app.aaps.pump.medtrum.keys.MedtrumIntNonKey
@@ -101,7 +102,8 @@ class MedtrumPlugin @Inject constructor(
         .description(R.string.medtrum_pump_description),
     ownPreferences = listOf(
         MedtrumStringKey::class.java, MedtrumIntKey::class.java, MedtrumBooleanKey::class.java,
-        MedtrumIntNonKey::class.java, MedtrumLongNonKey::class.java, MedtrumStringNonKey::class.java, MedtrumDoubleNonKey::class.java
+        MedtrumIntNonKey::class.java, MedtrumLongNonKey::class.java, MedtrumStringNonKey::class.java, MedtrumDoubleNonKey::class.java,
+        MedtrumBooleanNonKey::class.java
     ),
     aapsLogger, rh, preferences, commandQueue
 ), Pump, Medtrum {
@@ -207,12 +209,18 @@ class MedtrumPlugin @Inject constructor(
 
         unreachableAlertSetting?.apply {
             isSelectable = false
-            summary = rh.gs(R.string.enable_pump_unreachable_alert_summary)
+            summaryProvider = null
+            setSummaryProvider {
+                rh.gs(R.string.enable_pump_unreachable_alert_summary)
+            }
         }
 
         unreachableThresholdSetting?.apply {
-            val currentValue = text
-            summary = "${rh.gs(R.string.pump_unreachable_threshold_minutes_summary)}\n${currentValue}"
+            summaryProvider = null
+            setSummaryProvider { pref ->
+                val value = (pref as AdaptiveIntPreference).text
+                "${rh.gs(R.string.pump_unreachable_threshold_minutes_summary)}\n$value"
+            }
         }
     }
 

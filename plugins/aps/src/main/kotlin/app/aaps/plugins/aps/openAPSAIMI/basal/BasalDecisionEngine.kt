@@ -32,6 +32,7 @@ class BasalDecisionEngine @Inject constructor(
         val profileSens: Double,
         val predictedBg: Double,
         val targetBg: Double, // Added targetBg
+        val minBg: Double, // Min BG from profile for LGS fallback
         val lgsThreshold: Double, // Added for Hypo safety
         val eventualBg: Double,
         val iob: Double,
@@ -78,7 +79,8 @@ class BasalDecisionEngine @Inject constructor(
         val smbToGive: Double,
         val zeroSinceMin: Int,
         val minutesSinceLastChange: Int,
-        val pumpCaps: PumpCaps
+        val pumpCaps: PumpCaps,
+        val auditorConfidence: Double = 0.0
     )
 
     data class Helpers(
@@ -132,7 +134,8 @@ class BasalDecisionEngine @Inject constructor(
                 targetMgdl = input.predictedBg,              // non critique ici
                 isfMgdlPerU = input.variableSensitivity,    // dispo si tu veux exploiter plus tard
                 basalProfileUph = input.profileCurrentBasal,
-                lgsThreshold = input.lgsThreshold
+                lgsThreshold = input.lgsThreshold,
+                minBg = input.minBg
             )
 
             val ctx = LoopContext(
@@ -163,9 +166,10 @@ class BasalDecisionEngine @Inject constructor(
         }
 
         // ===== 1) Calculs auxiliaires gardés (inchangés) =====
-        val basalAdjustmentFactor = interpolateBasal(input.bg)
+        val basalAdjustmentFactor = interpolateBasal(input.bg, input.combinedDelta)
         val finalBasalRate = computeFinalBasal(
             input.bg,
+            input.combinedDelta,
             input.tdd7P.toFloat(),
             input.tdd7Days.toFloat(),
             input.basalEstimate.toFloat()
@@ -192,7 +196,9 @@ class BasalDecisionEngine @Inject constructor(
                 profileBasal = input.profileCurrentBasal,
                 lastTempIsZero = lastTempIsZero,
                 zeroSinceMin = zeroSinceMin,
-                minutesSinceLastChange = minutesSinceLastChange
+                minutesSinceLastChange = minutesSinceLastChange,
+                predictedBg = input.predictedBg,
+                auditorConfidence = input.auditorConfidence
             )
             val aimiDecision = aimiAdaptiveBasal.suggest(inAimi)
             aimiDecision.rateUph?.let { candidate ->
@@ -287,17 +293,21 @@ class BasalDecisionEngine @Inject constructor(
 
         if (chosenRate == null) {
             when {
-                input.bg < 70.0 -> {
+                input.bg < input.lgsThreshold -> {
                     chosenRate = 0.0
-                    rT.reason.append("BG < 70")
+                    rT.reason.append("BG < LGS threshold (${input.lgsThreshold.toInt()})")
                 }
-                input.bg in 70.0..80.0 -> {
+                input.bg in input.lgsThreshold..(input.lgsThreshold + 10.0) -> {
                     if (input.delta > 1.0) {
                         chosenRate = input.profileCurrentBasal * 0.5
-                        rT.reason.append("BG 70-80 rising: 50% basal")
+                        rT.reason.append("BG ${input.lgsThreshold.toInt()}-${(input.lgsThreshold + 10).toInt()} rising: 50% basal")
+                    } else if (input.delta > -2.0) {
+                        // Soft LGS Floor: Avoid 0% if not dropping fast
+                        chosenRate = input.profileCurrentBasal * 0.3
+                        rT.reason.append("BG ${input.lgsThreshold.toInt()}-${(input.lgsThreshold + 10).toInt()} stable: 30% basal")
                     } else {
                         chosenRate = 0.0
-                        rT.reason.append("BG 70-80 not rising: 0% basal")
+                        rT.reason.append("BG ${input.lgsThreshold.toInt()}-${(input.lgsThreshold + 10).toInt()} dropping: 0% basal")
                     }
                 }
                 input.bg in 80.0..90.0 &&
@@ -513,25 +523,47 @@ class BasalDecisionEngine @Inject constructor(
             }
         }
 
-        if (chosenRate == null && input.pregnancyEnable && input.delta > 0 && input.bg > 110 && !input.honeymoon) {
-            chosenRate = helpers.calculateBasalRate(finalBasalRate, input.profileCurrentBasal, basalAdjustmentFactor)
-            rT.reason.append(context.getString(R.string.pregnancy_delta_over_0_adjustment))
+        // (Obsolete pregnancy logic removed - handled by GestationalAutopilot profile scaling)
+
+        // ===== DYNAMIC BASAL FALLBACK (PI Controller) =====
+        // All rule blocks above returned null. Instead of silently falling back to
+        // profile basal, use the DynamicBasalController to compute a continuously
+        // modulated rate based on BG error, trajectory, and IOB.
+        if (chosenRate == null) {
+            val piInput = DynamicBasalController.Input(
+                bg = input.bg,
+                targetBg = input.targetBg,
+                delta = input.delta,
+                shortAvgDelta = input.shortAvgDelta,
+                longAvgDelta = input.longAvgDelta,
+                iob = input.iob,
+                maxIob = input.maxIob,
+                profileBasal = input.profileCurrentBasal,
+                variableSensitivity = input.variableSensitivity,
+                duraISFminutes = input.glucoseStatus?.duraISFminutes ?: 0.0,
+                predictedBgOverride = if (input.eventualBg > 0) input.eventualBg else null,
+                mode = DynamicBasalController.Mode.STANDARD
+            )
+            val piDecision = DynamicBasalController.compute(piInput)
+            chosenRate = piDecision.rate
+            rT.duration = piDecision.durationMin
+            rT.reason.append(" | ").append(piDecision.reason)
         }
 
         val finalRate = chosenRate ?: input.profileCurrentBasal
-        return Decision(finalRate, 30, overrideSafety)
+        return Decision(finalRate, rT.duration ?: 30, overrideSafety)
     }
 
     // ===== utilitaires existants inchangés =====
-    fun interpolateBasalFactor(bg: Double): Double = interpolateBasal(bg)
+    fun interpolateBasalFactor(bg: Double, combinedDelta: Double): Double = interpolateBasal(bg, combinedDelta)
 
-    fun computeFinalBasalRate(bg: Double, tddRecent: Float, tddPrevious: Float, currentBasalRate: Float): Double =
-        computeFinalBasal(bg, tddRecent, tddPrevious, currentBasalRate)
+    fun computeFinalBasalRate(bg: Double, combinedDelta: Double, tddRecent: Float, tddPrevious: Float, currentBasalRate: Float): Double =
+        computeFinalBasal(bg, combinedDelta, tddRecent, tddPrevious, currentBasalRate)
 
     fun smoothBasalRate(tddRecent: Float, tddPrevious: Float, currentBasalRate: Float): Float =
         calculateSmoothBasalRate(tddRecent, tddPrevious, currentBasalRate)
 
-    private fun interpolateBasal(bg: Double): Double {
+    private fun interpolateBasal(bg: Double, combinedDelta: Double): Double {
         val clampedBG = bg.coerceIn(80.0, 300.0)
         return when {
             clampedBG < 80 -> 0.5
@@ -541,9 +573,9 @@ class BasalDecisionEngine @Inject constructor(
         }
     }
 
-    private fun computeFinalBasal(bg: Double, tddRecent: Float, tddPrevious: Float, currentBasalRate: Float): Double {
+    private fun computeFinalBasal(bg: Double, combinedDelta: Double, tddRecent: Float, tddPrevious: Float, currentBasalRate: Float): Double {
         val smoothBasal = calculateSmoothBasalRate(tddRecent, tddPrevious, currentBasalRate)
-        val basalAdjustmentFactor = interpolate(bg)
+        val basalAdjustmentFactor = interpolate(bg, combinedDelta)
         val finalBasal = smoothBasal * basalAdjustmentFactor
         return finalBasal.coerceIn(0.0, 8.0)
     }
@@ -556,7 +588,7 @@ class BasalDecisionEngine @Inject constructor(
         return adjustedBasalRate.coerceIn(currentBasalRate * 0.5f, currentBasalRate * 2.0f)
     }
 
-    private fun interpolate(xdata: Double): Double {
+    private fun interpolate(xdata: Double, combinedDelta: Double): Double {
         val polyX = arrayOf(80.0, 90.0, 100.0, 110.0, 130.0, 160.0, 200.0, 220.0, 240.0, 260.0, 280.0, 300.0)
         val polyY = arrayOf(0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 9.0, 10.0, 10.0, 10.0, 10.0, 10.0)
         val higherBasalRangeWeight = 1.5
@@ -588,7 +620,10 @@ class BasalDecisionEngine @Inject constructor(
                 step = stepC
             }
         }
-        newVal = if (xdata > 100) newVal * higherBasalRangeWeight else newVal * lowerBasalRangeWeight
+        // 🚀 ANTI-LAG: Si montée détectée (>1.5 mg/dL/5min), on ne veut pas "freiner" le basal (poids 0.8)
+        // On force le poids à 1.0 au lieu de 0.8 pour démarrer plus vite.
+        val effectiveLowerWeight = if (combinedDelta > 1.5) 1.0 else lowerBasalRangeWeight
+        newVal = if (xdata > 100) newVal * higherBasalRangeWeight else newVal * effectiveLowerWeight
         return newVal.coerceIn(0.0, 10.0)
     }
 }

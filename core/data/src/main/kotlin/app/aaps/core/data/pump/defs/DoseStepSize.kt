@@ -37,12 +37,17 @@ enum class DoseStepSize(private val entries: Array<DoseStepSizeEntry>) {
             DoseStepSizeEntry(0.0, 1.0, 0.01),
             DoseStepSizeEntry(1.0, 2.0, 0.02),
             DoseStepSizeEntry(2.0, 15.0, 0.1),
+            DoseStepSizeEntry(2.0, 15.0, 0.1),
             DoseStepSizeEntry(15.0, 40.0, 0.5)
         )
     ),
-
     MedLinkMedtronicVeoBasal(arrayOf(
-        DoseStepSizeEntry(0.0, Double.MAX_VALUE, 0.025)) //
+        DoseStepSizeEntry(0.0, Double.MAX_VALUE, 0.025))
+    ),
+    Apex(
+        arrayOf(
+            DoseStepSizeEntry(0.0, Double.MAX_VALUE, 0.05)
+        )
     );
 
     fun getStepSizeForAmount(amount: Double): Double {

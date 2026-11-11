@@ -98,5 +98,14 @@ enum class IntKey(
     AimiAuditorMaxPerHour("aimi_auditor_max_per_hour", 12, 1, 30),  // Max audits per hour
     AimiAuditorTimeoutSeconds("aimi_auditor_timeout_seconds", 120, 30, 300),  // API timeout (seconds)
     AimiAuditorMinConfidence("aimi_auditor_min_confidence", 65, 50, 95),  // Min confidence % to apply modulation
+    
+    // 🌸 Endometriosis & Cycle Management (MTR)
+    AimiEndometriosisFlareDuration("aimi_endo_flare_duration", 4, 1, 24),
+
+    // 🌀 Adaptive Kernel Bank (Cosine Gate)
+    AimiCosineGateMaxPeakShift("aimi_cosine_gate_max_shift", 15, 0, 60),
+
+    // 🚨 Emergency SOS (Hypo)
+    AimiEmergencySosThreshold("aimi_emergency_sos_threshold", 55, 40, 100),
 
 }

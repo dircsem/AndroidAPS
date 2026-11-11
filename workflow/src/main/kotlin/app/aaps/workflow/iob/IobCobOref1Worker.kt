@@ -148,19 +148,9 @@ class IobCobOref1Worker(
 //                        try {
                         while (past < 12) {
                             val ad = autosensDataTable.valueAt(initialIndex + past)
+                            if (ad == null) break
                             aapsLogger.debug(LTag.AUTOSENS) { ">>>>> past=$past ad=$ad" }
-                            /*
-                                                            if (ad == null) {
-                                                                aapsLogger.debug(LTag.AUTOSENS, {autosensDataTable.toString()})
-                                                                aapsLogger.debug(LTag.AUTOSENS, {bucketedData.toString()})
-                                                                //aapsLogger.debug(LTag.AUTOSENS, iobCobCalculatorPlugin.getBgReadingsDataTable().toString())
-                                                                val notification = Notification(Notification.SEND_LOGFILES, rh.gs(R.string.send_logfiles), Notification.LOW)
-                                                                rxBus.send(EventNewNotification(notification))
-                                                                sp.putBoolean("log_AUTOSENS", true)
-                                                                break
-                                                            }
-                            */
-                            // let it here crash on NPE to get more data as i cannot reproduce this bug
+                            // Fixed intentional NPE crash to prevent silent WorkManager failure 
                             val deviationSlope = (ad.avgDeviation - avgDeviation) / (ad.time - bgTime) * 1000 * 60 * 5
                             if (ad.avgDeviation > maxDeviation) {
                                 slopeFromMaxDeviation = min(0.0, deviationSlope)
@@ -187,7 +177,9 @@ class IobCobOref1Worker(
                         aapsLogger.debug(LTag.AUTOSENS) { ">>>>> bucketed_data.size()=${bucketedData.size} i=$i hourAgoData=null" }
                     }
                 }
-                val recentCarbTreatments = persistenceLayer.getCarbsFromTimeToTimeExpanded(bgTime - T.mins(5).msecs(), bgTime, true)
+                // Use exclusive start (+1ms) to avoid double-counting carbs at window boundaries
+                // when consecutive 5-min windows share a boundary timestamp (issue #4596)
+                val recentCarbTreatments = persistenceLayer.getCarbsFromTimeToTimeExpanded(bgTime - T.mins(5).msecs() + 1, bgTime, true)
                 for (recentCarbTreatment in recentCarbTreatments) {
                     autosensData.carbsFromBolus += recentCarbTreatment.amount
                     val isAAPSOrWeighted = activePlugin.activeSensitivity.isMinCarbsAbsorptionDynamic

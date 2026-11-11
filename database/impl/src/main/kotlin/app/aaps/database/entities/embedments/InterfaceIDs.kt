@@ -53,9 +53,8 @@ data class InterfaceIDs @Ignore constructor(
         MEDTRUM_UNTESTED,
         USER,
         CACHE,
-        EQUIL
-
-        ,
+        EQUIL,
+        APEX,
         MEDLINK_MEDTRONIC_554_754_VEO,
         MEDLINK_MEDTRONIC_523_723_REVEL;
 

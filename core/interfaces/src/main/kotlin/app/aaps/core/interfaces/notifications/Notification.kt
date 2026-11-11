@@ -146,7 +146,9 @@ open class Notification {
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
         const val HYPO_RISK_ALARM = 95
-        const val MEDLINK_SUSPEND_LOW_BATTERY = 96
+        const val APEX_SERVICE_MSG = 96
+        const val PUMP_IS_LOCKED = 97
+        const val MEDLINK_SUSPEND_LOW_BATTERY = 98 // was 96 before the merge of AAPS 3.4.2.2 (96 = APEX_SERVICE_MSG)
 
         const val USER_MESSAGE = 1000
 

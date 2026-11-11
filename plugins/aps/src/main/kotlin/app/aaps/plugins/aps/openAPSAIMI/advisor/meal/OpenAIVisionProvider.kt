@@ -10,35 +10,42 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * OpenAI GPT-4o Vision Provider
- * Uses gpt-4o model with vision capabilities
- */
 class OpenAIVisionProvider : AIVisionProvider {
-    override val displayName = "OpenAI (GPT-4o)"
+    override val displayName = "OpenAI (GPT-4o Vision)"
     override val providerId = "OPENAI"
     
-    override suspend fun estimateFromImage(bitmap: Bitmap, apiKey: String): EstimationResult = withContext(Dispatchers.IO) {
-        val base64Image = bitmapToBase64(bitmap)
-        val responseJson = callOpenAIAPI(apiKey, base64Image)
-        return@withContext parseResponse(responseJson)
+    override suspend fun estimateFromImage(bitmap: Bitmap, userDescription: String, apiKey: String): EstimationResult = withContext(Dispatchers.IO) {
+        try {
+            val base64Image = bitmapToBase64(bitmap)
+            val responseJson = callOpenAIAPI(apiKey, base64Image, userDescription)
+            return@withContext parseResponse(responseJson)
+        } catch (e: Exception) {
+            return@withContext FoodAnalysisPrompt.emptyErrorResult("OpenAI Error", e.message ?: "Unknown error")
+        }
     }
     
     private fun bitmapToBase64(bitmap: Bitmap): String {
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, byteArrayOutputStream)
-        val byteArray = byteArrayOutputStream.toByteArray()
-        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+        val bos = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, bos)
+        return Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
     }
     
-    private fun callOpenAIAPI(apiKey: String, base64Image: String): String {
+    private fun callOpenAIAPI(apiKey: String, base64Image: String, userDescription: String): String {
         val url = URL("https://api.openai.com/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("Authorization", "Bearer $apiKey")
         connection.doOutput = true
+        connection.connectTimeout = 30000
+        connection.readTimeout = 45000
         
+        val userPrompt = if (userDescription.isNotBlank()) {
+            "User description: \"$userDescription\". Analyze this meal image and return JSON only according to the required schema."
+        } else {
+            "Analyze this meal image and return JSON only according to the required schema."
+        }
+
         val jsonBody = JSONObject().apply {
             put("model", "gpt-4o")
             put("messages", JSONArray().apply {
@@ -51,7 +58,7 @@ class OpenAIVisionProvider : AIVisionProvider {
                     put("content", JSONArray().apply {
                         put(JSONObject().apply {
                             put("type", "text")
-                            put("text", "Estimate macros and FPU for this food.")
+                            put("text", userPrompt)
                         })
                         put(JSONObject().apply {
                             put("type", "image_url")
@@ -62,33 +69,29 @@ class OpenAIVisionProvider : AIVisionProvider {
                     })
                 })
             })
-            put("max_tokens", 800)
-            put("temperature", 0.3)  // More deterministic for nutritional data
+            put("max_tokens", 2048)
+            put("temperature", 0.0) // Deterministic for nutrition
         }
         
         connection.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
         
-        val responseCode = connection.responseCode
-        if (responseCode == HttpURLConnection.HTTP_OK) {
+        val code = connection.responseCode
+        if (code == HttpURLConnection.HTTP_OK) {
             return connection.inputStream.bufferedReader().use { it.readText() }
         } else {
-            val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "Unknown error"
-            throw Exception("HTTP $responseCode: $errorBody")
+            val err = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "Empty error"
+            throw Exception("HTTP $code: $err")
         }
     }
     
     private fun parseResponse(jsonStr: String): EstimationResult {
-        try {
-            val root = JSONObject(jsonStr)
-            val content = root.getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
-            
-            val cleanedJson = FoodAnalysisPrompt.cleanJsonResponse(content)
-            return FoodAnalysisPrompt.parseJsonToResult(cleanedJson)
-        } catch (e: Exception) {
-            throw Exception("OpenAI response parsing failed: ${e.message}")
-        }
+        val root = JSONObject(jsonStr)
+        val content = root.getJSONArray("choices")
+            .getJSONObject(0)
+            .getJSONObject("message")
+            .getString("content")
+        
+        val cleaned = FoodAnalysisPrompt.cleanJsonResponse(content)
+        return FoodAnalysisPrompt.parseJsonToResult(cleaned)
     }
 }

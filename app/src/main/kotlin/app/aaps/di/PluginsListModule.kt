@@ -32,6 +32,7 @@ import app.aaps.plugins.main.profile.ProfilePlugin
 import app.aaps.plugins.sensitivity.SensitivityAAPSPlugin
 import app.aaps.plugins.sensitivity.SensitivityOref1Plugin
 import app.aaps.plugins.sensitivity.SensitivityWeightedAveragePlugin
+import app.aaps.plugins.smoothing.AdaptiveSmoothingPlugin
 import app.aaps.plugins.smoothing.AvgSmoothingPlugin
 import app.aaps.plugins.smoothing.ExponentialSmoothingPlugin
 import app.aaps.plugins.smoothing.NoSmoothingPlugin
@@ -42,6 +43,7 @@ import app.aaps.plugins.source.IntelligoPlugin
 import app.aaps.plugins.source.MM640gPlugin
 import app.aaps.plugins.source.MedLinkPlugin
 import app.aaps.plugins.source.NSClientSourcePlugin
+import app.aaps.plugins.source.OttaiPlugin
 import app.aaps.plugins.source.PatchedSiAppPlugin
 import app.aaps.plugins.source.PatchedSinoAppPlugin
 import app.aaps.plugins.source.PoctechPlugin
@@ -51,12 +53,14 @@ import app.aaps.plugins.source.TomatoPlugin
 import app.aaps.plugins.source.XdripSourcePlugin
 import app.aaps.plugins.sync.garmin.GarminPlugin
 import app.aaps.plugins.sync.nsclient.NSClientPlugin
+import app.aaps.plugins.sync.nsShared.RemoteControlPlugin
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.openhumans.OpenHumansUploaderPlugin
 import app.aaps.plugins.sync.tidepool.TidepoolPlugin
 import app.aaps.plugins.sync.tizen.TizenPlugin
 import app.aaps.plugins.sync.wear.WearPlugin
 import app.aaps.plugins.sync.xdrip.XdripPlugin
+import app.aaps.pump.apex.ApexPumpPlugin
 import app.aaps.pump.danar.DanaRPlugin
 import app.aaps.pump.danarkorean.DanaRKoreanPlugin
 import app.aaps.pump.danars.DanaRSPlugin
@@ -233,6 +237,12 @@ abstract class PluginsListModule {
     abstract fun bindEquilPumpPlugin(plugin: EquilPumpPlugin): PluginBase
 
     @Binds
+    @PumpDriver
+    @IntoMap
+    @IntKey(171)
+    abstract fun bindApexPumpPlugin(plugin: ApexPumpPlugin): PluginBase
+
+    @Binds
     @AllConfigs
     @IntoMap
     @IntKey(180)
@@ -341,6 +351,12 @@ abstract class PluginsListModule {
     abstract fun bindNSClientV3Plugin(plugin: NSClientV3Plugin): PluginBase
 
     @Binds
+    @AllConfigs
+    @IntoMap
+    @IntKey(357)
+    abstract fun bindRemoteControlPlugin(plugin: RemoteControlPlugin): PluginBase
+
+    @Binds
     @NotNSClient
     @IntoMap
     @IntKey(360)
@@ -445,6 +461,12 @@ abstract class PluginsListModule {
     @Binds
     @AllConfigs
     @IntoMap
+    @IntKey(471)
+    abstract fun bindOttaiPlugin(plugin: OttaiPlugin): PluginBase
+
+    @Binds
+    @AllConfigs
+    @IntoMap
     @IntKey(473)
     abstract fun bindIntelligoPlugin(plugin: IntelligoPlugin): PluginBase
 
@@ -501,6 +523,12 @@ abstract class PluginsListModule {
     @IntoMap
     @IntKey(605)
     abstract fun bindExponentialSmoothingPlugin(plugin: ExponentialSmoothingPlugin): PluginBase
+
+    @Binds
+    @AllConfigs
+    @IntoMap
+    @IntKey(607)
+    abstract fun bindAdaptiveSmoothingPlugin(plugin: AdaptiveSmoothingPlugin): PluginBase
 
     @Binds
     @AllConfigs

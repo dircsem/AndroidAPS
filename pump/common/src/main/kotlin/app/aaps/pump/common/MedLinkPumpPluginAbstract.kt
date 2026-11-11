@@ -52,11 +52,11 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     rxBus: RxBus,
     context: Context,
     fabricPrivacy: FabricPrivacy,
-    val dateUtil: DateUtil,
+    dateUtil: DateUtil,
     aapsSchedulers: AapsSchedulers,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
-    val decimalFormatter: DecimalFormatter,
+    decimalFormatter: DecimalFormatter,
     override var uiInteraction: UiInteraction,
     pumpEnactResultProvider: Provider<PumpEnactResult>,
 
@@ -74,6 +74,9 @@ abstract class MedLinkPumpPluginAbstract protected constructor(
     aapsSchedulers,
     pumpSync,
     pumpSyncStorage,
+    app.aaps.pump.common.driver.MedLinkPumpDriverConfiguration(pumpType),
+    decimalFormatter,
+    dateUtil,
     pumpEnactResultProvider
 ), Pump, PumpSyncEntriesCreator, MedLinkPumpPluginBase {
 

@@ -9,6 +9,9 @@ plugins {
 
 android {
     namespace = "app.aaps.plugins.main"
+    buildFeatures {
+        viewBinding = true
+    }
 }
 
 dependencies {
@@ -23,6 +26,7 @@ dependencies {
     implementation(project(":core:utils"))
     implementation(project(":core:validators"))
     implementation(project(":shared:impl"))
+    implementation(project(":plugins:aps"))  // For AIMI Auditor UI components
 
     testImplementation(project(":implementation"))
     testImplementation(project(":plugins:aps"))
@@ -38,6 +42,8 @@ dependencies {
     //SmsCommunicator
     api(libs.com.eatthepath.java.otp)
     api(libs.com.github.kenglxn.qrgen.android)
+
+    api(libs.kotlinx.datetime)
 
     // Overview
     api(libs.com.google.android.flexbox)

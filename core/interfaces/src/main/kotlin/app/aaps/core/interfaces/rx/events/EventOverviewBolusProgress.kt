@@ -10,12 +10,13 @@ import kotlin.math.min
  *
  * @param waiting the bolus has not started yet (connecting, sending...): the dialog shows a moving bar instead of the percent
  */
-class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: Int? = null, waiting: Boolean = false) : Event() {
+class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: Int? = null, wearStatus: String? = null, waiting: Boolean = false) : Event() {
 
     init {
         if (id == BolusProgressData.id || id == null) {
             BolusProgressData.status = status
             percent?.let { BolusProgressData.percent = it }
+            BolusProgressData.wearStatus = wearStatus ?: status
             BolusProgressData.waiting = waiting
         }
     }
@@ -25,9 +26,10 @@ class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: 
      */
     constructor(rh: ResourceHelper, delivered: Double, id: Long? = null) :
         this(
-            rh.gs(R.string.bolus_delivering, delivered),
+            status = rh.gs(R.string.bolus_delivering, delivered),
             id = id,
-            percent = min((delivered / BolusProgressData.insulin * 100).toInt(), 100)
+            percent = min((delivered / BolusProgressData.insulin * 100).toInt(), 100),
+            wearStatus = rh.gs(R.string.bolus_delivered_so_far, delivered, BolusProgressData.insulin)
         )
 
     /**
@@ -40,6 +42,9 @@ class EventOverviewBolusProgress(status: String, val id: Long? = null, percent: 
                 if (percent == 100) rh.gs(R.string.bolus_delivered_successfully, BolusProgressData.insulin)
                 else rh.gs(R.string.bolus_delivering, BolusProgressData.insulin * percent / 100.0),
             id = id,
-            percent = min(percent, 100)
-        )
+            percent = min(percent, 100),
+            wearStatus =
+                if (percent == 100) rh.gs(R.string.bolus_delivered_successfully, BolusProgressData.insulin)
+                else rh.gs(R.string.bolus_delivered_so_far, BolusProgressData.insulin * percent / 100.0, BolusProgressData.insulin)
+    )
 }

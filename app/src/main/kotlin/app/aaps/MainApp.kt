@@ -203,8 +203,29 @@ class MainApp : DaggerApplication() {
         }
         handler.postDelayed(refreshWidget, 60000)
         val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-        sensorManager.registerListener(StepService, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        try {
+            val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+            if (stepSensor != null) {
+                // 🛡️ CRITICAL FIX: Check Permission before Registering (Prevents Crash on Fresh Install)
+                val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        this, 
+                        android.Manifest.permission.ACTIVITY_RECOGNITION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+
+                if (hasPermission) {
+                    sensorManager.registerListener(StepService, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                    aapsLogger.debug("StepService registered")
+                } else {
+                    aapsLogger.debug("StepService SKIPPED (No Permission)")
+                }
+            }
+        } catch (e: Exception) {
+            aapsLogger.error("StepService registration failed", e)
+        }
         config.appInitialized = true
         aapsLogger.debug("doInit end")
     }
@@ -435,6 +456,17 @@ class MainApp : DaggerApplication() {
                     preferences.put(ProfileComposedDoubleKey.LocalProfileNumberedDia, SafeParse.stringToInt(number), value = value as Double)
                 sp.remove(key)
             }
+        }
+
+        // Migrate Tidepool from username/password to OAuth2
+        if (sp.contains("tidepool_username") || sp.contains("tidepool_password")) {
+            sp.remove("tidepool_username")
+            sp.remove("tidepool_password")
+            sp.remove("tidepool_test_login")
+            // Clear OAuth2 state to force re-authentication
+            sp.remove("tidepool_auth_state")
+            sp.remove("tidepool_service_configuration")
+            sp.remove("tidepool_subscription_id")
         }
 
         // Migrate loop mode

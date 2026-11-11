@@ -2,6 +2,8 @@ package app.aaps.plugins.aps.openAPSAIMI.advisor.auditor
 
 import org.json.JSONArray
 import org.json.JSONObject
+import app.aaps.plugins.aps.openAPSAIMI.model.VerdictType
+import app.aaps.plugins.aps.openAPSAIMI.model.AdvisorSeverity
 
 /**
  * ============================================================================
@@ -15,6 +17,46 @@ import org.json.JSONObject
  * Mode: NEVER direct command - only bounded modulation
  */
 
+/**
+ * 📊 AuditorUIState
+ * 
+ * Represents the operational state of the Auditor UI and clinical verification loop.
+ * Enforces strict transition rules to maintain safety and visibility.
+ */
+sealed class AuditorUIState {
+    
+    /** Standard reset state. Loop is waiting for next tick. */
+    object Idle : AuditorUIState()
+
+    /** AI is currently processing the decision snapshot. */
+    object Processing : AuditorUIState()
+
+    /** Verdict received and validated. Applied to the loop. */
+    data class Ready(val lastVerdict: String) : AuditorUIState()
+
+    /** Clinical warning detected. Requires attention or Ready state to clear. */
+    data class Warning(val severity: AdvisorSeverity.Warning) : AuditorUIState()
+
+    /** System error or timeout. Must recover to Ready for reliable resumption. */
+    data class Error(val message: String) : AuditorUIState()
+
+    /**
+     * Validates if a transition to [nextState] is allowed according to business rules.
+     * 
+     * Rules:
+     * - IDLE → PROCESSING → READY (Linear loop flow)
+     * - WARNING cannot go directly to IDLE (Must be acknowledged via loop result)
+     * - ERROR requires a transition to READY/IDLE after recovery logic
+     */
+    fun canTransitionTo(nextState: AuditorUIState): Boolean = when (this) {
+        is Idle -> nextState is Processing || nextState is Error
+        is Processing -> nextState is Ready || nextState is Warning || nextState is Error
+        is Ready -> nextState is Idle || nextState is Processing || nextState is Warning || nextState is Error
+        is Warning -> nextState is Ready || nextState is Error // WARNING cannot go to IDLE directly
+        is Error -> nextState is Ready || nextState is Processing // ERROR must resolve before IDLE
+    }
+}
+
 // ============================================================================
 // INPUT: Data sent to LLM
 // ============================================================================
@@ -26,12 +68,14 @@ import org.json.JSONObject
 data class AuditorInput(
     val snapshot: Snapshot,
     val history: History,
-    val stats: Stats7d
+    val stats: Stats7d,
+    val trajectory: TrajectorySnapshot?
 ) {
     fun toJSON(): JSONObject = JSONObject().apply {
         put("snapshot", snapshot.toJSON())
         put("history", history.toJSON())
         put("stats", stats.toJSON())
+        if (trajectory != null) put("trajectory", trajectory.toJSON())
     }
 }
 
@@ -65,6 +109,7 @@ data class Snapshot(
     
     // Activity
     val activity: ActivitySnapshot,
+    val physio: PhysioSnapshot?,
     
     // States
     val states: StatesSnapshot,
@@ -96,6 +141,7 @@ data class Snapshot(
         put("target", target)
         put("pkpd", pkpd.toJSON())
         put("activity", activity.toJSON())
+        if (physio != null) put("physio", physio.toJSON())
         put("states", states.toJSON())
         put("limits", limits.toJSON())
         put("decisionAimi", decisionAimi.toJSON())
@@ -249,6 +295,27 @@ data class Stats7d(
     }
 }
 
+/**
+ * E) Trajectory: Phase-Space Geometric Analysis
+ */
+data class TrajectorySnapshot(
+    val type: String,          // STABLE_ORBIT, TIGHT_SPIRAL, SLOW_DRIFT, HOVERING...
+    val curvature: Double,     // 0.0 - 1.0
+    val convergence: Double,   // mg/dL/min
+    val coherence: Double,     // -1.0 to 1.0
+    val energyBalance: Double, // U
+    val modulation: String?    // Description of active modulation (e.g. "SMBx1.15 (Slow drift)")
+) {
+    fun toJSON(): JSONObject = JSONObject().apply {
+        put("type", type)
+        put("curvature", curvature)
+        put("convergence", convergence)
+        put("coherence", coherence)
+        put("energyBalance", energyBalance)
+        if (modulation != null) put("modulation", modulation)
+    }
+}
+
 // ============================================================================
 // OUTPUT: AI Auditor Response
 // ============================================================================
@@ -271,9 +338,17 @@ data class AuditorVerdict(
          */
         fun fromJSON(json: JSONObject): AuditorVerdict {
             val adjustments = json.getJSONObject("boundedAdjustments")
+            val verdictStr = json.getString("verdict").uppercase()
+            
+            val verdict = when (verdictStr) {
+                "CONFIRM" -> VerdictType.Confirm
+                "SOFTEN" -> VerdictType.Soften
+                "SHIFT_TO_TBR" -> VerdictType.ShiftToTbr
+                else -> VerdictType.Confirm // Default safety
+            }
             
             return AuditorVerdict(
-                verdict = VerdictType.valueOf(json.getString("verdict")),
+                verdict = verdict,
                 confidence = json.getDouble("confidence"),
                 degradedMode = json.getBoolean("degradedMode"),
                 riskFlags = json.getJSONArray("riskFlags").let { arr ->
@@ -296,11 +371,6 @@ data class AuditorVerdict(
     }
 }
 
-enum class VerdictType {
-    CONFIRM,        // Keep decision as-is
-    SOFTEN,         // Reduce SMB + optionally increase interval
-    SHIFT_TO_TBR    // Minimal SMB + moderate TBR
-}
 
 /**
  * Bounded adjustments - NEVER free dosing
@@ -311,3 +381,22 @@ data class BoundedAdjustments(
     val preferTbr: Boolean,         // switch to TBR preference
     val tbrFactorClamp: Double      // 0.8 to 1.2 (multiply TBR rate if applicable)
 )
+
+/**
+ * D) Physio: Physiological Context (Stress, Sleep, Recovery)
+ */
+data class PhysioSnapshot(
+    val state: String,
+    val snsDominance: Double,
+    val sleepQualityZ: Double,
+    val rhrZ: Double,
+    val hrvZ: Double
+) {
+    fun toJSON(): JSONObject = JSONObject().apply {
+        put("state", state)
+        put("snsDominance", snsDominance)
+        put("sleepQualityZ", sleepQualityZ)
+        put("rhrZ", rhrZ)
+        put("hrvZ", hrvZ)
+    }
+}

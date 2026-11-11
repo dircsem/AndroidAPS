@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.plugins.aps.openAPSSMB.DetermineBasalSMB
 import app.aaps.plugins.aps.openAPSAIMI.DetermineBasalaimiSMB2
+import app.aaps.core.interfaces.utils.DateUtil
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,8 +37,13 @@ class DualEngineSimulator @Inject constructor(
     private val aimiLogic: DetermineBasalaimiSMB2,
     private val smbLogic: DetermineBasalSMB,
     private val aapsLogger: AAPSLogger,
-    private val uiInteraction: UiInteraction
+    private val uiInteraction: UiInteraction,
+    private val virtualGlucoseEngine: VirtualGlucoseEngine, // 🧪 NOUVEAU
+    private val dateUtil: DateUtil          // Dependency for time
 ) {
+    // Virtual Patient State for SMB
+    private val virtualReservoir = VirtualInsulinReservoir()
+    private val virtualIobCalculator = VirtualIobCalculator(virtualReservoir, dateUtil)
     
     /**
      * Input for simulation - contains all data needed to run both engines.
@@ -98,6 +104,11 @@ class DualEngineSimulator @Inject constructor(
         val periodStart = ticks.first().timestamp
         val periodEnd = ticks.last().timestamp
         
+        // Reset Virtual State at start of simulation
+        virtualReservoir.clear()
+        virtualReservoir.virtualBg = ticks.firstOrNull()?.glucoseStatus?.glucose
+        virtualReservoir.virtualDelta = ticks.firstOrNull()?.glucoseStatus?.delta
+        
         aapsLogger.info(LTag.APS, "DualEngineSimulator: Starting simulation with ${ticks.size} ticks")
         
         for (tick in ticks) {
@@ -109,9 +120,15 @@ class DualEngineSimulator @Inject constructor(
                 }
                 
                 // === RUN SMB ===
+                // === RUN SMB (Counter-Factual Mode) ===
                 val smbResult = runSmb(tick)
                 if (smbResult != null) {
-                    smbDecisions.add(convertToDecision(tick, smbResult, AlgorithmType.OPENAPS_SMB))
+                    val decision = convertToDecision(tick, smbResult, AlgorithmType.OPENAPS_SMB)
+                    smbDecisions.add(decision)
+                    
+                    // UPDATE VIRTUAL STATE
+                    // SMB thinks it delivered this. We must record it so next cycle reflects it.
+                    virtualReservoir.addDecision(smbResult, tick.timestamp)
                 }
                 
             } catch (e: Exception) {
@@ -161,16 +178,49 @@ class DualEngineSimulator @Inject constructor(
      */
     private fun runSmb(tick: SimulationTick): RT? {
         return try {
+            val now = tick.timestamp
             // Convert AIMI profile to SMB profile
             val smbProfile = mapProfileForSmb(tick.profileAimi)
             
-            // Convert GlucoseStatusAIMI to GlucoseStatus
-            val smbGlucoseStatus = convertGlucoseStatus(tick.glucoseStatus)
+            // 🧪 VIRTUAL GLUCOSE EVOLUTION
+            // We calculate what the BG would be for SMB based on its own past decisions
+            val lastSimBg = virtualReservoir.virtualBg ?: tick.glucoseStatus.glucose
             
+            // Real Activity from input tick
+            val realTotalIob = tick.iobData.firstOrNull() ?: IobTotal(now)
+            
+            // Sim Activity from virtual reservoir
+            val simTotalIob = virtualIobCalculator.calculateIobTotalForTime(now, smbProfile)
+            
+            val virtualBg = virtualGlucoseEngine.calculateNextBg(
+                realBg = tick.glucoseStatus.glucose,
+                lastSimBg = lastSimBg,
+                realActivity = realTotalIob.activity,
+                simActivity = simTotalIob.activity,
+                isf = tick.profileAimi.sens,
+                tickMinutes = 5.0
+            )
+            
+            val virtualDelta = virtualBg - (virtualReservoir.virtualBg ?: virtualBg)
+            virtualReservoir.virtualBg = virtualBg
+            virtualReservoir.virtualDelta = virtualDelta
+
+            // Convert GlucoseStatusAIMI to GlucoseStatus with VIRTUAL values
+            val smbGlucoseStatus = convertGlucoseStatus(tick.glucoseStatus, virtualBg, virtualDelta)
+            
+            // CALCULATE VIRTUAL IOB
+            val virtualIob = virtualIobCalculator.calculateIobArrayForSMB(
+                profile = smbProfile,
+                lastAutosensResult = tick.autosens,
+                exerciseMode = tick.profileAimi.exercise_mode, 
+                halfBasalExerciseTarget = tick.profileAimi.half_basal_exercise_target,
+                isTempTarget = tick.profileAimi.high_temptarget_raises_sensitivity || tick.profileAimi.low_temptarget_lowers_sensitivity
+            )
+
             smbLogic.determine_basal(
                 glucose_status = smbGlucoseStatus,
                 currenttemp = tick.currentTemp,
-                iob_data_array = tick.iobData,
+                iob_data_array = virtualIob, 
                 profile = smbProfile,
                 autosens_data = tick.autosens,
                 meal_data = tick.mealData,
@@ -195,6 +245,7 @@ class DualEngineSimulator @Inject constructor(
             bgMgdl = tick.glucoseStatus.glucose,
             smbU = result.units ?: 0.0,
             basalRateUph = result.rate ?: 0.0,
+            profileBasalUph = tick.profileAimi.current_basal,
             tempBasalDurationMin = result.duration ?: 0,
             eventualBg = result.eventualBG,
             predictedBg = result.predBGs?.IOB?.lastOrNull()?.toDouble(),
@@ -258,13 +309,17 @@ class DualEngineSimulator @Inject constructor(
     /**
      * Convert GlucoseStatusAIMI to GlucoseStatus.
      */
-    private fun convertGlucoseStatus(aimiStatus: GlucoseStatusAIMI): GlucoseStatus {
+    private fun convertGlucoseStatus(
+        aimiStatus: GlucoseStatusAIMI, 
+        virtualBg: Double, 
+        virtualDelta: Double
+    ): GlucoseStatus {
         return object : GlucoseStatus {
-            override val glucose = aimiStatus.glucose
+            override val glucose = virtualBg
             override val noise = aimiStatus.noise
-            override val delta = aimiStatus.delta
-            override val shortAvgDelta = aimiStatus.shortAvgDelta
-            override val longAvgDelta = aimiStatus.longAvgDelta
+            override val delta = virtualDelta
+            override val shortAvgDelta = virtualDelta
+            override val longAvgDelta = virtualDelta
             override val date = aimiStatus.date
         }
     }

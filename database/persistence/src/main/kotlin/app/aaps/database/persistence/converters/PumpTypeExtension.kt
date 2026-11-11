@@ -44,6 +44,7 @@ fun InterfaceIDs.PumpType.fromDb(): PumpType =
         InterfaceIDs.PumpType.EQUIL                       -> PumpType.EQUIL
         InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_554_754_VEO -> PumpType.MEDLINK_MEDTRONIC_554_754_VEO
         InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_523_723_REVEL -> PumpType.MEDLINK_MEDTRONIC_523_723_REVEL
+        InterfaceIDs.PumpType.APEX                        -> PumpType.APEX_TRUCARE_III
     }
 
 fun PumpType.toDb(): InterfaceIDs.PumpType =
@@ -85,8 +86,7 @@ fun PumpType.toDb(): InterfaceIDs.PumpType =
         PumpType.MEDTRUM_UNTESTED          -> InterfaceIDs.PumpType.MEDTRUM_UNTESTED
         PumpType.CACHE                     -> InterfaceIDs.PumpType.CACHE
         PumpType.EQUIL                     -> InterfaceIDs.PumpType.EQUIL
-
         PumpType.MEDLINK_MEDTRONIC_523_723_REVEL -> InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_523_723_REVEL
         PumpType.MEDLINK_MEDTRONIC_554_754_VEO -> InterfaceIDs.PumpType.MEDLINK_MEDTRONIC_554_754_VEO
-
+        PumpType.APEX_TRUCARE_III          -> InterfaceIDs.PumpType.APEX
     }

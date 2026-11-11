@@ -10,6 +10,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TrendArrow
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.GlucoseStatus
@@ -23,6 +24,10 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.plugins.aps.openAPSAIMI.trajectory.TrajectoryGuard // 🌀 Trajectory
+import app.aaps.plugins.aps.openAPSAIMI.autodrive.AutodriveEngine // 🧠 Engine
+import app.aaps.core.interfaces.aps.RT
+import app.aaps.plugins.aps.openAPSAIMI.trajectory.TrajectoryType
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
 import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
@@ -32,6 +37,8 @@ import app.aaps.core.interfaces.rx.events.EventTempBasalChange
 import app.aaps.core.interfaces.rx.events.EventTempTargetChange
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewGraph
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewIobCob
+import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualitySnapshot
+import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualityTier
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.TrendCalculator
@@ -46,12 +53,14 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.isInProgress
 import app.aaps.core.objects.extensions.toStringFull
 import app.aaps.core.objects.extensions.toStringShort
+import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.plugins.main.R
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.sqrt
 
 class OverviewViewModel(
     private val context: Context,
@@ -71,7 +80,10 @@ class OverviewViewModel(
     private val rxBus: RxBus,
     private val aapsSchedulers: AapsSchedulers,
     private val fabricPrivacy: FabricPrivacy,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val overviewData: OverviewData,
+    private val trajectoryGuard: TrajectoryGuard, // 🌀 Trajectory Injection
+    private val autodriveEngine: AutodriveEngine // 🧠 Engine Injection
 ) : ViewModel() {
 
     private val disposables = CompositeDisposable()
@@ -85,6 +97,57 @@ class OverviewViewModel(
 
     private val _graphMessage = MutableLiveData<String>()
     val graphMessage: LiveData<String> = _graphMessage
+
+    // Adaptive smoothing quality (informational, used only for UI badge in phase 1)
+    private var adaptiveSmoothingQualityTier: AdaptiveSmoothingQualityTier? = null
+    private var adaptiveSmoothingQualityBadgeText: String = ""
+    private var adaptiveSmoothingQualityDialogMessage: String = ""
+
+    private fun buildAdaptiveSmoothingBadgeText(tier: AdaptiveSmoothingQualityTier): String = when (tier) {
+        AdaptiveSmoothingQualityTier.OK -> resourceHelper.gs(R.string.adaptive_smoothing_quality_badge_ok)
+        AdaptiveSmoothingQualityTier.UNCERTAIN -> resourceHelper.gs(R.string.adaptive_smoothing_quality_badge_uncertain)
+        AdaptiveSmoothingQualityTier.BAD -> resourceHelper.gs(R.string.adaptive_smoothing_quality_badge_bad)
+    }
+
+    private fun buildAdaptiveSmoothingDialogMessage(snap: AdaptiveSmoothingQualitySnapshot): String {
+        val learnedR = snap.learnedR
+        val outlierPct = (snap.outlierRate * 100.0).toInt()
+        val compressionPct = (snap.compressionRate * 100.0).toInt()
+        return when (snap.tier) {
+            AdaptiveSmoothingQualityTier.OK -> context.getString(
+                R.string.adaptive_smoothing_quality_dialog_ok,
+                learnedR,
+                outlierPct,
+                compressionPct
+            )
+            AdaptiveSmoothingQualityTier.UNCERTAIN -> context.getString(
+                R.string.adaptive_smoothing_quality_dialog_uncertain,
+                learnedR,
+                outlierPct,
+                compressionPct
+            )
+            AdaptiveSmoothingQualityTier.BAD -> context.getString(
+                R.string.adaptive_smoothing_quality_dialog_bad,
+                learnedR,
+                outlierPct,
+                compressionPct
+            )
+        }
+    }
+
+    /** Sync badge fields from smoothing plugin (avoids missed Rx events / scheduler ordering). */
+    private fun refreshAdaptiveSmoothingQualityFromPlugin() {
+        val snap = activePlugin.activeSmoothing.lastAdaptiveSmoothingQualitySnapshot()
+        if (snap != null) {
+            adaptiveSmoothingQualityTier = snap.tier
+            adaptiveSmoothingQualityBadgeText = buildAdaptiveSmoothingBadgeText(snap.tier)
+            adaptiveSmoothingQualityDialogMessage = buildAdaptiveSmoothingDialogMessage(snap)
+        } else {
+            adaptiveSmoothingQualityTier = null
+            adaptiveSmoothingQualityBadgeText = ""
+            adaptiveSmoothingQualityDialogMessage = ""
+        }
+    }
 
     fun start() {
         if (started) return
@@ -143,6 +206,15 @@ class OverviewViewModel(
             .toObservable(EventUpdateOverviewIobCob::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ updateStatus() }, fabricPrivacy::logException)
+
+        disposables += rxBus
+            .toObservable(app.aaps.core.interfaces.rx.events.EventPreferenceChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ 
+                if (it.isChanged(app.aaps.core.keys.StringKey.OApsAIMIContextStorage.key)) {
+                    updateStatus() 
+                }
+            }, fabricPrivacy::logException)
     }
 
     private fun refreshAll() {
@@ -152,6 +224,7 @@ class OverviewViewModel(
     }
 
     private fun updateStatus() {
+        refreshAdaptiveSmoothingQualityFromPlugin()
         val lastBg = lastBgData.lastBg()
         val glucoseText = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)?.directionToIcon()
@@ -171,6 +244,203 @@ class OverviewViewModel(
                 glucoseText + " " + lastBgData.lastBgDescription() + " " + timeAgoLong
 
 
+        // ═══════════════════════════════════════════════════════════════
+        // Circle-Top Hybrid Dashboard - Calculate all new fields
+        // ═══════════════════════════════════════════════════════════════
+        
+        // 1. Nose angle from delta (for GlucoseRingView pointer)
+        val delta = glucoseStatusProvider.glucoseStatusData?.delta ?: 0.0
+        val noseAngleDeg = when {
+            delta > 10 -> 45f   // Rapidly rising →45°
+            delta > 5 -> 20f    // Rising →20°
+            delta > 2 -> 10f    // Slightly rising →10°
+            delta < -10 -> -45f // Rapidly falling ↓-45°
+            delta < -5 -> -20f  // Falling ↓-20°
+            delta < -2 -> -10f  // Slightly falling ↓-10°
+            else -> 0f          // Stable →0°
+        }
+        
+        // 2. Reservoir
+        val reservoirText = activePlugin.activePump.reservoirLevel?.let { level ->
+            if (level > 0) decimalFormatter.to2Decimal(level) + " IE" 
+            else null
+        }
+        
+        // 3. Infusion Age (from CarePortal)
+        val infusionAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)?.let { event ->
+            val ageMillis = dateUtil.now() - event.timestamp
+            val hours = (ageMillis / (1000 * 60 * 60)).toInt()
+            val days = hours / 24
+            val remainingHours = hours % 24
+            if (days > 0) "${days}d ${remainingHours}h" else "${hours}h"
+        }
+        
+        // 4. Sensor Age
+        val sensorAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SENSOR_CHANGE)?.let { event ->
+            val ageMillis = dateUtil.now() - event.timestamp
+            val hours = (ageMillis / (1000 * 60 * 60)).toInt()
+            val days = hours / 24
+            val remainingHours = hours % 24
+            if (days > 0) "${days}d ${remainingHours}h" else "${hours}h"
+        }
+        
+        // 5. Basal (current profile basal rate)
+        val basalText = profileFunction.getProfile()?.let { profile ->
+            val currentBasal = profile.getBasal(dateUtil.now())
+            decimalFormatter.to2Decimal(currentBasal) + " IE"
+        }
+        
+        // 6. Activity % - simplified (TBR percentage)
+        val activityPctText = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.takeIf { it.isInProgress }?.let { tbr ->
+            profileFunction.getProfile()?.let { profile ->
+                val currentBasal = profile.getBasal(dateUtil.now())
+                if (currentBasal > 0) {
+                    val pct = ((tbr.rate / currentBasal) * 100 - 100).toInt()
+                    val sign = if (pct >= 0) "+" else ""
+                    "$sign$pct%"
+                } else "0%"
+            } ?: "0%"
+        } ?: "0%"
+        
+        // 7. Pump Battery
+        val pumpBatteryText = activePlugin.activePump.batteryLevel?.let { "$it%" }
+        
+        // 8. IOB (replacing Last Sensor Value as per user request)
+        val lastSensorValueText = run {
+            val bolus = bolusIob()
+            val basal = basalIob()
+            val total = bolus.iob + basal.basaliob
+            decimalFormatter.to2Decimal(total) + " IE"
+        }
+        
+        // 9. TBR Rate (Combined U/h and %)
+        val tbrRateText = processedTbrEbData.getTempBasalIncludingConvertedExtended(dateUtil.now())?.takeIf { it.isInProgress }?.let { tbr ->
+            val rateUh = decimalFormatter.to2Decimal(tbr.rate) + " U/h"
+            val pctStr = profileFunction.getProfile()?.let { profile ->
+                val currentBasal = profile.getBasal(dateUtil.now())
+                if (currentBasal > 0) {
+                    val pct = ((tbr.rate / currentBasal) * 100).toInt()
+                    " ($pct%)"
+                } else ""
+            } ?: ""
+            rateUh + pctStr
+        } ?: "0.00 U/h"
+
+        // 10. Steps & HR
+        var stepsText: String = "--"
+        var hrText: String = "--"
+        
+        // 11. 24H Clinical Stats (TIR, CV, A1C)
+        var cvText: String? = "CV --%"
+        var tirVeryLow: Double? = null
+        var tirLow: Double? = null
+        var tirTarget: Double? = null
+        var tirHigh: Double? = null
+        var tirVeryHigh: Double? = null
+        var avgBgMgdl: Double? = null
+        var bgCv: Double? = null
+        var a1c: Double? = null
+        
+        try {
+            val now = System.currentTimeMillis()
+            val from = dateUtil.beginOfDay(now) // Start of today (Midnight)
+            
+            // --- TODAY CLINICAL STATS COMPUTATION ---
+            val bgsToday = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, true)
+            
+            if (bgsToday.isNotEmpty()) {
+                val values = bgsToday.map { it.value }
+
+                val count = values.size.toDouble()
+                
+                tirVeryLow = (values.count { it < 54.0 } / count) * 100.0
+                tirLow = (values.count { it in 54.0..69.99 } / count) * 100.0
+                tirTarget = (values.count { it in 70.0..180.0 } / count) * 100.0
+                tirHigh = (values.count { it in 180.01..250.0 } / count) * 100.0
+                tirVeryHigh = (values.count { it > 250.0 } / count) * 100.0
+                
+                val mean = values.average()
+                avgBgMgdl = mean
+                
+                val variance = values.map { (it - mean) * (it - mean) }.average()
+                val stdDev = sqrt(variance)
+                
+                if (mean > 0) {
+                    bgCv = (stdDev / mean) * 100.0
+                    cvText = "CV ${decimalFormatter.to0Decimal(bgCv)}%"
+                }
+                
+                // GMI / Estimated A1C Formula: (mean + 46.7) / 28.7
+                a1c = (mean + 46.7) / 28.7
+            }
+            
+            // --- Steps (Integration of rolling windows) ---
+            val stepsList = persistenceLayer.getStepsCountFromTimeToTime(from, now).sortedBy { it.timestamp }
+            var totalSteps = 0.0
+            var lastTimestamp = from
+
+            stepsList.forEach { sc ->
+                if (sc.duration > 0 && sc.steps5min > 0) {
+                    val dt = (sc.timestamp - lastTimestamp).coerceAtLeast(0)
+                    if (dt > 0) {
+                        // Calculate rate (steps per ms)
+                        val rate = sc.steps5min.toDouble() / sc.duration
+                        // Determine meaningful time window (handle overlaps vs gaps)
+                        // If dt < duration (overlap), we integrate over dt.
+                        // If dt >= duration (gap), we integrate over duration (full record) and assume 0 for the gap.
+                        val coveredDuration = java.lang.Math.min(dt, sc.duration)
+                        
+                        totalSteps += rate * coveredDuration
+                    }
+                }
+                lastTimestamp = java.lang.Math.max(lastTimestamp, sc.timestamp)
+            }
+
+            if (totalSteps > 1) {
+                stepsText = "%.0f".format(totalSteps)
+            } else {
+                 if (stepsList.isNotEmpty()) stepsText = "0"
+            }
+
+            // Heart Rate (Average or Last)
+            // Fix: Use 3h window + 15min buffer for overlapped records (Garmin), and ensure sorting
+            val hrFrom = now - 3 * 60 * 60 * 1000
+            val hrList = persistenceLayer.getHeartRatesFromTimeToTime(hrFrom - 15 * 60 * 1000, now)
+                .sortedBy { it.timestamp }
+            
+            if (hrList.isNotEmpty()) {
+                val lastHr = hrList.lastOrNull()?.beatsPerMinute
+                if (lastHr != null && lastHr > 0) {
+                    hrText = "%.0f".format(lastHr)
+                }
+            }
+        
+        } catch (e: Exception) {
+             e.printStackTrace()
+        }
+
+        val lastApsRequest = loop.lastRun?.request
+        val aimiPulseTitle = buildAimiPulseTitle(loop.lastRun?.lastAPSRun)
+        val aimiPulseSummary = buildAimiPulseSummary(lastApsRequest)
+        val aimiPulseMeta = buildAimiPulseMeta(lastApsRequest)
+        val aimiPulseHypoRisk = lastApsRequest?.isHypoRisk == true
+
+        // 12. AIMI Insights (Autodrive V3)
+        val request = lastApsRequest
+        val rt = request?.rawData() as? RT
+        
+        val t3cMinutes = rt?.trajectoryConvergenceETA ?: -1
+        val insightT3c = if (t3cMinutes > 0) "🎯 ${t3cMinutes}m" else "🎯 --"
+        
+        val trajTypeName = rt?.trajectoryType
+        val classification = TrajectoryType.entries.find { it.name == trajTypeName }
+        val insightManoeuvre = classification?.let { "${it.emoji()} ${it.description()}" } ?: "🌀 --"
+        
+        val relevance = rt?.trajectoryRelevanceScore ?: 0.0
+        val insightFactor = "⚡ x${decimalFormatter.to1Decimal(relevance)}"
+        
+        val healthScore = rt?.trajectoryHealth?.toDouble()?.div(100.0) ?: autodriveEngine.getHealthScore()
+
         val state = StatusCardState(
             glucoseText = glucoseText,
             glucoseColor = lastBgData.lastBgColor(context),
@@ -187,19 +457,89 @@ class OverviewViewModel(
             contentDescription = contentDescription,
             pumpStatusText = buildPumpLine(dateUtil.now()),
             predictionText = buildPredictionLine(dateUtil.now()),
-            unicornImageRes = selectUnicornImage(  // 🦄 Select dynamic unicorn image
+            unicornImageRes = selectUnicornImage(  // 🦄 Dynamic unicorn image
                 bg = lastBg?.recalculated,
                 delta = glucoseStatusProvider.glucoseStatusData?.delta
-            )
+            ),
+            isAimiContextActive = preferences.get(app.aaps.core.keys.StringKey.OApsAIMIContextStorage).length > 5,
+            // For GlucoseCircleView
+            glucoseValue = lastBg?.recalculated,
+            targetLow = profileFunction.getProfile()?.getTargetLowMgdl(),
+            targetHigh = profileFunction.getProfile()?.getTargetHighMgdl(),
+            
+            // Circle-Top Hybrid Dashboard fields
+            glucoseMgdl = lastBg?.recalculated?.toInt(),
+            noseAngleDeg = noseAngleDeg,
+            reservoirText = reservoirText,
+            infusionAgeText = infusionAgeText,
+            pumpBatteryText = pumpBatteryText,
+            sensorAgeText = sensorAgeText,
+            lastSensorValueText = lastSensorValueText,
+            activityPctText = activityPctText,
+            tbrRateText = tbrRateText,
+            basalText = basalText,
+            stepsText = stepsText,
+            hrText = hrText,
+            cvText = cvText,
+            
+            // 24H TIR Clinical Stats
+            tirVeryLow = tirVeryLow,
+            tirLow = tirLow,
+            tirTarget = tirTarget,
+            tirHigh = tirHigh,
+            tirVeryHigh = tirVeryHigh,
+            avgBgMgdl = avgBgMgdl,
+            bgCv = bgCv,
+            a1c = a1c,
+            
+            // AIMI Insights
+            insightT3c = insightT3c,
+            insightManoeuvre = insightManoeuvre,
+            insightFactor = insightFactor,
+            trajectoryRelevanceScore = relevance,
+            aimiHealthScore = healthScore,
+
+            aimiPulseTitle = aimiPulseTitle,
+            aimiPulseSummary = aimiPulseSummary,
+            aimiPulseMeta = aimiPulseMeta,
+            aimiPulseHypoRisk = aimiPulseHypoRisk,
+
+            adaptiveSmoothingQualityTier = adaptiveSmoothingQualityTier,
+            adaptiveSmoothingQualityBadgeText = adaptiveSmoothingQualityBadgeText,
+            adaptiveSmoothingQualityDialogMessage = adaptiveSmoothingQualityDialogMessage
         )
         _statusCardState.postValue(state)
     }
 
+    /**
+     * Calculates total IOB text for display.
+     * 
+     * CRITICAL FIX: Removed abs() that was causing IOB to appear increasing
+     * when basal IOB was negative (during low TBR).
+     * 
+     * Scenario that was broken:
+     * - T1: Bolus IOB = 1.0 U, Basal IOB = -1.0 U → total = abs(0.0) = 0.0 U ✓
+     * - T2: Bolus IOB = 0.5 U, Basal IOB = -1.5 U → total = abs(-1.0) = 1.0 U ✗ (INCREASED!)
+     * 
+     * Total IOB can be negative (insulin debt from low TBR), which is valid
+     * and important clinical information to display.
+     */
     private fun totalIobText(): String {
         val bolus = bolusIob()
         val basal = basalIob()
-        val total = abs(bolus.iob + basal.basaliob)
-        return "IOB: " + resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, total)
+        
+        // FIXED: No abs() - total can be negative (insulin debt)
+        val total = bolus.iob + basal.basaliob
+        
+        // Display with sign to show positive/negative IOB
+        val formattedTotal = if (total >= 0) {
+            resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, total)
+        } else {
+            // Negative IOB (insulin debt) - show with minus sign
+            "-" + resourceHelper.gs(app.aaps.core.ui.R.string.format_insulin_units, -total)
+        }
+        
+        return "IOB: $formattedTotal"
     }
 
     private fun bolusIob(): IobTotal = iobCobCalculator.calculateIobFromBolus().round()
@@ -245,7 +585,19 @@ class OverviewViewModel(
             smb = loop.lastRun?.request?.smb,
             basal = loop.lastRun?.request?.rate,
             detailedReason = loop.lastRun?.request?.reason,
-            isHypoRisk = loop.lastRun?.request?.isHypoRisk ?: false
+            isHypoRisk = loop.lastRun?.request?.isHypoRisk ?: false,
+            // 🌀 Trajectory Visualization
+            trajectoryTitle = (loop.lastRun?.request?.rawData() as? RT)?.trajectoryType?.let { name ->
+                val type = TrajectoryType.entries.find { it.name == name }
+                type?.let { "${it.emoji()} ${it.name}" } ?: name
+            },
+            trajectoryAscii = (loop.lastRun?.request?.rawData() as? RT)?.trajectoryType?.let { name ->
+                TrajectoryType.entries.find { it.name == name }?.asciiArt()
+            },
+            trajectoryMetrics = (loop.lastRun?.request?.rawData() as? RT)?.let { r ->
+                "κ=%.3f  E=%.1fU  Θ=%.2f  R=%.2f".format(r.trajectoryCurvature ?: 0.0, r.trajectoryEnergy ?: 0.0, r.trajectoryOpenness ?: 0.0, r.trajectoryRelevanceScore ?: 0.0)
+            },
+            trajectoryRelevance = (loop.lastRun?.request?.rawData() as? RT)?.trajectoryRelevanceScore
         )
         _adjustmentState.postValue(state)
     }
@@ -321,6 +673,54 @@ class OverviewViewModel(
         val smbText = decimalFormatter.to2Decimal(request.smb)
         val basalText = if (request.rate == -1.0) "---" else decimalFormatter.to2Decimal(request.rate)
         return resourceHelper.gs(R.string.dashboard_adjustment_decision, smbText, basalText)
+    }
+
+    private fun buildAimiPulseTitle(lastApsRunMillis: Long?): String {
+        val ts = lastApsRunMillis ?: return resourceHelper.gs(R.string.dashboard_aimi_pulse_title)
+        if (ts <= 0L) return resourceHelper.gs(R.string.dashboard_aimi_pulse_title)
+        val elapsed = (dateUtil.now() - ts).coerceAtLeast(0L)
+        val age = dateUtil.age(elapsed, true, resourceHelper).trim()
+        return resourceHelper.gs(R.string.dashboard_aimi_pulse_title_with_age, age)
+    }
+
+    private fun plainTextFromAimiReason(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.replace(Regex("<[^>]+>"), " ")
+            .replace("&nbsp;", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun clipAimiReasonForPulse(plain: String, maxLen: Int = 220): String {
+        val singleLine = plain.replace('\n', ' ').replace(Regex("\\s+"), " ").trim()
+        if (singleLine.length <= maxLen) return singleLine
+        return singleLine.take(maxLen - 1).trimEnd() + "…"
+    }
+
+    private fun buildAimiPulseSummary(request: APSResult?): String {
+        if (request == null) return resourceHelper.gs(R.string.dashboard_aimi_pulse_summary_none)
+        val plain = plainTextFromAimiReason(request.reason)
+        val core = when {
+            plain.isNotBlank() -> clipAimiReasonForPulse(plain)
+            else -> {
+                val smbText = decimalFormatter.to2Decimal(request.smb)
+                val basalText = if (request.rate == -1.0) "—" else decimalFormatter.to2Decimal(request.rate)
+                resourceHelper.gs(R.string.dashboard_aimi_pulse_fallback, smbText, basalText)
+            }
+        }
+        return if (request.isHypoRisk) {
+            resourceHelper.gs(R.string.dashboard_aimi_pulse_hypo_prefix) + " " + core
+        } else {
+            core
+        }
+    }
+
+    private fun buildAimiPulseMeta(request: APSResult?): String {
+        if (request == null) return ""
+        val smb = decimalFormatter.to2Decimal(request.smb)
+        val basalDisplay = if (request.rate == -1.0) "—" else decimalFormatter.to2Decimal(request.rate) + " U/h"
+        val sens = decimalFormatter.to0Decimal((request.autosensResult?.ratio ?: 1.0) * 100.0)
+        return resourceHelper.gs(R.string.dashboard_aimi_pulse_meta, smb, basalDisplay, sens)
     }
 
     private fun buildPumpLine(now: Long): String {
@@ -505,7 +905,10 @@ class OverviewViewModel(
         private val rxBus: RxBus,
         private val aapsSchedulers: AapsSchedulers,
         private val fabricPrivacy: FabricPrivacy,
-        private val preferences: Preferences
+        private val preferences: Preferences,
+        private val overviewData: OverviewData,
+        private val trajectoryGuard: TrajectoryGuard, // 🌀 Add to Factory
+        private val autodriveEngine: AutodriveEngine // 🧠 Add to Factory
     ) : ViewModelProvider.Factory {
 
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -529,7 +932,10 @@ class OverviewViewModel(
                     rxBus,
                     aapsSchedulers,
                     fabricPrivacy,
-                    preferences
+                    preferences,
+                    overviewData,
+                    trajectoryGuard,
+                    autodriveEngine
                 ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class $modelClass")
@@ -573,7 +979,55 @@ data class StatusCardState(
     val contentDescription: String,
     val pumpStatusText: String = "",
     val predictionText: String = "",
-    val unicornImageRes: Int = R.drawable.unicorn_normal_stable  // 🦄 Dynamic unicorn image
+    val unicornImageRes: Int = R.drawable.unicorn_normal_stable,  // 🦄 Dynamic unicorn image
+    val isAimiContextActive: Boolean = false,
+    // For GlucoseCircleView color update
+    val glucoseValue: Double? = null,
+    val targetLow: Double? = null,
+    val targetHigh: Double? = null,
+    
+    // Circle-Top Hybrid Dashboard fields
+    val glucoseMgdl: Int? = null,
+    val noseAngleDeg: Float? = null,
+    val reservoirText: String? = null,
+    val infusionAgeText: String? = null,
+    val pumpBatteryText: String? = null,
+    val sensorAgeText: String? = null,
+    val lastSensorValueText: String? = null,
+    val activityPctText: String? = null,
+    val tbrRateText: String? = null,
+    val basalText: String? = null,
+    val stepsText: String? = null,
+    val hrText: String? = null,
+    val cvText: String? = null,
+    
+    // 24H TIR Clinical Stats
+    val tirVeryLow: Double? = null,
+    val tirLow: Double? = null,
+    val tirTarget: Double? = null,
+    val tirHigh: Double? = null,
+    val tirVeryHigh: Double? = null,
+    val avgBgMgdl: Double? = null,
+    val bgCv: Double? = null,
+    val a1c: Double? = null,
+    
+    // AIMI Insights
+    val insightT3c: String? = null,
+    val insightManoeuvre: String? = null,
+    val insightFactor: String? = null,
+    val trajectoryRelevanceScore: Double? = null,
+    val aimiHealthScore: Double? = null,
+
+    /** Narrative layer: plain-text excerpt of last APS `reason` + timing (AIMI pulse card). */
+    val aimiPulseTitle: String = "",
+    val aimiPulseSummary: String = "",
+    val aimiPulseMeta: String = "",
+    val aimiPulseHypoRisk: Boolean = false,
+
+    // Adaptive Smoothing Quality Badge (phase 1: informational only)
+    val adaptiveSmoothingQualityTier: AdaptiveSmoothingQualityTier? = null,
+    val adaptiveSmoothingQualityBadgeText: String = "",
+    val adaptiveSmoothingQualityDialogMessage: String = ""
 )
 
 data class AdjustmentCardState(
@@ -593,5 +1047,10 @@ data class AdjustmentCardState(
     val smb: Double? = null,
     val basal: Double? = null,
     val detailedReason: String? = null,
-    val isHypoRisk: Boolean = false
+    val isHypoRisk: Boolean = false,
+    // 🌀 Trajectory Data
+    val trajectoryTitle: String? = null,
+    val trajectoryAscii: String? = null,
+    val trajectoryMetrics: String? = null,
+    val trajectoryRelevance: Double? = null
 ) : Serializable

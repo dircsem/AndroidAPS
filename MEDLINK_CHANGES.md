@@ -626,6 +626,23 @@ As 5 configurações adicionadas (4x, 4y, 4aa) têm um resumo curto embaixo do t
 
 **Testes:** `MedLinkBatteryAgeTest` (ícone acompanha a cor de 0 a 100%). medtronic 182/182.
 
+## 4ag. Merge com origin/master (OpenApsAIMI, AAPS 3.4.2.2) na branch `medlink-v3.4-dev` (2026-11-11) — NÃO TESTADO EM CAMPO
+
+- Antes do merge: commit `225d4d3275` e tag `medlink-v3.3-2026.11.11` em `medlink-v3.3-dev`. Merge de `origin/master` (`2fd4d5f218`, 398 commits, versão `3.4.2.2-Master.AIMI.160426`) em `medlink-v3.4-dev`.
+- Conflitos resolvidos mantendo os dois lados: tipos de bomba / capacidades / passos de dose (MedLink + Apex), `InterfaceIDs.PumpType` (gravado por nome, ordem não importa), `PumpTypeExtension`, strings (sem nomes duplicados).
+- `Notification.MEDLINK_SUSPEND_LOW_BATTERY` passou de 96 para **98** (96 = `APEX_SERVICE_MSG`, 97 = `PUMP_IS_LOCKED` no master).
+- `EventOverviewBolusProgress`: o master adicionou `wearStatus` como 4º parâmetro; o `waiting` do MedLink virou o 5º (as chamadas do MedLink já usam o nome `waiting =`).
+- `LoopPlugin`: versão do master + as mudanças do MedLink reaplicadas:
+  - SMB do MedLink enviado uma vez, antes da TBR (`smbBeforeTbrOnly`), nunca de novo no callback da TBR; nunca SMB de 0 U.
+  - `applySMBRequest`: intervalo do SMB conta só do último SMB/bolus manual para MedLink (`getLastNonTBRBolusTime`); bomba MedLink suspensa (TBR emulada) ainda recebe o SMB; `smb <= 0` não enfileira nada.
+  - **Mudança:** antes o SMB antes da TBR valia para `pump is PumpPluginBase` (todas as bombas: as outras bombas recebiam o SMB duas vezes, antes e depois da TBR). Agora vale só para MedLink; as outras bombas seguem o master.
+- `PumpPluginAbstract` do master pede `PumpDriverConfiguration`, `decimalFormatter`, `dateUtil`: novo `pump/common/.../driver/MedLinkPumpDriverConfiguration.kt`. No plugin MedLink, `firstRun`, `isRefresh`, `hasTimeDateOrTimeZoneChanged`, `logPrefix` e `getTimeInFutureFromMinutes/getTimeInMs` agora vêm do `PumpPluginAbstract`; o mapa de refresh do MedLink virou `medLinkStatusRefreshMap` (tipo diferente do `statusRefreshMap` do master). `tempBasalLength` → `tempBasalDuration`.
+- Medtronic sem MedLink (`MedtronicUIPostprocessor`, `MedtronicPumpStatus`): versão do master.
+- `shared/tests/TestBaseWithProfile.kt`: o do master usa `ConcentrationHelper` (AAPS 3.5), que não existe no código do master; mantido o mock de `SharedPreferences` do master, sem `ConcentrationHelper`.
+- Conferido que continuam no merge: `getLastNonTBRBolusTime` no `DetermineBasalAIMI2`, `pump !is MedLinkPumpPluginBase` nos hard limits do AIMI/AutoISF, `Constants.INTERVAL_BETWEEN_OPERATIONS`.
+
+**Testes:** app compila. rileylink 513/513, medtronic 182/182, implementation 201/203 (só `HardLimitsImplTest`, como antes). `plugins:aps` não compila os testes **do próprio master** (`LoopPluginTest`, `BasalPlannerTest`, `CosineTrajectoryGateTest`, iguais ao master; usam APIs do AAPS 3.5): não corrigido.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

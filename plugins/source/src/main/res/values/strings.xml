@@ -50,4 +50,7 @@
     <string name="do_xdrip_upload_title">Send BG data to xDrip+</string>
     <string name="do_xdrip_upload_summary">In xDrip+ select 640g/Eversense data source</string>
     <string name="common_off">Off</string>
+    <!-- Patched Ottai App -->
+    <string name="ottai_app">Ottai</string>
+    <string name="description_source_patched_ottai_app">Receive glucose data from Ottai App.</string>
 </resources>

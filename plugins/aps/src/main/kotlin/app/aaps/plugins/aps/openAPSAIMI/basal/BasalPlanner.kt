@@ -28,7 +28,7 @@ class BasalPlanner @Inject constructor(
     private val ZERO_RESUME_MAX_MIN = 30
 
     private val HIGH_BG = 120.0
-    private val PLATEAU_DELTA_ABS = 3.0       // mg/dL/5min
+    private val PLATEAU_DELTA_ABS = 0.75       // mg/dL/5min (was 3.0, far too aggressive)
     private val KICK_FRAC = 0.15              // +15% profil
     private val KICK_MIN_UPH = 0.20
     private val KICK_MINUTES = 10
@@ -58,8 +58,15 @@ class BasalPlanner @Inject constructor(
         val minutesSinceLastChange = hist.minutesSinceLastChange()
 
         // Dynamic limits based on LoopContext Profile (User Settings)
-        // Fallback to 70 if LGS is not set or invalid
-        val lgs = if (ctx.profile.lgsThreshold > 40.0) ctx.profile.lgsThreshold else 70.0
+        // Use OpenAPS-like formula on minBg as fallback instead of hardcoded 70.0
+        val lgs = if (ctx.profile.lgsThreshold > 40.0) {
+            ctx.profile.lgsThreshold
+        } else {
+            // Fallback: OpenAPS formula min_bg - 0.5 * (min_bg - 40)
+            // Examples: 90→65, 100→70, 110→75
+            val minBg = ctx.profile.minBg ?: 90.0
+            minBg - 0.5 * (minBg - 40.0)
+        }
         val HYPO_HARD_LIMIT = max(50.0, lgs - 15.0)
         val HYPO_SUSPEND_MGDL = lgs
         val HYPO_SUSPEND_SOFT = lgs + 10.0
@@ -99,13 +106,13 @@ class BasalPlanner @Inject constructor(
         }
 
         // C) Predictive Low Guard (Safety for drops starting from higher BG, e.g. < 160)
-        // Check 30 min projection: mgdl + (delta * 6)
-        val projected30 = mgdl + (d5 * 6.0)
+        // Check 30 min projection: mgdl + (shortAvgDelta * 6) - Less noise sensitivity
+        val projected30 = mgdl + (short * 6.0)
         if (d5 < -2.0 && projected30 < lgs) {
             return BasalPlan(
                 rateUph = 0.0,
                 durationMin = HYPO_SUSPEND_MIN,
-                reason = "Predictive Low: Bg ${mgdl.toInt()} -> ${projected30.toInt()} < $lgs (Δ ${fmt1(d5)})"
+                reason = "Predictive Low: Bg ${mgdl.toInt()} -> ${projected30.toInt()} < $lgs (ShortΔ ${fmt1(short)})"
             )
         }
 
@@ -121,17 +128,22 @@ class BasalPlanner @Inject constructor(
             )
         }
 
-        // 3) Kicker plateau haut (BG élevé & plat)
-        val plateau = (abs(d5) <= PLATEAU_DELTA_ABS) && (abs(short) <= PLATEAU_DELTA_ABS) && (abs(long) <= PLATEAU_DELTA_ABS)
-        if (plateau && mgdl >= HIGH_BG) {
-            val baseKick = max(KICK_MIN_UPH, profileBasal * (1.0 + KICK_FRAC))
-            val rate = clampAndQuantize(baseKick, profileBasal, maxBasal, step)
-            val dur = max(minDur, KICK_MINUTES)
-            return BasalPlan(
-                rateUph = rate,
-                durationMin = dur,
-                reason = "High-flat kicker @${mgdl.toInt()}mg/dL (Δ≈0) → ${fmt2(rate)}U/h × ${dur}m"
-            )
+        // --------------------------------------------------------------------------
+        // 3. HIGH-FLAT KICKER: Rescue from stagnant high BG
+        // --------------------------------------------------------------------------
+        // TRIGGER: BG > 120, Delta is "flat" (< 0.75), and IOB < 1.5 units
+        // GUARD: Do NOT trigger if BG is clearly rising (Delta > 1.0 or AvgDelta > 0.6)
+        if (mgdl > HIGH_BG && abs(d5) < PLATEAU_DELTA_ABS && ctx.iobU < 1.5) {
+            val isRising = d5 > 1.0 || short > 0.6
+            if (!isRising) {
+                val roomToMax = (maxBasal - profileBasal).coerceAtLeast(0.0)
+                val rate = profileBasal + (roomToMax * KICK_FRAC)
+                return BasalPlan(
+                    rateUph = clampAndQuantize(rate, profileBasal, maxBasal, step),
+                    durationMin = 20,
+                    reason = "High-flat kicker (BG=${mgdl.toInt()}, Delta=${"%.2f".format(d5)})"
+                )
+            }
         }
 
         // 4) Anti-stall léger (Δ≈0 et pas franchement positif)

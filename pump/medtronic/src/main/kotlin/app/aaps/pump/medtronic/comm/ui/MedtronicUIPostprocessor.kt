@@ -82,8 +82,8 @@ class MedtronicUIPostprocessor @Inject constructor(
 
             MedtronicCommandType.CancelTBR           -> {
                 medtronicPumpStatus.tempBasalStart = null
-                medtronicPumpStatus.tempBasalAmount = 0.0
-                medtronicPumpStatus.tempBasalLength = 0
+                medtronicPumpStatus.tempBasalAmount = null
+                medtronicPumpStatus.tempBasalDuration = null
             }
 
             MedtronicCommandType.GetRealTimeClock    -> {

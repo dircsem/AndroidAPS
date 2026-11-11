@@ -16,6 +16,10 @@ import androidx.lifecycle.lifecycleScope
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.plugins.aps.R
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import app.aaps.core.keys.DoubleKey
@@ -27,6 +31,10 @@ import app.aaps.core.keys.DoubleKey
 class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var persistenceLayer: app.aaps.core.interfaces.db.PersistenceLayer
+    @Inject lateinit var profileFunction: app.aaps.core.interfaces.profile.ProfileFunction
+    @Inject lateinit var dateUtil: app.aaps.core.interfaces.utils.DateUtil
+    @Inject lateinit var aapsLogger: AAPSLogger
     
     private lateinit var recognitionService: FoodRecognitionService
     private val REQUEST_IMAGE_CAPTURE = 1
@@ -35,6 +43,16 @@ class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
     private lateinit var reasoningText: TextView
     private lateinit var confirmButton: Button
     private lateinit var imageView: ImageView
+    private lateinit var carbsInput: android.widget.EditText
+    private lateinit var descriptionInput: android.widget.EditText
+    private lateinit var detailsLayout: LinearLayout
+    
+    // V2 Enhanced UI Views
+    private lateinit var confidenceBadge: TextView
+    private lateinit var macroSummaryText: TextView
+    private lateinit var visibleItemsList: TextView
+    private lateinit var recReasonText: TextView
+    private lateinit var riskWarningText: TextView
 
     private var currentEstimate: EstimationResult? = null
 
@@ -44,214 +62,334 @@ class MealAdvisorActivity : TranslatedDaggerAppCompatActivity() {
         recognitionService = FoodRecognitionService(this, preferences)
         title = "AIMI Meal Advisor"
 
-        // UI Setup (Code Layout)
-        val bgColor = Color.parseColor("#10141C")
-        val layout = LinearLayout(this).apply {
+        val bgColor = Color.parseColor("#0F172A") // Deep Slate
+        val cardColor = Color.parseColor("#1E293B")
+        val accentColor = Color.parseColor("#3B82F6") // Blue
+
+        val scrollView = android.widget.ScrollView(this).apply {
+             layoutParams = android.view.ViewGroup.LayoutParams(-1, -1)
+             isFillViewport = true
+             setBackgroundColor(bgColor)
+        }
+
+        val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
-            setBackgroundColor(bgColor)
+            setPadding(48, 48, 48, 48)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // 0. Provider Selector
+        // --- Model Selector ---
         val providerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 16 }
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(32, 16, 32, 16)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = 24f
+            }
         }
-
-        val providerLabel = TextView(this).apply {
-            text = "AI Model: "
-            setTextColor(Color.WHITE)
-        }
-        providerLayout.addView(providerLabel)
+        
+        providerLayout.addView(TextView(this).apply {
+            text = "Model: "
+            setTextColor(Color.GRAY)
+            textSize = 12f
+        })
 
         val spinner = android.widget.Spinner(this).apply {
+            val providers = arrayOf("OpenAI GPT-4o", "Gemini 3.0", "DeepSeek Chat", "Claude 3.5")
+            adapter = android.widget.ArrayAdapter(this@MealAdvisorActivity, android.R.layout.simple_spinner_item, providers).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
             background.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_ATOP)
         }
         
-        // All supported vision providers
-        val providers = arrayOf(
-            "OpenAI (GPT-4o)", 
-            "Gemini (2.0 Flash Exp)", 
-            "DeepSeek (Chat)",
-            "Claude (3.5 Sonnet)"
-        )
-        val adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, providers)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinner.adapter = adapter
-
-        // Set initial selection based on saved preference
-        val currentProvider = preferences.get(app.aaps.core.keys.StringKey.AimiAdvisorProvider)
-        val initialPosition = when (currentProvider.uppercase()) {
-            "OPENAI" -> 0
-            "GEMINI" -> 1
-            "DEEPSEEK" -> 2
-            "CLAUDE" -> 3
-            else -> 0  // Default to OpenAI
-        }
-        spinner.setSelection(initialPosition)
+        val initialProvider = preferences.get(app.aaps.core.keys.StringKey.AimiAdvisorProvider)
+        spinner.setSelection(when (initialProvider.uppercase()) {
+            "OPENAI" -> 0; "GEMINI" -> 1; "DEEPSEEK" -> 2; "CLAUDE" -> 3; else -> 0
+        })
 
         spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                 val selected = when (position) {
-                     0 -> "OPENAI"
-                     1 -> "GEMINI"
-                     2 -> "DEEPSEEK"
-                     3 -> "CLAUDE"
-                     else -> "OPENAI"
-                 }
-                 preferences.put(app.aaps.core.keys.StringKey.AimiAdvisorProvider, selected)
-                 // Ensure text color is readable
-                 (view as? TextView)?.setTextColor(Color.WHITE)
-             }
-             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            override fun onItemSelected(p0: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                val p = when (pos) { 0 -> "OPENAI"; 1 -> "GEMINI"; 2 -> "DEEPSEEK"; 3 -> "CLAUDE"; else -> "OPENAI" }
+                preferences.put(app.aaps.core.keys.StringKey.AimiAdvisorProvider, p)
+                (v as? TextView)?.setTextColor(Color.WHITE)
+            }
+            override fun onNothingSelected(p0: android.widget.AdapterView<*>?) {}
         }
-
         providerLayout.addView(spinner)
-        layout.addView(providerLayout)
+        mainLayout.addView(providerLayout)
 
-        // 1. Photo Area
+        // --- Image Area ---
         imageView = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(600, 600)
-            setBackgroundColor(Color.parseColor("#1E293B"))
+            layoutParams = LinearLayout.LayoutParams(700, 700).apply { topMargin = 48 }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = 32f
+            }
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageResource(android.R.drawable.ic_menu_camera) // Placeholder
+            setImageResource(android.R.drawable.ic_menu_camera)
+            setPadding(20, 20, 20, 20)
         }
-        layout.addView(imageView)
+        mainLayout.addView(imageView)
 
-        // 2. Action Button
-        val snapButton = Button(this).apply {
-            text = "📷 Take Food Photo"
-            setBackgroundColor(Color.parseColor("#3B82F6"))
+        descriptionInput = android.widget.EditText(this).apply {
+            hint = "Optional context (e.g. 'Whole wheat pasta')"
+            setHintTextColor(Color.DKGRAY)
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 32 }
+            textSize = 14f
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = 16f
+            }
+            setPadding(32, 24, 32, 24)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 32 }
+        }
+        mainLayout.addView(descriptionInput)
+
+        val snapButton = Button(this).apply {
+            text = "📷 ANALYZE MEAL"
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(accentColor)
+                cornerRadius = 24f
+            }
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(-1, 140).apply { topMargin = 32 }
             setOnClickListener { dispatchTakePictureIntent() }
         }
-        layout.addView(snapButton)
+        mainLayout.addView(snapButton)
 
-        // 3. Result Card
-        resultText = TextView(this).apply {
-            text = "No food analyzed yet."
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 48 }
+        // --- Results Section ---
+        detailsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 48 }
         }
-        layout.addView(resultText)
 
-        reasoningText = TextView(this).apply {
-            text = ""
+        confidenceBadge = TextView(this).apply {
+            setPadding(24, 8, 24, 8)
+            textSize = 12f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER }
+        }
+        detailsLayout.addView(confidenceBadge)
+
+        resultText = TextView(this).apply {
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 16, 0, 8)
+        }
+        detailsLayout.addView(resultText)
+
+        macroSummaryText = TextView(this).apply {
             textSize = 14f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 16 }
+            setPadding(0, 0, 0, 24)
         }
-        layout.addView(reasoningText)
+        detailsLayout.addView(macroSummaryText)
 
-        // 4. Confirm Button (Hidden initially)
-        confirmButton = Button(this).apply {
-            text = "✅ Confirm & Inject to FCL"
-            setBackgroundColor(Color.parseColor("#10B981")) // Green
+        // Divider
+        detailsLayout.addView(android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, 2).apply { setMargins(0, 16, 0, 32) }
+            setBackgroundColor(Color.parseColor("#334155"))
+        })
+
+        // Inputs
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        inputRow.addView(TextView(this).apply { text = "Carbs: "; setTextColor(Color.GRAY) })
+        carbsInput = android.widget.EditText(this).apply {
+            inputType = 8194
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 48 }
-            visibility = android.view.View.GONE
-            setOnClickListener { confirmEstimate() }
+            textSize = 24f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = null
+            setEms(3)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) { recalculateProposal() }
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            })
         }
-        layout.addView(confirmButton)
+        inputRow.addView(carbsInput)
+        inputRow.addView(TextView(this).apply { text = " g"; setTextColor(Color.GRAY) })
+        detailsLayout.addView(inputRow)
 
-        setContentView(layout)
+        recReasonText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.parseColor("#94A3B8"))
+            gravity = Gravity.CENTER
+            setPadding(32, 8, 32, 24)
+        }
+        detailsLayout.addView(recReasonText)
+
+        riskWarningText = TextView(this).apply {
+            setTextColor(Color.parseColor("#F87171"))
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            visibility = android.view.View.GONE
+            setPadding(32, 16, 32, 16)
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#451A1A"))
+                cornerRadius = 12f
+            }
+        }
+        detailsLayout.addView(riskWarningText)
+
+        visibleItemsList = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.parseColor("#CBD5E1"))
+            setPadding(32, 24, 32, 24)
+        }
+        detailsLayout.addView(visibleItemsList)
+
+        reasoningText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.parseColor("#64748B"))
+            setPadding(32, 0, 32, 32)
+        }
+        detailsLayout.addView(reasoningText)
+
+        confirmButton = Button(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#10B981"))
+                cornerRadius = 24f
+            }
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(-1, 160).apply { topMargin = 32 }
+            setOnClickListener { confirmInjection() }
+        }
+        detailsLayout.addView(confirmButton)
+
+        mainLayout.addView(detailsLayout)
+        scrollView.addView(mainLayout)
+        setContentView(scrollView)
     }
 
     private fun dispatchTakePictureIntent() {
-        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != 0) {
             androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 100)
         } else {
-            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            if (takePictureIntent.resolveActivity(packageManager) != null) {
-                startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE)
-            } else {
-                Toast.makeText(this, "No Camera App found", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 100) {
-            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                dispatchTakePictureIntent()
-            } else {
-                Toast.makeText(this, "Camera permission required.", Toast.LENGTH_SHORT).show()
-            }
+            startActivityForResult(Intent(this, MealAdvisorCameraActivity::class.java), REQUEST_IMAGE_CAPTURE)
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
-            val imageBitmap = data?.extras?.get("data") as Bitmap
-            imageView.setImageBitmap(imageBitmap)
-            simulateAnalysis(imageBitmap)
-        }
-    }
-
-    // Mock simulation for prototype consistency without camera hardware
-    private fun simulateAnalysis(bitmap: Bitmap) {
-        Toast.makeText(this, "Analyzing image (AI Vision)...", Toast.LENGTH_SHORT).show()
-
-        lifecycleScope.launch {
-            try {
-                // Call Service
-                val result = recognitionService.estimateCarbsFromImage(bitmap)
-                currentEstimate = result
-
-                // Calculate Total Effective (Carbs + FPU)
-                val totalEffective = result.carbsGrams + result.fpuEquivalent
-
-                // Update UI: Show breakdown but emphasize Total
-                resultText.text = """
-                    Total Effective: ${totalEffective.toInt()}g
-                    (Carbs: ${result.carbsGrams.toInt()}g + FPU: ${result.fpuEquivalent.toInt()}g)
-                    
-                    ${result.description}
-                """.trimIndent()
-                
-                reasoningText.text = result.reasoning
-                confirmButton.visibility = android.view.View.VISIBLE
-                confirmButton.text = "✅ Confirm ${totalEffective.toInt()}g (Carbs + FPU)" // Verify explicit sum
-
-            } catch (e: Exception) {
-                resultText.text = "Error: ${e.message}"
+            data?.data?.let { uri ->
+                contentResolver.openInputStream(uri)?.use { 
+                    android.graphics.BitmapFactory.decodeStream(it)?.let { bmp ->
+                        imageView.setImageBitmap(bmp)
+                        simulateAnalysis(bmp)
+                    }
+                }
+            } ?: (data?.extras?.get("data") as? Bitmap)?.let { bmp ->
+                imageView.setImageBitmap(bmp)
+                simulateAnalysis(bmp)
             }
         }
     }
 
-    private fun confirmEstimate() {
-        val estimate = currentEstimate ?: return
+    private fun simulateAnalysis(bitmap: Bitmap) {
+        val userDesc = descriptionInput.text.toString()
+        Toast.makeText(this, "AI Analysis in progress...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                val result = recognitionService.estimateCarbsFromImage(bitmap, userDesc)
+                currentEstimate = result
+                updateUIWithResult(result)
+            } catch (e: Exception) {
+                Toast.makeText(this@MealAdvisorActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun updateUIWithResult(result: EstimationResult) {
+        resultText.text = result.description
+        carbsInput.setText(result.recommendedCarbsForDose.toInt().toString())
         
-        // Inject SUM into Preferences for FCL logic
-        val totalToInject = estimate.carbsGrams + estimate.fpuEquivalent
+        val macroStr = "P: ${result.protein.estimate.toInt()}g | F: ${result.fat.estimate.toInt()}g | FPU: ${result.fpuEquivalent}"
+        macroSummaryText.text = macroStr
         
-        preferences.put(DoubleKey.OApsAIMILastEstimatedCarbs, totalToInject)
-        preferences.put(DoubleKey.OApsAIMILastEstimatedCarbTime, System.currentTimeMillis().toDouble())
+        recReasonText.text = result.recommendedCarbsReason
+        reasoningText.text = "Rationale: ${result.reasoning}"
         
-        Toast.makeText(this, "Injected ${totalToInject.toInt()}g (Carbs + FPU) into AIMI.", Toast.LENGTH_LONG).show()
-        finish()
+        val items = result.visibleItems.joinToString("\n") { "• ${it.name} (${it.amountInfo})" }
+        visibleItemsList.text = "Identified:\n$items"
+
+        // Confidence Badge
+        val (color, text) = when(result.confidence.uppercase()) {
+            "HIGH" -> Color.parseColor("#065F46") to "HIGH CONFIDENCE"
+            "MEDIUM" -> Color.parseColor("#92400E") to "MEDIUM CONFIDENCE"
+            else -> Color.parseColor("#991B1B") to "LOW CONFIDENCE"
+        }
+        confidenceBadge.text = text
+        confidenceBadge.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(color); cornerRadius = 12f
+        }
+
+        // Risks
+        if (result.hiddenCarbRisk == "HIGH" || result.needsManualConfirmation) {
+            riskWarningText.visibility = android.view.View.VISIBLE
+            riskWarningText.text = "⚠️ HIGH RISK: ${result.insulinRelevantNotes.joinToString(", ")}"
+        } else {
+            riskWarningText.visibility = android.view.View.GONE
+        }
+
+        detailsLayout.visibility = android.view.View.VISIBLE
+        recalculateProposal()
+    }
+
+    private fun recalculateProposal() {
+        try {
+            val carbs = carbsInput.text.toString().toDoubleOrNull() ?: 0.0
+            val profile = profileFunction.getProfile()
+            val cr = if (profile != null && profile.getIc() > 0.1) profile.getIc() else 10.0
+            val insulin = carbs / cr
+            confirmButton.text = "INJECT ${carbs.toInt()}g CARBS\nConsolidated Dose: %.1f U".format(insulin)
+        } catch (e: Exception) {
+            confirmButton.text = "CONFIRM INJECTION"
+        }
+    }
+
+    private fun confirmInjection() {
+        val valCarbs = carbsInput.text.toString().toDoubleOrNull() ?: return
+        if (valCarbs <= 0.0) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ca = app.aaps.core.data.model.CA(
+                timestamp = System.currentTimeMillis(),
+                isValid = true,
+                duration = 0,
+                amount = valCarbs,
+                notes = "AIMI V2: ${currentEstimate?.description ?: ""}",
+                ids = app.aaps.core.data.model.IDs()
+            )
+            persistenceLayer.insertOrUpdateCarbs(ca, app.aaps.core.data.ue.Action.TREATMENT, app.aaps.core.data.ue.Sources.CarbDialog, ca.notes).blockingGet()
+            
+            preferences.put(app.aaps.core.keys.BooleanKey.OApsAIMIMealAdvisorTrigger, true)
+            preferences.put(DoubleKey.OApsAIMILastEstimatedCarbs, valCarbs)
+            val nowMs = System.currentTimeMillis()
+            preferences.put(DoubleKey.OApsAIMILastEstimatedCarbTime, nowMs.toDouble())
+            aapsLogger.debug(
+                LTag.APS,
+                "MEAL_ADVISOR_TRACE confirmInjection carbs=${"%.1f".format(valCarbs)}g trigger=true estimateTimeMs=$nowMs"
+            )
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MealAdvisorActivity, "Carbs recorded. SMB active.", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
     }
 }

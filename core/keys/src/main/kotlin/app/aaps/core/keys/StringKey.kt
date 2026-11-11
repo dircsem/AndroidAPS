@@ -50,6 +50,11 @@ enum class StringKey(
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),
     NsClientAccessToken("nsclient_token", "", isPassword = true),
 
+    // Google Drive settings
+    GoogleDriveStorageType("google_drive_storage_type", "local"),
+    GoogleDriveFolderId("google_drive_folder_id", ""),
+    GoogleDriveRefreshToken("google_drive_refresh_token", "", isPassword = true),
+
     PumpCommonBolusStorage("pump_sync_storage_bolus", ""),
     PumpCommonTbrStorage("pump_sync_storage_tbr", ""),
     GarminRequestKey(key = "garmin_aaps_key", defaultValue = ""),
@@ -65,5 +70,27 @@ enum class StringKey(
     AimiAdvisorClaudeKey("aimi_advisor_claude_key", "", isPassword = true),
     AimiAdvisorProvider("aimi_advisor_provider", "OPENAI"),
     AimiAuditorMode("aimi_auditor_mode", "AUDIT_ONLY"),  // 🧠 AI Auditor mode: AUDIT_ONLY, SOFT_MODULATION, HIGH_RISK_ONLY
-    OApsAIMIUnstableModeState("key_oaps_aimi_mode_state", "")
+
+    // Context Module (dedicated provider for flexibility)
+    ContextLLMProvider("aimi_context_llm_provider", "OPENAI"),
+    ContextLLMOpenAIKey("aimi_context_llm_openai_key", "", isPassword = true),
+    ContextLLMGeminiKey("aimi_context_llm_gemini_key", "", isPassword = true),
+    ContextLLMDeepSeekKey("aimi_context_llm_deepseek_key", "", isPassword = true),
+    ContextLLMClaudeKey("aimi_context_llm_claude_key", "", isPassword = true),
+    ContextMode("aimi_context_mode", "BALANCED"), // CONSERVATIVE, BALANCED, AGGRESSIVE
+
+    OApsAIMIUnstableModeState("key_oaps_aimi_mode_state", ""),
+    OApsAIMIContextStorage("aimi_context_storage", "", exportable = false),
+    
+    // 🏥 AIMI Physiological Assistant (MTR)
+    AimiPhysioLLMProvider("aimi_physio_llm_provider", "gpt4"),
+    
+    // 🦋 Thyroid / Basedow Module (MTR)
+    OApsAIMIThyroidMode("key_aimi_thyroid_mode", "MANUAL"),
+    OApsAIMIThyroidManualStatus("key_aimi_thyroid_manual_status", "EUTHYROID"),
+    OApsAIMIThyroidTreatmentPhase("key_aimi_thyroid_treatment_phase", "NONE"),
+    OApsAIMIThyroidGuardLevel("key_aimi_thyroid_guard_level", "HIGH"),
+    
+    // 🚨 Emergency SOS (Hypo)
+    AimiEmergencySosPhone("aimi_emergency_sos_phone", ""),
 }
