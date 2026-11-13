@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profile.PureProfile
 import app.aaps.core.interfaces.profile.SingleProfile
 import app.aaps.core.interfaces.protection.ProtectionCheck
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
@@ -86,7 +87,9 @@ data class ProfileUiState(
     /** Currently-edited profile as a [PureProfile] for graph rendering; null if not yet computed. */
     val editedProfile: PureProfile? = null,
     /** Sum of basal rates over 24h, derived from [editedProfile]. */
-    val basalSum: Double = 0.0
+    val basalSum: Double = 0.0,
+    /** MedLink: basal shown with 3 decimals (Medtronic steps are 0.025 U/h). Keep this when merging upstream. */
+    val basalThreeDecimals: Boolean = false
 )
 
 @HiltViewModel
@@ -201,7 +204,8 @@ class ProfileEditorViewModel @Inject constructor(
                 tabErrors = tabErrors,
                 pumpIncompatible = pumpIncompatible,
                 editedProfile = editedPureProfile,
-                basalSum = basalSum
+                basalSum = basalSum,
+                basalThreeDecimals = activePlugin.activePump.selectedActivePump() is MedLinkPumpPluginBase
             )
         }
     }

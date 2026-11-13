@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.profile.ProfileErrorType
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -528,7 +529,9 @@ class ProfileManagementViewModel @Inject constructor(
     // Profile viewer formatting helpers
     fun getIcList(profile: Profile): String = profile.getIcList(rh, dateUtil)
     fun getIsfList(profile: Profile): String = profile.getIsfList(rh, dateUtil)
-    fun getBasalList(profile: Profile): String = profile.getBasalList(rh, dateUtil)
+    // MedLink: basal with 3 decimals only when the pump is MedLink. Keep this when merging upstream.
+    fun getBasalList(profile: Profile): String =
+        profile.getBasalList(rh, dateUtil, threeDecimals = activePlugin.activePump.selectedActivePump() is MedLinkPumpPluginBase)
     fun getTargetList(profile: Profile): String = profile.getTargetList(rh, dateUtil)
     fun formatBasalSum(basalSum: Double): String = rh.gs(R.string.format_insulin_units, basalSum)
 

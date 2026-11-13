@@ -129,7 +129,8 @@ interface Profile {
 
     fun getIcList(rh: ResourceHelper, dateUtil: DateUtil): String
     fun getIsfList(rh: ResourceHelper, dateUtil: DateUtil): String
-    fun getBasalList(rh: ResourceHelper, dateUtil: DateUtil): String
+    /** @param threeDecimals MedLink: basal with 3 decimals (Medtronic steps are 0.025 U/h). Keep this when merging upstream. */
+    fun getBasalList(rh: ResourceHelper, dateUtil: DateUtil, threeDecimals: Boolean = false): String
     fun getTargetList(rh: ResourceHelper, dateUtil: DateUtil): String
 
     fun convertToNonCustomizedProfile(dateUtil: DateUtil): PureProfile

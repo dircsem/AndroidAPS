@@ -104,6 +104,7 @@ class ProfileSealedTest : TestBase() {
         assertThat(p.getBasal(c.timeInMillis)).isWithin(0.01).of(0.1)
         assertThat(p.getBasalTimeFromMidnight(2 * 60 * 60)).isWithin(0.01).of(0.1)
         assertThat(p.getBasalList(rh, dateUtil).replace(".", ",")).isEqualTo("00:00    0,10 U/h")
+        assertThat(p.getBasalList(rh, dateUtil, threeDecimals = true).replace(".", ",")).isEqualTo("00:00    0,100 U/h")
         assertThat(p.getBasalValues()[0].value).isWithin(0.01).of(0.1)
         assertThat(p.getMaxDailyBasal()).isWithin(0.01).of(0.1)
         assertThat(p.percentageBasalSum()).isWithin(0.01).of(2.4)

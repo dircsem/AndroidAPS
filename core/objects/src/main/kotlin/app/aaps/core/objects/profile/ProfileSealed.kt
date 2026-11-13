@@ -368,8 +368,12 @@ sealed class ProfileSealed(
     override fun getIsfList(rh: ResourceHelper, dateUtil: DateUtil): String =
         getValuesList(isfBlocks, 100.0 / percentage, NumberFormat.DECIMAL_1, rh.gs(if (units == GlucoseUnit.MGDL) R.string.profile_isf_units_mgdl else R.string.profile_isf_units_mmol), dateUtil)
 
-    override fun getBasalList(rh: ResourceHelper, dateUtil: DateUtil): String =
-        getValuesList(basalBlocks, percentage / 100.0, NumberFormat.DECIMAL_2, rh.gs(R.string.profile_ins_units_per_hour), dateUtil)
+    override fun getBasalList(rh: ResourceHelper, dateUtil: DateUtil, threeDecimals: Boolean): String =
+        // MedLink: 3 decimals, Medtronic basal steps are 0.025 U/h (0.275 was shown as 0.28). Keep this when merging upstream.
+        getValuesList(
+            basalBlocks, percentage / 100.0, if (threeDecimals) NumberFormat.DECIMAL_3 else NumberFormat.DECIMAL_2,
+            rh.gs(R.string.profile_ins_units_per_hour), dateUtil
+        )
 
     override fun getTargetList(rh: ResourceHelper, dateUtil: DateUtil): String = getTargetValuesList(targetBlocks, NumberFormat.DECIMAL_1, units.displayLabel, dateUtil)
 

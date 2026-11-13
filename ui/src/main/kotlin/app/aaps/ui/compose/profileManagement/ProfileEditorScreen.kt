@@ -568,7 +568,8 @@ private fun BasalContent(
                     onRemoveEntry = { index -> viewModel.removeBasalEntry(index) },
                     valueRange = state.basalRange,
                     step = 0.01,
-                    valueFormat = NumberFormat.DECIMAL_2,
+                    // MedLink: 3 decimals, Medtronic basal steps are 0.025 U/h. Keep this when merging upstream.
+                    valueFormat = if (state.basalThreeDecimals) NumberFormat.DECIMAL_3 else NumberFormat.DECIMAL_2,
                     unitLabel = ""
                 )
             }
