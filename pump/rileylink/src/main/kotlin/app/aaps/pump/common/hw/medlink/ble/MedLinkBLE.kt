@@ -1,16 +1,22 @@
 package app.aaps.pump.common.hw.medlink.ble
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.R as CoreR
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.pump.ByteUtil
@@ -49,6 +55,7 @@ import app.aaps.pump.common.hw.medlink.keys.MedLinkIntentPreferenceKey
 import app.aaps.pump.common.hw.medlink.keys.MedLinkStringKey
 import app.aaps.pump.common.hw.medlink.keys.MedLinkStringPreferenceKey
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
+import app.aaps.pump.common.hw.rileylink.R
 import app.aaps.pump.common.hw.rileylink.RileyLinkConst
 import app.aaps.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
 import org.apache.commons.lang3.StringUtils
@@ -364,6 +371,13 @@ class MedLinkBLE //extends RileyLinkBLE
     @JvmField
     @Inject
     var medLinkServiceData: MedLinkServiceData? = null
+
+    @JvmField
+    @Inject
+    var rxBus: RxBus? = null
+
+    /** True after a command was shown in the pump status: the status goes back to "Connected" when the queue is empty. */
+    @Volatile private var commandStatusShown = false
     private var previousLine = ""
 
     //    private long latestReceivedCommand = 0l;
@@ -891,6 +905,12 @@ class MedLinkBLE //extends RileyLinkBLE
 
     @SuppressLint("MissingPermission")
     fun connectGatt() {
+        // Without BLUETOOTH_CONNECT (for example a new install before the user grants it)
+        // the Bluetooth calls below throw SecurityException and the app crashes.
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            aapsLogger.error(LTag.PUMPBTCOMM, "No BLUETOOTH_CONNECT permission, can't do connectGatt.")
+            return
+        }
         lastGattConnection = System.currentTimeMillis()
         reportBolusPhase(waitingBolusExecutor(), app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusPhase.CONNECTING)
         changeConnectionStatus(ConnectionStatus.CONNECTING)
@@ -906,7 +926,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (bluetoothConnectionGatt == null) {
             aapsLogger.error(
                 LTag.PUMPBTCOMM,
-                "Failed to connect to Bluetooth Low Energy device at " + bluetoothAdapter!!.address
+                "Failed to connect to Bluetooth Low Energy device at " + medLinkDevice?.address
             )
         } else {
             gattConnected = true
@@ -2002,6 +2022,7 @@ class MedLinkBLE //extends RileyLinkBLE
                     }
                 } else if (isConnected) {
                     aapsLogger.info(LTag.PUMPBTCOMM, "empty execution queue")
+                    clearCommandStatus()
                     // disconnect()
                 }
             } catch (e: NullPointerException) {
@@ -2601,7 +2622,9 @@ class MedLinkBLE //extends RileyLinkBLE
     private fun reportBolusProgress(r: app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusRequest, delivered: Double) {
         val own = trackedBolusExecutor?.let { bleBolusCommand(it) } ?: return
         val callback = own.onProgress ?: return
-        val estimated = ((System.currentTimeMillis() - r.sentAt).toDouble() / MedLinkBolusTracker.MS_PER_UNIT).coerceIn(0.0, r.requested * 0.95)
+        // from the start of the delivery: the time between sentAt and the pump starting is not insulin
+        val start = r.deliveringSince.takeIf { it > 0L } ?: r.sentAt
+        val estimated = ((System.currentTimeMillis() - start).toDouble() / MedLinkBolusTracker.MS_PER_UNIT).coerceIn(0.0, r.requested * 0.95)
         val shown = if (delivered > 0.0) delivered else estimated
         handler.post { callback(shown, r.requested) }
     }
@@ -3005,8 +3028,32 @@ class MedLinkBLE //extends RileyLinkBLE
     }
 
     /** Bookkeeping right before an executor is written. */
+    /**
+     * Main screen pump activity dialog: "Connected" and, on the next line, the MedLink command now running
+     * (code and description). Internal steps (no description) are not shown.
+     */
+    private fun showCommandStatus(command: MedLinkCommandType) {
+        if (command.descriptionRes == 0) return
+        val text = resourceHelper.gs(
+            R.string.medlink_status_command,
+            resourceHelper.gs(CoreR.string.connected),
+            command.code,
+            resourceHelper.gs(command.descriptionRes)
+        )
+        commandStatusShown = true
+        rxBus?.send(EventPumpStatusChanged(text))
+    }
+
+    /** Back to plain "Connected" once no MedLink command is left. */
+    private fun clearCommandStatus() {
+        if (!commandStatusShown) return
+        commandStatusShown = false
+        rxBus?.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED))
+    }
+
     private fun beforePost(executor: CommandExecutor<*>) {
         val now = System.currentTimeMillis()
+        showCommandStatus(executor.firstCommand())
         if (executor.firstCommand() == MedLinkCommandType.StopStartPump) lastStartStopSent = now
         if (!isBolusExecutor(executor)) return
         if (executor !== trackedBolusExecutor) {

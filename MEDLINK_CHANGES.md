@@ -671,6 +671,33 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
 
 **Testes:** app compila e gera APK (`-PnoCoverage`). rileylink 516/516, medtronic 189/189, implementation 764/779: as 15 falhas (`KeepAliveWorkerTest`, `LastBgDataImplTest`) falham igual no `dev_OAPSAIMI` sem MedLink (conferido em checkout limpo); o `HardLimitsImplTest` antigo agora passa.
 
+## 4ai. Fila travada pela TBR, botão Parar do bolus, comando atual na tela (2026-11-12) — testado em campo: bolus manual não espera mais a TBR
+
+- **Bolus manual que não saía (`logs/missing_bolus.log`):** no AAPS 4.0 o comando de TBR da fila espera o callback do driver (`MedLinkCallbackBridge`). `setTempBasalAbsolute` / `setTempBasalPercent` nunca chamavam o callback nos caminhos de TBR > 100 % (`scheduleTempBasalBolus`), < 100 % (`scheduleSuspension`) e = 100 %: depois de toda TBR do loop a fila ficava presa 10 min e o bolus de 3,5 U esperava atrás. Agora as duas funções respondem assim que o plano é montado (só a primeira resposta conta, o caminho `extendBasalTreatment` que já respondia não muda). Os microbolus e suspensões continuam no próprio horário.
+- **Botão Parar no diálogo do bolus:** antes `stopBolusDelivering()` só marcava `CancelDelivery`, que não para um bolus já escrito. Agora, com um bolus do tracker já escrito (não `QUEUED`, não final), manda um STOP de usuário (`MedLinkStopOrigin.USER`, enviado na hora, aborta o bolus); o tracker lê o `M` e grava o parcial. Depois do STOP confirmado (regra do usuário): a bomba **fica parada** só se o plano da TBR quer a bomba suspensa agora (`shouldBeSuspended()`: dentro da suspensão de uma TBR < 100 % ou TBR de 0 U/h; o REACTIVATE do plano liga depois); **senão liga na hora** (`startPump`). Com bateria do MedLink/celular abaixo do mínimo de suspensão a bomba **não é parada** (mesma regra 4y) e aparece o alarme "Bolus not stopped" com a bateria; o bolus continua.
+- **Comando atual na tela principal:** o diálogo de atividade da bomba mostra "Conectado" e, na linha de baixo, o comando do MedLink em execução (código e descrição, ex.: `M - Read bolus status`). `MedLinkCommandType` ganhou `descriptionRes` (0 = passo interno, não mostrado); `MedLinkBLE` manda `EventPumpStatusChanged` ao postar cada comando e volta para "Conectado" com a fila vazia.
+- Também neste dia: bolus de TBR a menos de um intervalo de SMB do último bolus de TBR é descartado com aviso INFO (`MEDLINK_TBR_BOLUS_SKIPPED`); progresso do bolus lê `M` a cada 5 s e estima a partir do início real da entrega; basal mínima depois do bolus ganhou chave liga/desliga (padrão desligada); pedido da permissão BLUETOOTH_CONNECT na aba MedLink (crash em `connectGatt`).
+
+**Testes:** rileylink 516/516, medtronic 189/189, `:app:assembleFullDebug` OK. Sem teste novo: o plugin MedLink não tem estrutura de teste unitário (pendência).
+
+## 4aj. Intervalo do bolus de TBR, TDD da bomba nas estatísticas (2026-11-13) — NÃO TESTADO EM CAMPO
+
+- **Intervalo (regra do usuário):** SMB conta só o último SMB ou bolus manual; bolus de TBR conta só o último bolus de TBR
+  ou bolus manual. SMB e bolus de TBR não se bloqueiam (os dois são automáticos).
+  - `MedLinkMedtronicPumpPlugin.tbrBolusTooSoon`: agora usa o mais novo entre o último bolus TBR e o último manual.
+    Mensagem `medlink_tbr_bolus_skipped` diz "last TBR or manual bolus".
+  - `LoopPlugin.invoke` ("Safety check for multiple SMBs"): com MedLink usa `getLastNonTBRBolusTime()` (antes usava
+    `getNewestBolus()`, e um bolus de TBR zerava o SMB seguinte). Outras bombas sem mudança. **Manter no merge.**
+- **TDD da bomba:** depois de cada status (`S`), `StatusCallback` chama `saveDailyTotals()`, que grava "insulin today"
+  e "insulin yesterday" com `pumpSync.createOrUpdateTotalDailyDose` (só total, basal/bolus = 0; dia pelo relógio da
+  bomba; casa pela meia-noite, então atualiza as mesmas linhas). Não muda estatísticas nem dosagem (`TddCalculator`
+  só lê linhas CACHE).
+  - Tabela TDD das Estatísticas (`StatsViewModel`, `TddStatsCompose`): colunas **Pump** e **Diff** (bomba − AAPS),
+    só quando há linhas da bomba. Strings novas em core/ui: `tdd_pump_difference`, `tdd_total_short` (Total), `tdd_pump_short` (Pump / pt-BR Bmb), cabeçalhos curtos. **Arquivos upstream, manter no merge.**
+- **Colunas Pump/Diff das estatísticas só com MedLink** (`StatsViewModel` com `ActivePlugin`): outras bombas que
+  gravam TDD (Dana, Medtronic RileyLink) não mostram as colunas.
+- Testes: medtronic e rileylink passam; `:ui` e `:plugins:aps` compilam.
+
 ## 4ak. Primeira operação da TBR nunca acontecia (2026-11-13) — NÃO TESTADO EM CAMPO
 
 - **Problema (log 15:36):** a TBR > 100 % da MedLink não é gravada no banco, então o loop não vê TBR rodando e manda a

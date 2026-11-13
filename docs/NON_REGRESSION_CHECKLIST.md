@@ -75,6 +75,13 @@ When this fork includes the native Libre 3 plugin (`:plugins:libre3`, `Libre3Nat
 - [ ] Prefs open Status / Start / Warm-up without crash (Stub default; Real via eng pref).
 - [ ] Native pair / warm-up / BG — only after **user device confirmation** (do not mark “working” without that). User guide: [docs/DEXCOM_ONEPLUS_USER_GUIDE.md](DEXCOM_ONEPLUS_USER_GUIDE.md). Dev onboarding: [docs/DEXCOM_ONEPLUS_DEV_ONBOARDING.md](DEXCOM_ONEPLUS_DEV_ONBOARDING.md). Integration: [docs/DEXCOM_ONEPLUS_INTEGRATION_NOTES.md](DEXCOM_ONEPLUS_INTEGRATION_NOTES.md).
 
+### Fork merge constraint: MedLink upstream touch points
+
+MedLink changes some upstream files. Keep them on every merge (search for `MedLink:` comments; details in `MEDLINK_CHANGES.md`).
+
+- [ ] `LoopPlugin.invoke` "multiple SMBs" check: with MedLink uses `getLastNonTBRBolusTime()` (TBR boluses do not block SMBs).
+- [ ] Statistics TDD table (`StatsViewModel`, `TddStatsCompose`): Pump and Diff columns, strings `tdd_pump_difference`, `tdd_total_short`, `tdd_pump_short` in core/ui; columns only with MedLink (`StatsViewModel` checks the active pump).
+
 ---
 
 ## 2) Critical Domain Regression Gates

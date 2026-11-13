@@ -177,6 +177,8 @@
     <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
     <string name="medlink_profile_differs_from_pump">The basal profile on the pump is different from the AAPS profile:\n%1$s\nMedLink cannot change the profile on the pump: change it on the pump too.</string>
     <string name="medlink_profile_diff_line">%1$s–%2$s: pump %3$.2f U/h, AAPS %4$.2f U/h</string>
+    <string name="medlink_min_basal_after_bolus_enabled">Use minimum basal after bolus</string>
+    <string name="medlink_min_basal_after_bolus_enabled_summary">After a manual bolus, while BG is rising, do not let the loop set a temp basal below a minimum. Turn on to see the options.</string>
     <string name="medlink_min_basal_after_bolus_percent" formatted="false">Minimum basal after bolus (%)</string>
     <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">After a manual bolus, while BG is at or above target and rising, temp basals below this % of the pump basal are raised to it (also 0%). 0 = off.</string>
     <string name="medlink_min_basal_after_bolus_minutes">Minimum basal after bolus: duration (min)</string>
@@ -184,6 +186,8 @@
     <string name="medlink_battery_device_medlink">MedLink</string>
     <string name="medlink_battery_device_phone">phone</string>
     <string name="medlink_suspend_low_battery">Suspension not sent: %1$s battery %2$d%% (minimum %3$d%%). Charge it to allow temp basals below 100%%.</string>
+    <string name="medlink_bolus_not_stopped">Bolus not stopped</string>
+    <string name="medlink_bolus_stop_low_battery" comment="%1$s=device, example: MedLink or Phone. %2$d=its battery level, example: 15. %3$d=minimum level for a suspension, example: 20">The pump was not stopped: %1$s battery %2$d%% (minimum %3$d%%). The bolus goes on. Charge it to allow stopping the pump.</string>
     <string name="medlink_basal_percents">Pump %1$s · plan %2$s · this hour %3$s</string>
     <string name="medlink_min_battery_for_suspend" formatted="false">Minimum battery for suspension (%)</string>
     <string name="medlink_min_battery_for_suspend_summary" formatted="false">No suspension (temp basal below 100%) when the MedLink or the phone battery is at or below this value. A red message shows it in the status bar.</string>
@@ -198,4 +202,6 @@
     <string name="medlink_min_basal_after_bolus_delta_dialog">BG change in the last 5 minutes (delta, in mg/dL, also when the app shows mmol/L) that counts as rising. The minimum basal after bolus is applied only when the delta is above this value.\n\nExamples: 0 = any rise; 2 = more than 2 mg/dL in 5 min.\n\nDefault 0.</string>
     <string name="medlink_key_interval_between_bt_connections_title">Amount of seconds between two consecutive BT connections</string>
     <string name="medlink_key_interval_between_bt_connections_summary">This is the amount of time, in seconds, that AAPS will wait between two sequential Bluetooth connections. Recommended values are between 5 and 30s.</string>
+    <string name="medlink_tbr_bolus_skipped" comment="%1$.1f=TBR bolus in units, %2$d=seconds since the last TBR or manual bolus, %3$d=SMB interval in minutes. Example: TBR bolus of 0.2 U not sent: the last TBR or manual bolus was 95 s ago, less than the SMB interval (3 min).">TBR bolus of %1$.1f U not sent: the last TBR or manual bolus was %2$d s ago, less than the SMB interval (%3$d min).</string>
+    <string name="medlink_bluetooth_permission_denied">MedLink can\'t connect without the Bluetooth (Nearby devices) permission. Press OK to open the app settings and allow it.</string>
 </resources>

@@ -24,9 +24,9 @@ enum class MedLinkMedtronicIntPreferenceKey(
 ) : IntPreferenceKey {
 
     /** 4x: minimum basal (% of the pump basal) after a manual bolus while BG rises; 0 = off. */
-    MinBasalAfterBolusPercent("medlink_min_basal_after_bolus_percent", 0, min = 0, max = 100, titleResId = R.string.medlink_min_basal_after_bolus_percent, summaryResId = R.string.medlink_min_basal_after_bolus_percent_summary),
+    MinBasalAfterBolusPercent("medlink_min_basal_after_bolus_percent", 0, min = 0, max = 100, dependency = MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled, titleResId = R.string.medlink_min_basal_after_bolus_percent, summaryResId = R.string.medlink_min_basal_after_bolus_percent_summary),
     /** 4x: how long after a manual bolus the minimum basal applies. */
-    MinBasalAfterBolusMinutes("medlink_min_basal_after_bolus_minutes", 180, min = 15, max = 720, titleResId = R.string.medlink_min_basal_after_bolus_minutes, summaryResId = R.string.medlink_min_basal_after_bolus_minutes_summary),
+    MinBasalAfterBolusMinutes("medlink_min_basal_after_bolus_minutes", 180, min = 15, max = 720, dependency = MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled, titleResId = R.string.medlink_min_basal_after_bolus_minutes, summaryResId = R.string.medlink_min_basal_after_bolus_minutes_summary),
     /** 4y: no suspension when the MedLink or the phone battery is at or below this %. */
     MinBatteryForSuspend("medlink_min_battery_for_suspend", 5, min = 1, max = 50, titleResId = R.string.medlink_min_battery_for_suspend, summaryResId = R.string.medlink_min_battery_for_suspend_summary),
     /**

@@ -87,7 +87,8 @@ fun TirStatsCompose(
             for (i in 0 until tir7.size()) {
                 val tir = tir7.valueAt(i)
                 TirTableDataRow(
-                    date = dateUtil.dateString(tir.date),
+                    // MedLink fork: day and month only, same as the TDD table
+                    date = dateUtil.dateStringShort(tir.date),
                     below = formatPercentage(tir.below, tir.count),
                     inRange = formatPercentage(tir.inRange, tir.count),
                     above = formatPercentage(tir.above, tir.count)

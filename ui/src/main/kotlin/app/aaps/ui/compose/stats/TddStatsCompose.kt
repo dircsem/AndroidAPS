@@ -18,8 +18,10 @@ import androidx.compose.ui.unit.dp
 import app.aaps.core.data.aps.AverageTDD
 import app.aaps.core.data.model.TDD
 import app.aaps.core.ui.R
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.ui.compose.LocalDateUtil
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Data class containing TDD (Total Daily Dose) statistics for profile calculations.
@@ -28,11 +30,13 @@ import java.util.Locale
  * @param tdds Historical TDD data indexed by date (LongSparseArray key is timestamp)
  * @param averageTdd Calculated average TDD over a period (weighted and exponential averages)
  * @param todayTdd Today's TDD data (may be incomplete if day is ongoing)
+ * @param pumpTotals MedLink: total reported by the pump, by day start (midnight). Empty = no pump columns.
  */
 data class TddStatsData(
     val tdds: LongSparseArray<TDD>?,
     val averageTdd: AverageTDD?,
-    val todayTdd: TDD?
+    val todayTdd: TDD?,
+    val pumpTotals: Map<Long, Double> = emptyMap()
 )
 
 /**
@@ -58,6 +62,10 @@ data class TddStatsData(
  * Today      | 8.50  | 12.40 | 20.90 | 95
  * ```
  *
+ * MedLink: when [TddStatsData.pumpTotals] is not empty, two more columns are shown:
+ * the pump total and the difference (pump - AAPS). The difference is shown only when it is not zero.
+ * Keep this when merging upstream.
+ *
  * @param tddStatsData TDD statistics data containing historical TDDs, average, and today's data
  * @param dateUtil Date formatting utility for displaying dates
  * @param modifier Modifier for the root Column
@@ -68,9 +76,10 @@ fun TddStatsCompose(
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
+    val showPump = tddStatsData.pumpTotals.isNotEmpty()
     Column(modifier = modifier) {
         // Header row with column labels
-        TddTableHeaderRow()
+        TddTableHeaderRow(showPump = showPump)
 
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 8.dp)
@@ -81,11 +90,13 @@ fun TddStatsCompose(
             for (i in 0 until tdds.size()) {
                 val tdd = tdds.valueAt(i)
                 TddTableDataRow(
-                    date = dateUtil.dateString(tdd.timestamp),
+                    // MedLink fork: day and month only, the extra Pump/Diff columns need the space
+                    date = dateUtil.dateStringShort(tdd.timestamp),
                     basal = String.format(Locale.getDefault(), "%.2f", tdd.basalAmount),
                     bolus = String.format(Locale.getDefault(), "%.2f", tdd.bolusAmount),
                     total = String.format(Locale.getDefault(), "%.2f", tdd.totalAmount),
-                    carbs = String.format(Locale.getDefault(), "%.0f", tdd.carbs)
+                    carbs = String.format(Locale.getDefault(), "%.0f", tdd.carbs),
+                    pump = pumpCells(showPump, tddStatsData.pumpTotals[MidnightTime.calc(tdd.timestamp)], tdd.totalAmount)
                 )
             }
         }
@@ -107,6 +118,7 @@ fun TddStatsCompose(
                 bolus = String.format(Locale.getDefault(), "%.2f", avg.data.bolusAmount),
                 total = String.format(Locale.getDefault(), "%.2f", avg.data.totalAmount),
                 carbs = String.format(Locale.getDefault(), "%.0f", avg.data.carbs),
+                pump = pumpCells(showPump, null, avg.data.totalAmount),
                 isBold = true
             )
         }
@@ -128,6 +140,7 @@ fun TddStatsCompose(
                 bolus = String.format(Locale.getDefault(), "%.2f", today.bolusAmount),
                 total = String.format(Locale.getDefault(), "%.2f", today.totalAmount),
                 carbs = String.format(Locale.getDefault(), "%.0f", today.carbs),
+                pump = pumpCells(showPump, tddStatsData.pumpTotals[MidnightTime.calc(today.timestamp)], today.totalAmount),
                 isBold = true
             )
         }
@@ -135,13 +148,37 @@ fun TddStatsCompose(
 }
 
 /**
+ * MedLink: text of the pump total and difference cells.
+ * The difference is pump - AAPS and is empty when there is no pump value or it rounds to zero.
+ *
+ * @return null when the pump columns are hidden
+ */
+private fun pumpCells(showPump: Boolean, pumpTotal: Double?, aapsTotal: Double): PumpTddCells? {
+    if (!showPump) return null
+    pumpTotal ?: return PumpTddCells(total = "", difference = "")
+    val difference = pumpTotal - aapsTotal
+    return PumpTddCells(
+        total = String.format(Locale.getDefault(), "%.2f", pumpTotal),
+        difference = if (abs(difference) < MIN_SHOWN_DIFFERENCE) "" else String.format(Locale.getDefault(), "%+.2f", difference)
+    )
+}
+
+/** MedLink: pump total and difference cell texts for one row. */
+data class PumpTddCells(val total: String, val difference: String)
+
+/** Smaller differences are shown as empty, they are only rounding. */
+private const val MIN_SHOWN_DIFFERENCE = 0.005
+
+/**
  * Composable that displays the header row of the TDD statistics table.
  * Shows column labels for Date, Basal rate, Bolus, Total, and Carbs.
  * All headers are bold and use labelMedium typography for visual hierarchy.
  * Uses weighted layout for consistent column alignment with data rows.
+ *
+ * @param showPump MedLink: show the Pump and Diff columns
  */
 @Composable
-fun TddTableHeaderRow() {
+fun TddTableHeaderRow(showPump: Boolean = false) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -170,19 +207,35 @@ fun TddTableHeaderRow() {
             textAlign = TextAlign.Center
         )
         Text(
-            text = stringResource(R.string.tdd_total),
+            text = stringResource(R.string.tdd_total_short),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
         Text(
-            text = stringResource(R.string.carbs),
+            text = stringResource(R.string.tdd_carbs_short),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
+        if (showPump) {
+            Text(
+                text = stringResource(R.string.tdd_pump_short),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = stringResource(R.string.tdd_pump_difference),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -195,6 +248,7 @@ fun TddTableHeaderRow() {
  * @param bolus Bolus insulin amount formatted as string (e.g., "18.30")
  * @param total Total daily insulin formatted as string (e.g., "30.80")
  * @param carbs Total carbohydrates formatted as string (e.g., "150")
+ * @param pump MedLink: pump total and difference cells, null = columns hidden
  * @param isBold Whether to display text in bold (true for average and today rows)
  */
 @Composable
@@ -204,6 +258,7 @@ fun TddTableDataRow(
     bolus: String,
     total: String,
     carbs: String,
+    pump: PumpTddCells? = null,
     isBold: Boolean = false
 ) {
     Row(
@@ -247,5 +302,22 @@ fun TddTableDataRow(
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
+        if (pump != null) {
+            Text(
+                text = pump.total,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = pump.difference,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+                color = if (pump.difference.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }

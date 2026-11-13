@@ -44,6 +44,7 @@ class StatusCallback(
         medLinkPumpStatus.pumpDeviceState = PumpDeviceState.Active
         medLinkPumpPlugin.alreadyRun()
         medLinkPumpPlugin.setPumpTime(pumpStatus.lastDataTime)
+        medLinkPumpPlugin.saveDailyTotals()
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage currentbasal " + pumpStatus.currentBasal)
         aapsLogger.info(LTag.PUMPBTCOMM, "statusmessage basebasalrate " + medLinkPumpPlugin.baseBasalRate)
 

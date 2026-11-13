@@ -2,6 +2,7 @@ package app.aaps.ui.compose.stats.viewmodels
 
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
@@ -35,6 +36,7 @@ internal class StatsViewModelTest {
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var profileUtil: ProfileUtil
     @Mock private lateinit var preferences: Preferences
+    @Mock private lateinit var activePlugin: ActivePlugin
 
     private lateinit var sut: StatsViewModel
 
@@ -48,7 +50,7 @@ internal class StatsViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher())
         sut = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, activityMonitor, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences
+            rh, uel, dateUtil, profileUtil, preferences, activePlugin
         )
     }
 

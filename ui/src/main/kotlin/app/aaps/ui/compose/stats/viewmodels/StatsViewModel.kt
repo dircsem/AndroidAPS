@@ -11,13 +11,16 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.DexcomTIR
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -52,7 +55,8 @@ class StatsViewModel @Inject constructor(
     private val uel: UserEntryLogger,
     val dateUtil: DateUtil,
     val profileUtil: ProfileUtil,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val activePlugin: ActivePlugin
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StatsUiState())
@@ -99,7 +103,13 @@ class StatsViewModel @Inject constructor(
                 val tdds = tddCalculator.calculate(7, allowMissingDays = true)
                 val averageTdd = tddCalculator.averageTDD(tdds)
                 val todayTdd = tddCalculator.calculateToday()
-                TddStatsData(tdds = tdds, averageTdd = averageTdd, todayTdd = todayTdd)
+                // MedLink only: totals reported by the pump (not CACHE rows), shown next to the AAPS calculation.
+                // Keep this when merging upstream.
+                val pumpTotals =
+                    if (activePlugin.activePump.selectedActivePump() !is MedLinkPumpPluginBase) emptyMap()
+                    else persistenceLayer.getLastTotalDailyDoses(PUMP_TDD_DAYS, false)
+                        .associate { MidnightTime.calc(it.timestamp) to it.totalAmount }
+                TddStatsData(tdds = tdds, averageTdd = averageTdd, todayTdd = todayTdd, pumpTotals = pumpTotals)
             }
             _uiState.update { it.copy(tddStatsData = data, tddLoading = false) }
         }
@@ -361,3 +371,6 @@ data class StatsUiState(
     val showRecalculateDialog: Boolean = false,
     val showResetActivityDialog: Boolean = false
 )
+
+/** MedLink: how many pump TDD rows to load. Covers the 7 days of the table plus today. */
+private const val PUMP_TDD_DAYS = 10

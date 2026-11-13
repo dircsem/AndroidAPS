@@ -757,7 +757,12 @@ class LoopPlugin @Inject constructor(
             resultAfterConstraints.smb = constraintChecker.applyBolusConstraints(resultAfterConstraints.smbConstraint!!).value()
 
             // Safety check for multiple SMBs, with the same rule (and 6 s tolerance) as the APS and the queue.
-            val lastBolusTime = persistenceLayer.getNewestBolus()?.timestamp ?: 0L
+            // MedLink: only the last SMB or manual bolus counts; TBR boluses do not (same as applySMBRequest).
+            val lastBolusTime = if (activePlugin.activePump.selectedActivePump() is MedLinkPumpPluginBase) {
+                persistenceLayer.getLastNonTBRBolusTime()?.timestamp ?: 0L
+            } else {
+                persistenceLayer.getNewestBolus()?.timestamp ?: 0L
+            }
             if (SmbIntervalGate.tooSoon(lastBolusTime, preferences.get(IntKey.ApsMaxSmbFrequency), dateUtil.now())) {
                 aapsLogger.debug(LTag.APS, "SMB requested but still in ${preferences.get(IntKey.ApsMaxSmbFrequency)} min interval")
                 resultAfterConstraints.smb = 0.0

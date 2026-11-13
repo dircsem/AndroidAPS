@@ -120,6 +120,10 @@
     <string name="open_menu">Open menu</string>
     <string name="close_menu">Close menu</string>
     <string name="tdd_total">TDD Total</string>
+    <string name="tdd_carbs_short" comment="Short column header in the TDD statistics table: carbohydrates (grams). Keep it very short.">CHO</string>
+    <string name="tdd_total_short" comment="Short column header in the TDD statistics table: total insulin of the day. Keep it very short.">Total</string>
+    <string name="tdd_pump_short" comment="Short column header in the TDD statistics table: total reported by the pump. Keep it very short.">Pump</string>
+    <string name="tdd_pump_difference" comment="Short column header in the TDD statistics table: pump total minus AAPS calculated total. Keep it very short.">Diff</string>
     <string name="tdd_old_data">Old data</string>
     <string name="goingtodeliver">Going to deliver %1$.2f U</string>
     <string name="waitingforpump">Waiting for pump</string>

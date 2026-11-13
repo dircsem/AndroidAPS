@@ -1,21 +1,29 @@
 package app.aaps.pump.medtronic
 
 import kotlinx.coroutines.runBlocking
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.db.PersistenceLayer
 import dagger.android.support.DaggerFragment
+import app.aaps.pump.common.hw.medlink.MedLinkConst
 import app.aaps.pump.common.hw.medlink.MedLinkUtil
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
@@ -110,6 +118,72 @@ class MedLinkMedtronicFragment : DaggerFragment() {
     lateinit var aapsSchedulers: AapsSchedulers
 
     private var disposable: CompositeDisposable = CompositeDisposable()
+
+    // Ask only once each time this tab is created. If the user says no, the dialog closes
+    // and onResume runs again; without this flag we would ask again and again.
+    private var bluetoothPermissionAsked = false
+
+    private val bluetoothPermissions = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+
+    private val bluetoothPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.all { it }) {
+            aapsLogger.info(LTag.PUMP, "Bluetooth permissions granted, reconnect MedLink")
+            reconnectMedLink()
+        } else {
+            aapsLogger.warn(LTag.PUMP, "Bluetooth permissions denied, MedLink can't connect")
+            showBluetoothPermissionDeniedDialog()
+        }
+    }
+
+    // True while the user is in the Android app settings screen that we opened
+    private var waitingForAppSettings = false
+
+    private fun hasBluetoothPermissions(context: Context): Boolean =
+        bluetoothPermissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+
+    // Same broadcast the MedLink BLE config screen sends: reconnect to the saved MedLink
+    private fun reconnectMedLink() {
+        context?.let { medLinkUtil.sendBroadcastMessage(MedLinkConst.Intents.MedLinkNewAddressSet, it) }
+    }
+
+    // Also shown when Android does not show its own dialog any more (after the user said no twice)
+    private fun showBluetoothPermissionDeniedDialog() {
+        val activity = activity ?: return
+        OKDialog.showConfirmation(
+            activity,
+            rh.gs(R.string.medtronic_warning),
+            rh.gs(R.string.medlink_bluetooth_permission_denied),
+            Runnable { openAppSettings() },
+            Runnable { }
+        )
+    }
+
+    private fun openAppSettings() {
+        val context = context ?: return
+        waitingForAppSettings = true
+        startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        )
+    }
+
+    private fun requestBluetoothPermissionsIfMissing() {
+        val context = context ?: return
+        if (waitingForAppSettings) {
+            // Back from the app settings screen
+            waitingForAppSettings = false
+            if (hasBluetoothPermissions(context)) {
+                aapsLogger.info(LTag.PUMP, "Bluetooth permissions granted in app settings, reconnect MedLink")
+                reconnectMedLink()
+            }
+            return
+        }
+        if (bluetoothPermissionAsked) return
+        val missing = bluetoothPermissions.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) return
+        bluetoothPermissionAsked = true
+        aapsLogger.info(LTag.PUMP, "Asking for missing Bluetooth permissions: $missing")
+        bluetoothPermissionLauncher.launch(missing.toTypedArray())
+    }
 
     private val handler =
         Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
@@ -219,6 +293,7 @@ class MedLinkMedtronicFragment : DaggerFragment() {
             .subscribe({ updateGUI() }, fabricPrivacy::logException)
 
         updateGUI()
+        requestBluetoothPermissionsIfMissing()
     }
 
     @Synchronized

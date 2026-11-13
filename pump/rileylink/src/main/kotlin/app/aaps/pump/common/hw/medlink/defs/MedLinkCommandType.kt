@@ -1,40 +1,52 @@
 package app.aaps.pump.common.hw.medlink.defs
 
+import androidx.annotation.StringRes
+import app.aaps.pump.common.hw.rileylink.R
 import java.nio.charset.StandardCharsets
 import java.util.*
 
 /**
  * Created by dirceu on 17/09/2020.
  */
-enum class MedLinkCommandType constructor(command: String, val needActivePump: Boolean = false, val listCommand: Boolean = false, val actionCommand: Boolean = false) {
+/**
+ * @param descriptionRes short text shown on the main screen (pump activity dialog) while the MedLink runs this
+ * command; 0 = internal step, not shown
+ */
+enum class MedLinkCommandType constructor(
+    command: String,
+    val needActivePump: Boolean = false,
+    val listCommand: Boolean = false,
+    val actionCommand: Boolean = false,
+    @StringRes val descriptionRes: Int = 0,
+) {
 
     NoCommand(""),
     ReadCharacteristic("\"ReadCharacteristic\"", listCommand = true),
     Notification("SetNotificationBlocking", listCommand = true),
     PumpModel("OK+CONN", listCommand = true),
-    Connect("OK+CONN", listCommand = true),
-    GetState("S", listCommand = true),  //
-    StopStartPump("A"),
-    Bolus("X", true),
+    Connect("OK+CONN", listCommand = true, descriptionRes = R.string.medlink_cmd_connect),
+    GetState("S", listCommand = true, descriptionRes = R.string.medlink_cmd_get_state),  //
+    StopStartPump("A", descriptionRes = R.string.medlink_cmd_stop_start_pump),
+    Bolus("X", true, descriptionRes = R.string.medlink_cmd_bolus),
     BolusAmount("BOLUS", true),
-    StartPump("START",true, actionCommand = true),
-    StopPump("STOP",true, actionCommand = true),
-    IsigHistory("I", listCommand = true),
-    PreviousIsigHistory("J", listCommand = true),
-    BGHistory("C", listCommand = true),
-    PreviousBGHistory("T", listCommand = true),
-    BolusHistory("H"),
-    ActiveBasalProfile("E", listCommand = true),
-    BaseProfile("F", listCommand = true),
-    Calibrate("K", true,  actionCommand = true),
+    StartPump("START",true, actionCommand = true, descriptionRes = R.string.medlink_cmd_start_pump),
+    StopPump("STOP",true, actionCommand = true, descriptionRes = R.string.medlink_cmd_stop_pump),
+    IsigHistory("I", listCommand = true, descriptionRes = R.string.medlink_cmd_isig_history),
+    PreviousIsigHistory("J", listCommand = true, descriptionRes = R.string.medlink_cmd_isig_history),
+    BGHistory("C", listCommand = true, descriptionRes = R.string.medlink_cmd_bg_history),
+    PreviousBGHistory("T", listCommand = true, descriptionRes = R.string.medlink_cmd_bg_history),
+    BolusHistory("H", descriptionRes = R.string.medlink_cmd_bolus_history),
+    ActiveBasalProfile("E", listCommand = true, descriptionRes = R.string.medlink_cmd_active_basal_profile),
+    BaseProfile("F", listCommand = true, descriptionRes = R.string.medlink_cmd_basal_profile),
+    Calibrate("K", true,  actionCommand = true, descriptionRes = R.string.medlink_cmd_calibrate),
     CalibrateFrequency("U"),
     CalibrateFrequencyArgument(""),
     CalibrateValue("CAL", true),
-    BolusStatus("M"),
-    WakeUp("M"),
-    SMBBolus("X", true),
-    TBRBolus("X", true),
-    PreviousBolusHistory("G", listCommand = true),
+    BolusStatus("M", descriptionRes = R.string.medlink_cmd_bolus_status),
+    WakeUp("M", descriptionRes = R.string.medlink_cmd_wake_up),
+    SMBBolus("X", true, descriptionRes = R.string.medlink_cmd_smb_bolus),
+    TBRBolus("X", true, descriptionRes = R.string.medlink_cmd_tbr_bolus),
+    PreviousBolusHistory("G", listCommand = true, descriptionRes = R.string.medlink_cmd_bolus_history),
     RemoveStopCommand("");
 
     val code: String

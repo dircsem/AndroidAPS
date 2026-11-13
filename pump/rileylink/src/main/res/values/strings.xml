@@ -150,6 +150,23 @@
     <string name="medlink_handle_sensor_change_event">Automatically handle sensor change event</string>
     <string name="medlink_key_force_bolus_history_read">Force bolus history read after each bolus event</string>
     <string name="pref_medlink_battery_info">Which battery info should be displayed at the main AAPS page</string>
+    <string name="medlink_status_command" comment="Pump activity dialog on the main screen, two lines. %1$s=connection status, example: Connected. %2$s=MedLink command code, example: M. %3$s=what the command does, example: Read bolus status">%1$s\n%2$s - %3$s</string>
+    <string name="medlink_cmd_connect">Connect</string>
+    <string name="medlink_cmd_get_state">Read pump status</string>
+    <string name="medlink_cmd_stop_start_pump">Stop or start pump</string>
+    <string name="medlink_cmd_bolus">Bolus</string>
+    <string name="medlink_cmd_start_pump">Start pump</string>
+    <string name="medlink_cmd_stop_pump">Stop pump</string>
+    <string name="medlink_cmd_isig_history">Read sensor ISIG history</string>
+    <string name="medlink_cmd_bg_history">Read glucose history</string>
+    <string name="medlink_cmd_bolus_history">Read bolus history</string>
+    <string name="medlink_cmd_active_basal_profile">Read active basal profile</string>
+    <string name="medlink_cmd_basal_profile">Read basal profile</string>
+    <string name="medlink_cmd_calibrate">Calibrate sensor</string>
+    <string name="medlink_cmd_bolus_status">Read bolus status</string>
+    <string name="medlink_cmd_wake_up">Wake up pump</string>
+    <string name="medlink_cmd_smb_bolus">SMB</string>
+    <string name="medlink_cmd_tbr_bolus">Temp basal bolus</string>
 
 
 </resources>

@@ -68,6 +68,13 @@ class MedLinkBolusRequest(
         internal set
     var sentAt: Long = 0L
         internal set
+
+    /**
+     * When the pump was first seen delivering this bolus (0 = not yet). The MedLink needs some time after [sentAt]
+     * to give the bolus to the pump, so the progress estimate counts from here, not from [sentAt].
+     */
+    var deliveringSince: Long = 0L
+        internal set
     var baseline: MedLinkBolusStatusSnapshot? = null
         internal set
 
@@ -152,7 +159,7 @@ class MedLinkBolusTracker(
         const val UNKNOWN_RETRY_MS = 30_000L
 
         /** A manual bolus is followed with `M` this often while delivering (progress dialog); loop boluses only at the expected end. */
-        const val PROGRESS_READ_MS = 15_000L
+        const val PROGRESS_READ_MS = 5_000L
 
         /** Below this a bolus may be over before "bolus verification": its own pump time shows in the bolus answer. */
         const val SMALL_BOLUS = 0.3
@@ -610,6 +617,7 @@ class MedLinkBolusTracker(
     private fun transition(r: MedLinkBolusRequest, to: MedLinkBolusState): MedLinkBolusAction? {
         if (allowed[r.state]?.contains(to) != true) return illegal(r, to)
         log("BOLUS[${r.id}] state ${r.state}->$to requested=${r.requested} delivered=${r.appliedTotal} attempt=${r.attempts}")
+        if (to == MedLinkBolusState.DELIVERING && r.state != MedLinkBolusState.DELIVERING) r.deliveringSince = clock.now()
         r.state = to
         if (to != MedLinkBolusState.UNRESOLVED) r.resendAllowed = false
         return null

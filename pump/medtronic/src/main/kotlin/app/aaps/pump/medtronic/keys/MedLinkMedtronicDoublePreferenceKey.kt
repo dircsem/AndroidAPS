@@ -23,5 +23,5 @@ enum class MedLinkMedtronicDoublePreferenceKey(
 ) : DoublePreferenceKey {
 
     /** 4x: the minimum basal after a bolus applies when the last 5 min delta (mg/dL) is above this. */
-    MinBasalAfterBolusDelta("medlink_min_basal_after_bolus_delta", 0.0, -20.0, 50.0, titleResId = R.string.medlink_min_basal_after_bolus_delta, summaryResId = R.string.medlink_min_basal_after_bolus_delta_summary),
+    MinBasalAfterBolusDelta("medlink_min_basal_after_bolus_delta", 0.0, -20.0, 50.0, dependency = MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled, titleResId = R.string.medlink_min_basal_after_bolus_delta, summaryResId = R.string.medlink_min_basal_after_bolus_delta_summary),
 }

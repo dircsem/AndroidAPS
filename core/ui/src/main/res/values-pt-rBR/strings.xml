@@ -41,6 +41,8 @@
     <string name="extended_bolus">Bólus estendido</string>
     <string name="paused">Pausado</string>
     <string name="tdd_total">DDT Total</string>
+    <string name="tdd_total_short">Total</string>
+    <string name="tdd_pump_short">Bmb</string>
     <string name="goingtodeliver">Iniciando aplicação de %1$.2f U</string>
     <string name="androidaps_start">AAPS iniciado</string>
     <string name="formatsignedinsulinunits">%1$+.2f U</string>
