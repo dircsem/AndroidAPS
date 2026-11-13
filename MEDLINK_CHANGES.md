@@ -671,6 +671,26 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
 
 **Testes:** app compila e gera APK (`-PnoCoverage`). rileylink 516/516, medtronic 189/189, implementation 764/779: as 15 falhas (`KeepAliveWorkerTest`, `LastBgDataImplTest`) falham igual no `dev_OAPSAIMI` sem MedLink (conferido em checkout limpo); o `HardLimitsImplTest` antigo agora passa.
 
+## 4ak. Primeira operação da TBR nunca acontecia (2026-11-13) — NÃO TESTADO EM CAMPO
+
+- **Problema (log 15:36):** a TBR > 100 % da MedLink não é gravada no banco, então o loop não vê TBR rodando e manda a
+  mesma TBR a cada 5 min. Cada nova TBR monta um plano novo; com um bolus só, ele fica no meio da TBR (agora + 15 min).
+  Resultado: o bolus andava 5 min para frente a cada execução e nunca saía (1,35 U/h sobre 1,2 ficou sem nenhum bolus).
+  Não gravamos a TBR no banco (fork: risco no merge do banco upstream).
+- **Regra nova (`MedLinkTbrPlanCarry`, aplicada em `scheduleTempBasalBolus` e `scheduleSuspension`):**
+  - Mesma direção (bolus → plano > 100 %, suspensão → plano < 100 %): a primeira operação do plano novo fica com o
+    horário mais cedo entre a pendente do plano antigo e a nova. A suspensão anda junto com o REACTIVATE (mesmo tempo
+    suspenso). O resto do plano fica como calculado. Mudou a direção: a operação antiga é descartada.
+  - Espaçamento do bolus de TBR: o primeiro bolus não sai antes de `último bolus TBR + dose / taxa extra` (0,15 U/h →
+    0,1 U a cada 40 min). Os próximos andam o mesmo tempo; bolus depois do fim da TBR sai do plano. Sem isso, um plano
+    novo a cada 5 min dava bolus demais.
+  - Último bolus TBR: o mais novo do banco ou o do plano antigo que está sendo enviado.
+  - Log: `TBR plan: BOLUS moved from ... to ...` / `... dropped ...`.
+- `LoopPlugin`: o log "SMB already queued before the TBR (MedLink)" só aparece com SMB pedido (antes aparecia sempre).
+- Limite conhecido: quando o espaçamento tira o único bolus do plano, o plano fica vazio até a próxima TBR (a tela
+  pode mostrar sem TBR por alguns minutos).
+- Testes: `MedLinkTbrPlanCarryTest` (13), todos os testes medtronic passam. `:plugins:aps` compila.
+
 ## 5. Correções de infraestrutura (necessárias para rodar os testes)
 
 - `shared/tests/.../TestPumpPlugin.kt`: removido o parâmetro `ConcentrationHelper`, que não existe neste fork. Sem isso nenhum teste compilava.

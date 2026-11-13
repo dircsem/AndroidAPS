@@ -160,6 +160,7 @@ import app.aaps.pump.medtronic.keys.MedLinkMedtronicIntPreferenceKey
 import app.aaps.pump.medtronic.keys.MedLinkMedtronicDoublePreferenceKey
 import app.aaps.pump.medtronic.data.MedLinkPostBolusMinBasal
 import app.aaps.pump.medtronic.data.MedLinkSuspendStartRule
+import app.aaps.pump.medtronic.data.MedLinkTbrPlanCarry
 import app.aaps.pump.medtronic.keys.MedtronicLongNonKey
 import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
 import app.aaps.pump.medtronic.service.MedLinkMedtronicService
@@ -1868,6 +1869,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         enforceNew: Boolean, callback: Function1<PumpEnactResult, *>,
     ) {
         val absoluteRate = postBolusMinBasal(requestedRate, profile)
+        // kept before the old plan is cleared: a new TBR must not move the first operation later
+        val previousFirst = tempBasalMicrobolusOperations.operations.peekFirst()
         val result: PumpEnactResult
         medLinkPumpStatus.tempBasalAmount = absoluteRate
         val forceStop = System.currentTimeMillis() - lastSMBBolus < 80000
@@ -1916,7 +1919,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 val result = scheduleSuspension(
                     0, durationInMinutes, profile, callback,
                     absoluteRate,
-                    PumpTempBasalType.Absolute
+                    PumpTempBasalType.Absolute,
+                    previousFirst
                 ) ?: buildPumpEnactResult().success(true).enacted(false) // 4ae: was !!, null before the first start
                 if(tempBasalMicrobolusOperations.operations.isEmpty()){
                     clearTempBasal()
@@ -1938,7 +1942,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 clearTempBasal()
                 scheduleTempBasalBolus(
                     0, durationInMinutes, profile, callback,
-                    absoluteRate, PumpTempBasalType.Absolute
+                    absoluteRate, PumpTempBasalType.Absolute,
+                    previousFirst
                 )
             }
             //        result.success = false;
@@ -2247,6 +2252,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         callback: Function1<*, *>,
         absoluteBasalValue: Double,
         pumpTempBasalType: PumpTempBasalType,
+        previousFirst: TempBasalMicroBolusPair?,
     ): PumpEnactResult? {
         this.durationInMinutes = durationInMinutes
         var totalSuspendedMinutes = 0
@@ -2280,8 +2286,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             //            }
 
             //TODO need to reavaluate some cases, used floor here to avoid two possible up rounds
-            val operations = buildSuspensionScheduler(
-                totalSuspendedMinutes, durationInMinutes, callback
+            val operations = applyPlanCarry(
+                buildSuspensionScheduler(totalSuspendedMinutes, durationInMinutes, callback),
+                previousFirst, durationInMinutes
             )
             // 4x: the plan starts active when its first suspension is later (see MedLinkSuspendStartRule)
             val startActive = operations.firstOrNull()?.let {
@@ -2752,6 +2759,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         callback: Function1<*, *>,
         absoluteBasalValue: Double,
         basalType: PumpTempBasalType,
+        previousFirst: TempBasalMicroBolusPair?,
     ): PumpEnactResult {
         val currentTime = currentTime
         val currentTas = currentTime.millisOfDay / 1000
@@ -2761,10 +2769,62 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             percent,
             basalProfilesFromTemp, durationInMinutes, callback, absoluteBasalValue, basalType
         )
+        tempBasalMicrobolusOperations.operations =
+            applyPlanCarry(tempBasalMicrobolusOperations.operations, previousFirst, durationInMinutes)
         refreshAnyStatusThatNeedsToBeRefreshed()
         return buildPumpEnactResult().enacted(true).success(true)
             .comment(rh.gs(R.string.medtronic_cmd_desc_set_tbr))
     }
+
+    /**
+     * Applies [MedLinkTbrPlanCarry] to a new plan: the first operation is not moved later by a new TBR in the
+     * same direction, and TBR boluses keep the spacing of the TBR rate after the last TBR bolus.
+     * @param previousFirst first operation of the old plan (before it was cleared)
+     * @return the plan with the new release times, without the dropped boluses
+     */
+    private fun applyPlanCarry(
+        operations: LinkedBlockingDeque<TempBasalMicroBolusPair>,
+        previousFirst: TempBasalMicroBolusPair?,
+        durationInMinutes: Int
+    ): LinkedBlockingDeque<TempBasalMicroBolusPair> {
+        if (operations.isEmpty()) return operations
+        val ops = operations.toList()
+        val now = System.currentTimeMillis()
+        val pending = previousFirst?.takeIf { !it.isCommandIssued }
+        val lastTbrBolus =
+            if (ops.first().operationType == TempBasalMicroBolusPair.OperationType.BOLUS) lastTbrBolus(previousFirst, now) else null
+        val times = MedLinkTbrPlanCarry.releaseTimes(
+            ops.map { it.toCarryOp() }, pending?.toCarryOp(), lastTbrBolus, durationInMinutes, pumpType.bolusSize(), now
+        )
+        val result = LinkedBlockingDeque<TempBasalMicroBolusPair>()
+        ops.forEachIndexed { index, op ->
+            val at = times[index]
+            if (at == null) {
+                aapsLogger.info(LTag.PUMP, "TBR plan: ${op.toStringView()} dropped (after the end of the TBR, spacing after the last TBR bolus)")
+            } else {
+                if (at != op.releaseTime.toDate().time) {
+                    val from = op.releaseTime.toString("HH:mm:ss")
+                    op.releaseTime = LocalDateTime(at)
+                    aapsLogger.info(LTag.PUMP, "TBR plan: ${op.operationType} moved from $from to ${op.releaseTime.toString("HH:mm:ss")}")
+                }
+                result.add(op)
+            }
+        }
+        return result
+    }
+
+    /** Last TBR bolus: the newest one in the database, or the one of the old plan that is being sent now. */
+    private fun lastTbrBolus(previousFirst: TempBasalMicroBolusPair?, now: Long): MedLinkTbrPlanCarry.LastBolus? {
+        val saved = runBlocking { persistenceLayer.getNewestBolusOfType(BS.Type.TBR) }
+            ?.let { MedLinkTbrPlanCarry.LastBolus(it.timestamp, it.amount) }
+        val sending = previousFirst
+            ?.takeIf { it.isCommandIssued && it.operationType == TempBasalMicroBolusPair.OperationType.BOLUS }
+            ?.let { MedLinkTbrPlanCarry.LastBolus(now, it.dose) }
+        return listOfNotNull(saved, sending).maxByOrNull { it.at }
+    }
+
+    private fun TempBasalMicroBolusPair.toCarryOp() =
+        MedLinkTbrPlanCarry.Op(operationType, releaseTime.toDate().time, dose, calculatedDose)
 
     private fun extractTempProfiles(
         profile: Profile,
@@ -2851,6 +2911,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val raised = postBolusMinBasal(base * requestedPercent / 100.0, profile)
             maxOf(requestedPercent, kotlin.math.round(raised / base * 100.0).toInt())
         } else requestedPercent
+        // kept before the old plan is cleared: a new TBR must not move the first operation later
+        val previousFirst = tempBasalMicrobolusOperations.operations.peekFirst()
         if (temporaryBasal != null) {
 
             aapsLogger.info(LTag.PUMPBTCOMM, temporaryBasal.toString())
@@ -2877,14 +2939,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             percent < 100 -> {
                 scheduleSuspension(
                     percent, durationInMinutes, profile, func, 0.0,
-                    PumpTempBasalType.Percent
+                    PumpTempBasalType.Percent, previousFirst
                 )!!
             }
 
             else -> {
                 scheduleTempBasalBolus(
                     percent, durationInMinutes, profile, func,
-                    0.0, PumpTempBasalType.Percent
+                    0.0, PumpTempBasalType.Percent, previousFirst
                 )
             }
         }

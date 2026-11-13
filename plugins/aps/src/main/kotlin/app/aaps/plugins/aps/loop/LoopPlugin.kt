@@ -893,7 +893,10 @@ class LoopPlugin @Inject constructor(
                             resultAfterConstraints.deliverAt = lastRun.lastTBREnact
                             rxBus.send(EventLoopUpdateGui())
                             if (smbBeforeTbrOnly) {
-                                aapsLogger.debug(LTag.APS, "SMB already queued before the TBR (MedLink)")
+                                aapsLogger.debug(
+                                    LTag.APS,
+                                    if (resultAfterConstraints.isBolusRequested) "SMB already queued before the TBR (MedLink)" else "No SMB requested"
+                                )
                                 scheduleBuildAndStoreDeviceStatus("applyTBRRequest")
                             } else if (resultAfterConstraints.isBolusRequested) {
                                 val smbResult = applySMBRequest(resultAfterConstraints)
