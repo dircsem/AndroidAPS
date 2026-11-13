@@ -6,6 +6,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
 import app.aaps.core.interfaces.R
+import app.aaps.core.interfaces.navigation.ElementType
 
 /**
  * Interface to use activities located in different modules
@@ -187,4 +188,10 @@ interface UiInteraction {
 
     /** Brings [mainActivity] to front and requests navigation to the given route (see Compose host extras). */
     fun openComposeMainAtRoute(context: Context, navRoute: String)
+
+    /**
+     * MedLink fork: brings the main activity to front and opens [elementType] with its protection check (password),
+     * like the menu does. Used by the dashboard status boxes (sensor, battery, site...). Keep this when merging upstream.
+     */
+    fun openComposeMainAtElement(context: Context, elementType: ElementType)
 }

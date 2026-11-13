@@ -392,9 +392,11 @@
     <string name="dashboard_pump_pill_reservoir">Res. %1$s</string>
     <string name="dashboard_pump_pill_battery">Batt. %1$s</string>
     <string name="dashboard_pump_pill_site">Site %1$s</string>
+    <string name="dashboard_pump_pill_medlink_battery" comment="Short badge on the dashboard. %1$s=MedLink device battery, example: 80%">MedLink %1$s</string>
     <string name="dashboard_pump_pill_reservoir_a11y">Reservoir %1$s</string>
     <string name="dashboard_pump_pill_battery_a11y">Pump battery %1$s</string>
     <string name="dashboard_pump_pill_site_a11y">Infusion site age %1$s</string>
+    <string name="dashboard_pump_pill_medlink_battery_a11y" comment="%1$s=MedLink device battery, example: 80%">MedLink battery %1$s</string>
     <string name="dashboard_pump_pill_sensor">Sens. %1$s</string>
     <string name="dashboard_pump_pill_sensor_a11y">Sensor age %1$s</string>
     <string name="dashboard_hero_sensor_badge_short">CGM %1$s</string>

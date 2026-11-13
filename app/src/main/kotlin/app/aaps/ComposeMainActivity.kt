@@ -204,6 +204,9 @@ class ComposeMainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_NAVIGATE_ROUTE = "extra_navigate_route"
+
+        /** MedLink fork: [ElementType] name to open with its protection check (dashboard status boxes). */
+        const val EXTRA_NAVIGATE_ELEMENT = "extra_navigate_element"
     }
 
     @Inject lateinit var rxBus: RxBus
@@ -343,6 +346,7 @@ class ComposeMainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        navController?.let { openElementFromIntent(intent, it) }
         val route = intent.getStringExtra(EXTRA_NAVIGATE_ROUTE) ?: return
         intent.removeExtra(EXTRA_NAVIGATE_ROUTE)
         navController?.navigate(route) {
@@ -372,6 +376,7 @@ class ComposeMainActivity : AppCompatActivity() {
 
         val composeActivity = LocalContext.current as ComposeMainActivity
         LaunchedEffect(navController) {
+            composeActivity.openElementFromIntent(composeActivity.intent, navController)
             val route = composeActivity.intent.getStringExtra(EXTRA_NAVIGATE_ROUTE) ?: return@LaunchedEffect
             composeActivity.intent.removeExtra(EXTRA_NAVIGATE_ROUTE)
             navController.navigate(route) {
@@ -1206,6 +1211,14 @@ class ComposeMainActivity : AppCompatActivity() {
      * For management screens, the granted level determines the screen mode
      * (PLAY for BOLUS, EDIT for PREFERENCES or higher).
      */
+    /** MedLink fork: opens the [EXTRA_NAVIGATE_ELEMENT] of [intent] (once) with its protection check. */
+    private fun openElementFromIntent(intent: Intent, navController: NavController) {
+        val name = intent.getStringExtra(EXTRA_NAVIGATE_ELEMENT) ?: return
+        intent.removeExtra(EXTRA_NAVIGATE_ELEMENT)
+        val elementType = ElementType.entries.firstOrNull { it.name == name } ?: return
+        navigateProtected(elementType, navController)
+    }
+
     private fun navigateProtected(elementType: ElementType, navController: NavController) {
         val minLevel = elementType.protection
         if (minLevel == ProtectionCheck.Protection.NONE) {

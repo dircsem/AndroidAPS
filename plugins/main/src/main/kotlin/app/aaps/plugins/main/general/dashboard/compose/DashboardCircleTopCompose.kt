@@ -4,7 +4,7 @@ import android.widget.FrameLayout
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,16 +46,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.StatusLevel
+import app.aaps.ui.compose.overview.statusLights.StatusUiState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualityTier
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -83,6 +88,8 @@ fun DashboardCircleTopCompose(
     onAuditorHostAttached: (FrameLayout) -> Unit,
     layoutProfile: DashboardHeroLayoutProfile = DashboardHeroLayoutProfile.Default,
     modifier: Modifier = Modifier,
+    /** AAPS status lights: warning / critical level of each pump chip (null: no color). */
+    statusLights: StatusUiState? = null,
 ) {
     val context = LocalContext.current
     val commands = LocalDashboardHeroCommands.current
@@ -404,6 +411,7 @@ fun DashboardCircleTopCompose(
                     }
                     PumpCompactBadgeRow(
                         state = state,
+                        statusLights = statusLights,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 2.dp),
@@ -596,42 +604,119 @@ private fun ExtendedMetricsBlock(state: StatusCardState, modifier: Modifier = Mo
 }
 
 @Composable
-private fun PumpCompactBadgeRow(state: StatusCardState, modifier: Modifier = Modifier) {
+private fun PumpCompactBadgeRow(state: StatusCardState, statusLights: StatusUiState?, modifier: Modifier = Modifier) {
     val dash = stringResource(app.aaps.core.ui.R.string.value_unavailable_short)
     val resV = state.reservoirText?.trim().orEmpty().ifBlank { dash }
     val battV = state.pumpBatteryText?.trim().orEmpty().ifBlank { dash }
     val siteV = state.infusionAgeText?.trim().orEmpty().ifBlank { dash }
-    val scroll = rememberScrollState()
-    Row(
-        modifier = modifier.horizontalScroll(scroll),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    // MedLink only: battery of the MedLink device (null with other pumps: no badge)
+    val medLinkV = state.medLinkBatteryText?.trim()
+    val commands = LocalDashboardHeroCommands.current
+    // Grid of 2 columns: every badge has the same width and the same space around it, so the columns line up.
+    // Line 1: reservoir + pump battery. Line 2: site (+ MedLink battery).
+    val badges = buildList {
+        add(
+            PumpBadgeSpec(
+                text = stringResource(R.string.dashboard_pump_pill_reservoir, resV),
+                contentDescription = stringResource(R.string.dashboard_pump_pill_reservoir_a11y, resV),
+                level = statusLights?.insulinStatus?.levelStatus,
+                element = ElementType.FILL,
+            )
+        )
+        add(
+            PumpBadgeSpec(
+                text = stringResource(R.string.dashboard_pump_pill_battery, battV),
+                contentDescription = stringResource(R.string.dashboard_pump_pill_battery_a11y, battV),
+                // age or level, whichever the pump shows: the worse of the two
+                level = worseLevel(statusLights?.batteryStatus?.ageStatus, statusLights?.batteryStatus?.levelStatus),
+                element = ElementType.BATTERY_CHANGE,
+            )
+        )
+        add(
+            PumpBadgeSpec(
+                text = stringResource(R.string.dashboard_pump_pill_site, siteV),
+                contentDescription = stringResource(R.string.dashboard_pump_pill_site_a11y, siteV),
+                level = statusLights?.cannulaStatus?.ageStatus,
+                element = ElementType.CANNULA_CHANGE,
+            )
+        )
+        if (medLinkV != null) add(
+            PumpBadgeSpec(
+                text = stringResource(R.string.dashboard_pump_pill_medlink_battery, medLinkV),
+                contentDescription = stringResource(R.string.dashboard_pump_pill_medlink_battery_a11y, medLinkV),
+                level = statusLights?.medLinkBatteryStatus?.levelStatus,
+            )
+        )
+    }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(PUMP_BADGE_SPACING),
     ) {
-        HeroPumpBadge(
-            text = stringResource(R.string.dashboard_pump_pill_reservoir, resV),
-            contentDescription = stringResource(R.string.dashboard_pump_pill_reservoir_a11y, resV),
-        )
-        HeroPumpBadge(
-            text = stringResource(R.string.dashboard_pump_pill_battery, battV),
-            contentDescription = stringResource(R.string.dashboard_pump_pill_battery_a11y, battV),
-        )
-        HeroPumpBadge(
-            text = stringResource(R.string.dashboard_pump_pill_site, siteV),
-            contentDescription = stringResource(R.string.dashboard_pump_pill_site_a11y, siteV),
-        )
+        // Same rule as the "Pump unreachable" alarm; this skin had no other place showing it. Full width, on top.
+        if (state.pumpUnreachable) {
+            val unreachable = stringResource(app.aaps.core.ui.R.string.pump_unreachable)
+            HeroPumpBadge(text = unreachable, contentDescription = unreachable, level = StatusLevel.CRITICAL, modifier = Modifier.fillMaxWidth())
+        }
+        badges.chunked(PUMP_BADGE_COLUMNS).forEach { line ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PUMP_BADGE_SPACING),
+            ) {
+                line.forEach { badge ->
+                    HeroPumpBadge(
+                        badge.text, badge.contentDescription, badge.level, Modifier.weight(1f),
+                        onClick = badge.element?.let { element -> { commands.openElement(element) } }
+                    )
+                }
+                // empty cell: keeps the last line's badges as wide as the ones above
+                repeat(PUMP_BADGE_COLUMNS - line.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
     }
 }
 
+private const val PUMP_BADGE_COLUMNS = 2
+private val PUMP_BADGE_SPACING = 6.dp
+
+/** @param element change dialog opened on tap (reservoir: fill, battery: battery change, site: site change); null = no tap */
+private data class PumpBadgeSpec(val text: String, val contentDescription: String, val level: StatusLevel?, val element: ElementType? = null)
+
+private fun worseLevel(a: StatusLevel?, b: StatusLevel?): StatusLevel? = when {
+    a == StatusLevel.CRITICAL || b == StatusLevel.CRITICAL -> StatusLevel.CRITICAL
+    a == StatusLevel.WARNING || b == StatusLevel.WARNING   -> StatusLevel.WARNING
+    else                                                     -> a ?: b
+}
+
+/**
+ * @param level warning / critical colors the background (same levels as the AAPS status lights)
+ * @param onClick opens the change dialog of this box; null = not clickable
+ */
 @Composable
-private fun HeroPumpBadge(text: String, contentDescription: String) {
+private fun HeroPumpBadge(
+    text: String,
+    contentDescription: String,
+    level: StatusLevel? = null,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val background = when (level) {
+        StatusLevel.WARNING  -> AapsTheme.generalColors.statusWarning.copy(alpha = 0.45f)
+        StatusLevel.CRITICAL -> AapsTheme.generalColors.statusCritical.copy(alpha = 0.45f)
+        else                 -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+    }
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
-        modifier = Modifier.semantics { this.contentDescription = contentDescription },
+        color = background,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .semantics { this.contentDescription = contentDescription },
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -768,8 +853,9 @@ internal fun HeroCgmCompactBadge(
             colorResource(R.color.dashboard_chip_border_warning)
         else -> MaterialTheme.colorScheme.onSecondaryContainer
     }
-    Surface(
-        onClick = {
+    val commands = LocalDashboardHeroCommands.current
+    // Tap: sensor change dialog. Long press: the CGM / smoothing info (was the tap before).
+    val showInfo = {
             val parts = buildList {
                 add(readingLine)
                 if (sensorAge.isNotEmpty()) {
@@ -784,13 +870,19 @@ internal fun HeroCgmCompactBadge(
                 dialogTitle,
                 parts.joinToString("\n\n"),
             )
-        },
+    }
+    Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
         border = smoothingBorder,
         modifier = Modifier
             .heightIn(max = if (compact) 28.dp else 30.dp)
             .widthIn(max = if (compact) 88.dp else 118.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = { commands.openElement(ElementType.SENSOR_INSERT) },
+                onLongClick = showInfo,
+            )
             .semantics { contentDescription = badgeLabel },
     ) {
         Text(

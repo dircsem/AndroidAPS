@@ -24,6 +24,7 @@ import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.ChartSmbMarker
 import app.aaps.core.interfaces.overview.graph.ChartTbrSegment
@@ -1451,6 +1452,10 @@ internal class DashboardShellController(
 
             override fun openTreatmentsScreen() =
                 uiInteraction.openComposeMainAtRoute(host.context, "treatments")
+
+            // Status boxes (sensor, battery, site, reservoir): the change dialog, with the same protection as the menu
+            override fun openElement(elementType: ElementType) =
+                uiInteraction.openComposeMainAtElement(host.context, elementType)
 
             // Same inlining rule as above. Defaults match each screen's own AppRoute.createRoute()
             // default (ScreenMode.EDIT), and the no-arg forms of CarbsDialog/WizardDialog.

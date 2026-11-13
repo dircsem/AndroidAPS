@@ -11,6 +11,8 @@ data class StatusUiState(
     val insulinStatus: StatusItem? = null,
     val cannulaStatus: StatusItem? = null,
     val batteryStatus: StatusItem? = null,
+    /** MedLink only: battery of the MedLink device. When set, site and this battery go on a second compact row. */
+    val medLinkBatteryStatus: StatusItem? = null,
     val showFill: Boolean = false,
     val showPumpBatteryChange: Boolean = false,
     val isPatchPump: Boolean = false

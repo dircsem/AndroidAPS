@@ -1,6 +1,7 @@
 package app.aaps.plugins.main.general.dashboard.compose
 
 import androidx.compose.runtime.compositionLocalOf
+import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.plugins.main.general.dashboard.views.CircleTopActionListener
 
 /**
@@ -16,6 +17,9 @@ interface DashboardHeroCommands : CircleTopActionListener {
     fun openBolusWizard()
     fun openQuickWizardManagement()
     fun openTempTargetManagement()
+
+    /** Opens a change dialog (sensor insert, battery change, site change, fill) with its protection check. */
+    fun openElement(elementType: ElementType)
 }
 
 object NoopDashboardHeroCommands : DashboardHeroCommands {
@@ -29,6 +33,7 @@ object NoopDashboardHeroCommands : DashboardHeroCommands {
     override fun onAimiPulseClicked() {}
     override fun openStatsScreen() {}
     override fun openTreatmentsScreen() {}
+    override fun openElement(elementType: ElementType) {}
     override fun openCarbsEntry() {}
     override fun openBolusWizard() {}
     override fun openQuickWizardManagement() {}

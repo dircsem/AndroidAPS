@@ -1,5 +1,7 @@
 package app.aaps.plugins.main.general.dashboard
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import android.content.res.Configuration
 import android.view.View
 import android.widget.FrameLayout
@@ -51,7 +53,10 @@ internal fun AimiDashboardComposeEmbedded(
     graphViewModel: GraphViewModel,
     onShellBindingReady: (DashboardShellBinding) -> Unit,
     modifier: Modifier = Modifier,
+    statusViewModel: StatusViewModel? = null,
 ) {
+    // AAPS status lights: warning / critical colors of the pump chips
+    val statusLights = statusViewModel?.uiState?.collectAsStateWithLifecycle()?.value
     // Product decision: Compose dashboard stays on Vico path permanently (no legacy graph fallback).
     val attachLegacyGraphBackendForCompose = false
     var auditorHost by remember { mutableStateOf<FrameLayout?>(null) }
@@ -128,6 +133,7 @@ internal fun AimiDashboardComposeEmbedded(
                         if (auditorHost !== fl) auditorHost = fl
                     },
                     layoutProfile = DashboardHeroLayoutProfile.Default,
+                    statusLights = statusLights,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 DashboardNotificationsComposeList(
@@ -159,6 +165,7 @@ internal fun AimiDashboardComposeEmbedded(
                             if (auditorHost !== fl) auditorHost = fl
                         },
                         layoutProfile = DashboardHeroLayoutProfile.SimpleOneScreen,
+                        statusLights = statusLights,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     DashboardNotificationsComposeList(
@@ -188,6 +195,7 @@ internal fun AimiDashboardComposeEmbedded(
                         if (auditorHost !== fl) auditorHost = fl
                     },
                     layoutProfile = DashboardHeroLayoutProfile.SimpleOneScreen,
+                    statusLights = statusLights,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 DashboardNotificationsComposeList(

@@ -143,6 +143,7 @@ class AimiDashboardComposeRootView @JvmOverloads constructor(
                             viewModel = viewModel,
                             graphViewModel = graphViewModel,
                             onShellBindingReady = onShellBindingReady,
+                            statusViewModel = statusViewModel,
                         )
                     }
                 }

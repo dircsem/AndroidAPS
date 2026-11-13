@@ -1,11 +1,14 @@
 package app.aaps.ui.compose.overview.statusLights
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -23,6 +26,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.IntPreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.R
+import app.aaps.ui.R as UiR
 import app.aaps.core.ui.compose.StatusLevel
 import app.aaps.core.ui.compose.icons.IcCannulaChange
 import app.aaps.core.ui.compose.icons.IcCgmInsert
@@ -202,6 +206,7 @@ class StatusViewModel @Inject constructor(
                         )
                     } ?: cannulaStatus,
                     batteryStatus = batteryStatus,
+                    medLinkBatteryStatus = buildMedLinkBatteryStatus(),
                     showFill = pumpDescription.isRefillingCapable && isInitialized,
                     showPumpBatteryChange = pumpDescription.isBatteryReplaceable || pump.isBatteryChangeLoggingEnabled(),
                     isPatchPump = isPatchPump
@@ -350,6 +355,22 @@ class StatusViewModel @Inject constructor(
             compactAge = hasAge, // Overview: pbAge shown only if replaceable/logging
             compactLevel = showLevel && useBatteryLevel, // hidden when no level value (e.g., AAPSCLIENT)
             expandedLevel = showLevel
+        )
+    }
+
+    /** Battery of the MedLink device (not the pump). Null when the pump is not MedLink (or on AAPSCLIENT). */
+    private fun buildMedLinkBatteryStatus(): StatusItem? {
+        if (config.AAPSCLIENT) return null
+        val medLink = activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase ?: return null
+        val level = medLink.medLinkPumpStatus.medLinkBatteryRemaining
+        return StatusItem(
+            label = rh.gs(UiR.string.medlink_battery_label),
+            age = "",
+            level = level?.let { "$it%" } ?: "-",
+            levelStatus = level?.let { getLevelStatus(it.toDouble(), IntKey.OverviewBattWarning, IntKey.OverviewBattCritical) } ?: StatusLevel.UNSPECIFIED,
+            levelPercent = level?.let { 1f - it / 100f } ?: -1f,
+            icon = Icons.Filled.Bluetooth,
+            compactAge = false // no age: only the level
         )
     }
 

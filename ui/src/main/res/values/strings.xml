@@ -363,5 +363,6 @@
 
     <!-- GLASS fixed navigation -->
     <string name="dashboard_glass_nav_profiles">Profiles</string>
+    <string name="medlink_battery_label">MedLink battery</string>
 
 </resources>

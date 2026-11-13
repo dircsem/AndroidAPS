@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.di.ApplicationScope
 import app.aaps.core.ui.compose.ScreenMode
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.notifications.AlarmIntent
 import app.aaps.core.interfaces.notifications.AlarmSoundPlayer
 import app.aaps.core.interfaces.notifications.NotificationManager
@@ -206,6 +207,13 @@ class UiInteractionImpl @Inject constructor(
         context.startActivity(Intent(context, ComposeMainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra(ComposeMainActivity.EXTRA_NAVIGATE_ROUTE, navRoute)
+        })
+    }
+
+    override fun openComposeMainAtElement(context: Context, elementType: ElementType) {
+        context.startActivity(Intent(context, ComposeMainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            putExtra(ComposeMainActivity.EXTRA_NAVIGATE_ELEMENT, elementType.name)
         })
     }
 

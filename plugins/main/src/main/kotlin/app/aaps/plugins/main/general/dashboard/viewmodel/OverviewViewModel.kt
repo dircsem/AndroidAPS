@@ -27,6 +27,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -645,13 +646,14 @@ class OverviewViewModel(
             else null
         
         // 3. Infusion Age (from CarePortal)
-        val infusionAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)?.let { event ->
-            val ageMillis = dateUtil.now() - event.timestamp
+        fun careEventAgeText(timestamp: Long): String {
+            val ageMillis = dateUtil.now() - timestamp
             val hours = (ageMillis / (1000 * 60 * 60)).toInt()
             val days = hours / 24
             val remainingHours = hours % 24
-            if (days > 0) "${days}d ${remainingHours}h" else "${hours}h"
+            return if (days > 0) "${days}d ${remainingHours}h" else "${hours}h"
         }
+        val infusionAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)?.let { careEventAgeText(it.timestamp) }
         
         // 4. Sensor Age
         val sensorAgeText = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SENSOR_CHANGE)?.let { event ->
@@ -698,8 +700,16 @@ class OverviewViewModel(
             } ?: "0%"
         } ?: "0%"
         
-        // 7. Pump Battery
+        // 7. Pump Battery: the level when the pump gives one, else the age of the last battery change
+        // (MedLink with "battery info = age" gives no level)
         val pumpBatteryText = activePlugin.activePump.batteryLevel.value?.let { "$it%" }
+            ?: persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.PUMP_BATTERY_CHANGE)?.let { careEventAgeText(it.timestamp) }
+
+        // 7b. MedLink device battery (MedLink pumps only)
+        val medLinkBatteryText = (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.let { medLink ->
+            medLink.medLinkPumpStatus.medLinkBatteryRemaining?.let { "$it%" }
+                ?: resourceHelper.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        }
 
         // 8. IOB (same formatting as the rest of AAPS — avoids mixing "IE" + locale-decimal vs treatment screens)
         val totalIobForSensorLine = bolusSnap.iob + basalSnap.basaliob
@@ -870,6 +880,7 @@ class OverviewViewModel(
         val stagingWarmupValue = sensorStatus?.stagingWarmupStatus?.value
         val stagingEvidenceValue = sensorStatus?.stagingEvidence?.value
 
+        val pumpDisplay = buildPumpAdjustmentDisplay(dateUtil.now())
         val state = StatusCardState(
             glucoseText = glucoseText,
             glucoseColor = DashboardCoherentGlucose.displayBgColor(
@@ -898,7 +909,8 @@ class OverviewViewModel(
                 T.mins(9).msecs()
             ),
             contentDescription = contentDescription,
-            pumpStatusText = buildPumpAdjustmentDisplay(dateUtil.now()).lineHtml,
+            pumpStatusText = pumpDisplay.lineHtml,
+            pumpUnreachable = pumpDisplay.isUnreachable,
             predictionText = buildPredictionLine(dateUtil.now()),
             unicornImageRes = selectUnicornImage(  // 🦄 Dynamic unicorn image
                 bg = displayMgdl,
@@ -919,6 +931,7 @@ class OverviewViewModel(
             reservoirText = reservoirText,
             infusionAgeText = infusionAgeText,
             pumpBatteryText = pumpBatteryText,
+            medLinkBatteryText = medLinkBatteryText,
             sensorAgeText = sensorAgeText,
             lastSensorValueText = lastSensorValueText,
             activityPctText = activityPctText,
@@ -1224,6 +1237,8 @@ class OverviewViewModel(
         val reservoirPlain: String,
         val sitePlain: String,
         val sensorPlain: String,
+        /** Same rule as the "Pump unreachable" alarm (alarm switch + threshold minutes). */
+        val isUnreachable: Boolean,
     )
 
     private fun htmlSegmentToPlain(html: String): String =
@@ -1274,6 +1289,7 @@ class OverviewViewModel(
             reservoirPlain = htmlSegmentToPlain(statusText),
             sitePlain = htmlSegmentToPlain(siteAge),
             sensorPlain = htmlSegmentToPlain(sensorAge),
+            isUnreachable = isUnreachable,
         )
     }
 
@@ -1572,6 +1588,10 @@ data class StatusCardState(
     val reservoirText: String? = null,
     val infusionAgeText: String? = null,
     val pumpBatteryText: String? = null,
+    /** MedLink only: battery of the MedLink device ("80%"); null with other pumps (badge hidden). */
+    val medLinkBatteryText: String? = null,
+    /** Pump not reached for longer than the "Pump unreachable" alarm threshold: red badge on the dashboard. */
+    val pumpUnreachable: Boolean = false,
     val sensorAgeText: String? = null,
     val lastSensorValueText: String? = null,
     val activityPctText: String? = null,
