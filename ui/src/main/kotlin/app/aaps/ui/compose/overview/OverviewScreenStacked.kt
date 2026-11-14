@@ -154,6 +154,7 @@ fun OverviewScreenStacked(
             insulinStatus = statusState.insulinStatus,
             cannulaStatus = statusState.cannulaStatus,
             batteryStatus = statusState.batteryStatus,
+            medLinkBatteryStatus = statusState.medLinkBatteryStatus,
             showFill = statusState.showFill,
             showPumpBatteryChange = statusState.showPumpBatteryChange,
             commandsAllowed = commandsAllowed,

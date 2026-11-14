@@ -37,6 +37,7 @@ internal fun StatusSectionContent(
     insulinStatus: StatusItem?,
     cannulaStatus: StatusItem?,
     batteryStatus: StatusItem?,
+    medLinkBatteryStatus: StatusItem? = null,
     onSensorInsertClick: (() -> Unit)? = null,
     onFillClick: (() -> Unit)? = null,
     onInsulinChangeClick: (() -> Unit)? = null,
@@ -65,6 +66,11 @@ internal fun StatusSectionContent(
     }
     batteryStatus?.let {
         StatusRow(item = it, actionLabel = addLabel, onActionClick = onBatteryChangeClick)
+    }
+    // MedLink device battery: no action (the MedLink is charged, not changed)
+    medLinkBatteryStatus?.let {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        StatusRow(item = it)
     }
 }
 

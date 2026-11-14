@@ -76,11 +76,16 @@ fun OverviewStatusSection(
     onCopyFromNightscout: () -> Unit,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // MedLink only: battery of the MedLink device; when set, site and this battery are on a second compact row
+    medLinkBatteryStatus: StatusItem? = null
 ) {
-    val items = listOfNotNull(cannulaStatus, insulinStatus, sensorStatus, batteryStatus)
+    val items = listOfNotNull(cannulaStatus, insulinStatus, sensorStatus, batteryStatus, medLinkBatteryStatus)
     if (items.isEmpty()) return
-    val compactItems = items.filter { it.compactAge || (it.compactLevel && it.level != null) }
+    fun List<StatusItem?>.compact() = filterNotNull().filter { it.compactAge || (it.compactLevel && it.level != null) }
+    val compactRows =
+        if (medLinkBatteryStatus != null) listOf(listOf(insulinStatus, sensorStatus, batteryStatus).compact(), listOf(cannulaStatus, medLinkBatteryStatus).compact())
+        else listOf(items.compact())
 
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -130,15 +135,22 @@ fun OverviewStatusSection(
                         modifier = Modifier.clickable { onExpandedChange(false) }
                     )
                 } else {
-                    FlowRow(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { onExpandedChange(true) },
-                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        compactItems.forEach { item ->
-                            CompactStatusItem(item = item)
+                        compactRows.filter { it.isNotEmpty() }.forEach { rowItems ->
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                rowItems.forEach { item ->
+                                    CompactStatusItem(item = item)
+                                }
+                            }
                         }
                     }
                     Icon(
@@ -161,6 +173,7 @@ fun OverviewStatusSection(
                         insulinStatus = insulinStatus,
                         cannulaStatus = cannulaStatus,
                         batteryStatus = batteryStatus,
+                        medLinkBatteryStatus = medLinkBatteryStatus,
                         onSensorInsertClick = if (commandsAllowed) {
                             { onNavigate(NavigationRequest.Element(ElementType.SENSOR_INSERT)) }
                         } else null,

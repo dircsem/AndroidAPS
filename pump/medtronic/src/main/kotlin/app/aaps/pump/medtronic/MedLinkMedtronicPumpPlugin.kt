@@ -390,7 +390,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     // private override var dateUtil: DateUtil? = null
     // AAPS 4.0: pump values are StateFlows; MedLink reads them from its own status (not the RileyLink Medtronic one)
     override val reservoirLevel: StateFlow<PumpInsulin> by lazy { medLinkPumpStatus.reservoirRemainingUnitsFlow.mapState(::PumpInsulin) }
-    override val batteryLevel: StateFlow<Int?> by lazy { medLinkPumpStatus.batteryRemainingFlow }
+    // "Battery info" = age: no level, so the main screen shows the battery age (last battery change) and not a %.
+    // mapState runs the check on every read, so a change of the setting shows at once.
+    override val batteryLevel: StateFlow<Int?> by lazy { medLinkPumpStatus.batteryRemainingFlow.mapState { if (isBatteryAge()) null else it } }
     override val lastBolusAmount: StateFlow<PumpInsulin?> by lazy { medLinkPumpStatus.lastBolusAmountFlow.mapState { it?.let(::PumpInsulin) } }
 
 
