@@ -255,7 +255,10 @@ enum class NotificationId(
     MEDLINK_PUMP_UNREACHABLE(IMPORTANT, PUMP),
 
     /** MedLink (T20): the pump is reached again after the alarm. Info only. Appended last. */
-    MEDLINK_PUMP_CONNECTION_RESTORED(INFO, PUMP);
+    MEDLINK_PUMP_CONNECTION_RESTORED(INFO, PUMP),
+
+    /** MedLink (T21): keep the 0 % basal stored while the pump was not reached? Buttons yes / no. Appended last. */
+    MEDLINK_ZERO_TBR_QUESTION(IMPORTANT, PUMP);
 
     companion object {
 

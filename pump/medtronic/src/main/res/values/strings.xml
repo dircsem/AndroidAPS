@@ -234,4 +234,13 @@
     <string name="medlink_pump_unreachable_message" comment="%1$d=failed connections in a row, example: 4. %2$s=time of the first failure, example: 14:05">The MedLink could not reach the pump %1$d times in a row (since %2$s). Insulin may have stopped. Check the pump: battery, distance, a message on the pump screen.</string>
     <string name="medlink_silence_15_min">Silence 15 min</string>
     <string name="medlink_pump_connection_restored">Pump connection restored</string>
+    <string name="medlink_zero_tbr_question" comment="%1$s=start time, example: 14:05. %2$s=end time, example: 15:30. %3$s=one sentence about the reservoir (see medlink_zero_tbr_hint_*)">The pump was not reached from %1$s to %2$s and its battery is old. AAPS stored a 0 %% basal for this time. %3$s Keep the 0 %% basal?</string>
+    <string name="medlink_zero_tbr_hint_stopped" comment="%1$s=reservoir before with unit, example: 100.00 U. %2$s=reservoir now with unit">The reservoir did not go down (%1$s before, %2$s now): the pump probably stopped.</string>
+    <string name="medlink_zero_tbr_hint_ran" comment="%1$s=reservoir before with unit, %2$s=reservoir now with unit, %3$s=scheduled basal of that time with unit. Example: 1.50 U">The reservoir went down (%1$s before, %2$s now) by about the scheduled basal (%3$s): the pump probably ran.</string>
+    <string name="medlink_zero_tbr_hint_unknown" comment="%1$s=reservoir before with unit or unknown, %2$s=reservoir now with unit or unknown, %3$s=scheduled basal with unit">The reservoir does not show clearly if the pump ran (before: %1$s, now: %2$s, scheduled basal: %3$s).</string>
+    <string name="medlink_value_unknown">unknown</string>
+    <string name="medlink_zero_tbr_keep" comment="Button: the pump stopped, keep the 0 % basal">Yes, keep it</string>
+    <string name="medlink_zero_tbr_remove" comment="Button: the pump ran, remove the 0 % basal">No, remove it</string>
+    <string name="medlink_zero_tbr_remove_failed">The 0 % basal could not be removed. Remove it in the treatments, or answer again.</string>
+    <string name="medlink_zero_tbr_waiting" formatted="false" comment="Loop status reason: no SMB and no TBR above 100 % until the user answers">Waiting for your answer about the 0 % basal</string>
 </resources>

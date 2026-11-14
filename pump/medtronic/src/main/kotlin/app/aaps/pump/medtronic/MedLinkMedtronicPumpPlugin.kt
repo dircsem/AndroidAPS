@@ -7,6 +7,9 @@ import app.aaps.pump.common.hw.medlink.bolus.MedLinkClock
 import app.aaps.pump.common.hw.medlink.connection.MedLinkConnectionAlarmRule
 import kotlinx.coroutines.delay
 import kotlin.coroutines.cancellation.CancellationException
+import app.aaps.core.interfaces.aps.Loop
+import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -322,6 +325,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     @Inject lateinit var profileFunction: dagger.Lazy<ProfileFunction>
     @Inject lateinit var profileRepository: dagger.Lazy<ProfileRepository>
 
+    // T21: run the loop again at once after the user answers about the 0 % basal
+    @Inject lateinit var loop: dagger.Lazy<Loop>
+
     /** 4y: last low battery shown, so a dismissed message is not shown again until the battery changes or recovers. */
     private var lowBatteryShown: MedLinkSuspendBatteryRule.Low? = null
 
@@ -454,7 +460,20 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         absoluteRate: Constraint<Double>,
         profile: Profile
     ): Constraint<Double> {
-        return absoluteRate // TODO("Evaluate")
+        // T21: no TBR above 100 % until the user answers about the 0 % basal
+        if (zeroTbrLimitActive()) absoluteRate.setIfSmaller(profile.getBasal(), rh.gs(R.string.medlink_zero_tbr_waiting), this)
+        return absoluteRate
+    }
+
+    override fun applyBasalPercentConstraints(percentRate: Constraint<Int>, profile: Profile): Constraint<Int> {
+        if (zeroTbrLimitActive()) percentRate.setIfSmaller(100, rh.gs(R.string.medlink_zero_tbr_waiting), this)
+        return percentRate
+    }
+
+    override suspend fun isSMBModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
+        // T21: no SMB until the user answers about the 0 % basal
+        if (zeroTbrLimitActive()) value.set(false, rh.gs(R.string.medlink_zero_tbr_waiting), this)
+        return value
     }
 
     override fun userSuspend(callback: Callback?) {
@@ -4226,11 +4245,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 aapsLogger.error(LTag.PUMP, "MedLink: running mode not read for the connection alarm", e)
                 false
             }
-            val (action, failures) = synchronized(connectionAlarmLock) {
-                (if (reached) connectionAlarmRule.onSuccess() else connectionAlarmRule.onFailure()) to connectionAlarmRule.failureCount
+            val (action, failures, outageStart) = synchronized(connectionAlarmLock) {
+                val a = if (reached) connectionAlarmRule.onSuccess() else connectionAlarmRule.onFailure()
+                Triple(a, connectionAlarmRule.failureCount, connectionAlarmRule.outageStartTime)
             }
             if (!reached) aapsLogger.info(LTag.PUMP, "MedLink: pump not reached, $failures in a row")
             handleConnectionAlarm(action)
+            // T21
+            if (reached) endZeroTbr(dateUtil.now()) else checkZeroTbrStart(outageStart, failures)
         }
     }
 
@@ -4294,6 +4316,142 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         medLinkScope.launch {
             delay(MedLinkConnectionAlarmRule.SILENCE_MS)
             handleConnectionAlarm(synchronized(connectionAlarmLock) { connectionAlarmRule.onTick() })
+        }
+    }
+
+    // ---- T21: 0 % TBR in AAPS when the pump battery is old (red) and the pump is not reached ----
+
+    /**
+     * True from the start of the 0 % record until the user answers: no SMB and no TBR above 100 % (TBR up to 100 % and
+     * suspends are allowed). With "No" the IOB would be too low, so no extra insulin is planned before the answer.
+     */
+    private fun zeroTbrLimitActive(): Boolean = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrTempId) != 0L
+
+    /** The question was posted in this app session (it is posted again after an app restart). */
+    @Volatile private var zeroTbrQuestionPosted = false
+
+    private suspend fun checkZeroTbrStart(outageStart: Long, failures: Int) {
+        if (outageStart == 0L || zeroTbrLimitActive()) return
+        val lastChange = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.PUMP_BATTERY_CHANGE)
+        val ageHours = lastChange?.let { (dateUtil.now() - it.timestamp) / HOUR_MS }
+        val start = MedLinkZeroTbrRule.shouldStart(
+            batteryInfoIsAge = isBatteryAge(),
+            batteryAgeHours = ageHours,
+            criticalHours = preferences.get(IntKey.OverviewBageCritical),
+            failures = failures,
+            threshold = preferences.get(MedLinkMedtronicIntPreferenceKey.ConnectionAlarmFailures),
+            alreadyStarted = false,
+            alarmEnabled = preferences.get(MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm),
+            disconnectedOnPurpose = pumpDisconnectedOnPurpose
+        )
+        if (!start) return
+        val tempId = generateTempId(outageStart)
+        // only a record in AAPS: the pump cannot be reached. It ends when the pump answers again (endZeroTbr).
+        val stored = pumpSync.addTemporaryBasalWithTempId(
+            outageStart, PumpRate(0.0), ZERO_TBR_MAX_DURATION_MS, true, tempId,
+            PumpSync.TemporaryBasalType.EMULATED_PUMP_SUSPEND, model(), serialNumber()
+        )
+        if (!stored) {
+            aapsLogger.error(LTag.PUMP, "MedLink: the 0 % basal for the pump not reached (battery ${ageHours} h old) could not be stored")
+            return
+        }
+        val reservoir = medLinkPumpStatus.reservoirRemainingUnits
+        preferences.put(MedtronicLongNonKey.MedLinkZeroTbrTempId, tempId)
+        preferences.put(MedtronicLongNonKey.MedLinkZeroTbrStart, outageStart)
+        preferences.put(MedtronicLongNonKey.MedLinkZeroTbrEnd, 0L)
+        preferences.put(MedtronicLongNonKey.MedLinkZeroTbrReservoirBefore, if (reservoir > 0.0) (reservoir * 1000).roundToLong() else -1L)
+        aapsLogger.warn(LTag.PUMP, "MedLink: pump not reached $failures times and battery $ageHours h old: 0 % basal stored from $outageStart (temp id $tempId), reservoir $reservoir U")
+    }
+
+    /** The pump answers again: the 0 % record ends now, and the question waits for the next status (fresh reservoir). */
+    private suspend fun endZeroTbr(now: Long) {
+        val tempId = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrTempId)
+        if (tempId == 0L || preferences.get(MedtronicLongNonKey.MedLinkZeroTbrEnd) != 0L) return
+        val start = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrStart)
+        val ended = pumpSync.syncTemporaryBasalWithTempId(
+            start, PumpRate(0.0), (now - start).coerceAtLeast(0L), true, tempId,
+            PumpSync.TemporaryBasalType.EMULATED_PUMP_SUSPEND, null, model(), serialNumber()
+        )
+        preferences.put(MedtronicLongNonKey.MedLinkZeroTbrEnd, now)
+        zeroTbrQuestionPosted = false
+        aapsLogger.warn(LTag.PUMP, "MedLink: pump reached again, 0 % basal from $start ended at $now (stored=$ended); asking the user")
+    }
+
+    /** Called after each status read: posts the question (again after an app restart) until the user answers. */
+    private fun postZeroTbrQuestionIfWaiting() {
+        val tempId = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrTempId)
+        val end = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrEnd)
+        if (tempId == 0L || end == 0L || zeroTbrQuestionPosted) return
+        zeroTbrQuestionPosted = true
+        medLinkScope.launch {
+            try {
+                val start = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrStart)
+                val scheduled = scheduledBasalUnits(start, end)
+                val before = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrReservoirBefore).takeIf { it >= 0 }?.let { it / 1000.0 }
+                val now = medLinkPumpStatus.reservoirRemainingUnits.takeIf { it > 0.0 }
+                val unknown = rh.gs(R.string.medlink_value_unknown)
+                val units = { v: Double? -> v?.let { rh.gs(app.aaps.core.ui.R.string.format_insulin_units, it) } ?: unknown }
+                val hint = when (MedLinkZeroTbrRule.pumpRan(before, now, scheduled)) {
+                    MedLinkZeroTbrRule.PumpRan.PROBABLY_NO  -> rh.gs(R.string.medlink_zero_tbr_hint_stopped, units(before), units(now))
+                    MedLinkZeroTbrRule.PumpRan.PROBABLY_YES -> rh.gs(R.string.medlink_zero_tbr_hint_ran, units(before), units(now), units(scheduled))
+                    MedLinkZeroTbrRule.PumpRan.UNKNOWN      -> rh.gs(R.string.medlink_zero_tbr_hint_unknown, units(before), units(now), units(scheduled))
+                }
+                postZeroTbrQuestion(rh.gs(R.string.medlink_zero_tbr_question, dateUtil.timeString(start), dateUtil.timeString(end), hint))
+                aapsLogger.info(LTag.PUMP, "MedLink: 0 % basal question posted (reservoir before $before, now $now, scheduled $scheduled U)")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                zeroTbrQuestionPosted = false
+                aapsLogger.error(LTag.PUMP, "MedLink: 0 % basal question not posted", e)
+            }
+        }
+    }
+
+    private fun postZeroTbrQuestion(text: String) {
+        notificationManager.post(
+            NotificationId.MEDLINK_ZERO_TBR_QUESTION, text,
+            actions = listOf(
+                NotificationAction(R.string.medlink_zero_tbr_keep) { answerZeroTbr(keep = true) },
+                NotificationAction(R.string.medlink_zero_tbr_remove) { answerZeroTbr(keep = false) }
+            )
+        )
+    }
+
+    /** Scheduled basal (AAPS profile) of the outage, in U, for the hint of the question. */
+    private suspend fun scheduledBasalUnits(start: Long, end: Long): Double {
+        var units = 0.0
+        var t = start
+        while (t < end) {
+            val profile = profileFunction.get().getProfile(t) ?: return units
+            units += profile.getBasal(t) * minOf(SCHEDULED_BASAL_STEP_MS, end - t) / HOUR_MS.toDouble()
+            t += SCHEDULED_BASAL_STEP_MS
+        }
+        return units
+    }
+
+    /**
+     * "Yes": the pump stopped, the record stays. "No": the pump ran, the record is removed (invalid), so the IOB counts
+     * the scheduled basal again. Then the limit ends and the loop runs again at once with fresh data (no old dose is
+     * applied, user 2026-11-14).
+     */
+    private fun answerZeroTbr(keep: Boolean) {
+        medLinkScope.launch {
+            val tempId = preferences.get(MedtronicLongNonKey.MedLinkZeroTbrTempId)
+            if (tempId == 0L) return@launch
+            if (!keep && !pumpSync.invalidateTemporaryBasalWithTempId(tempId)) {
+                // never end the limit with a wrong (too low) IOB: ask again
+                aapsLogger.error(LTag.PUMP, "MedLink: the 0 % basal (temp id $tempId) could not be removed, the question stays")
+                postZeroTbrQuestion(rh.gs(R.string.medlink_zero_tbr_remove_failed))
+                return@launch
+            }
+            aapsLogger.info(LTag.PUMP, "MedLink: user answered about the 0 % basal: ${if (keep) "keep (pump stopped)" else "removed (pump ran)"}")
+            preferences.put(MedtronicLongNonKey.MedLinkZeroTbrTempId, 0L)
+            preferences.put(MedtronicLongNonKey.MedLinkZeroTbrStart, 0L)
+            preferences.put(MedtronicLongNonKey.MedLinkZeroTbrEnd, 0L)
+            preferences.put(MedtronicLongNonKey.MedLinkZeroTbrReservoirBefore, -1L)
+            zeroTbrQuestionPosted = false
+            notificationManager.dismiss(NotificationId.MEDLINK_ZERO_TBR_QUESTION)
+            loop.get().invoke("MedLink 0 % basal answered", allowNotification = true)
         }
     }
 
@@ -4770,6 +4928,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         handleChangeStatusData()
         handleDailyDoseUpdate()
         handleProfile()
+        postZeroTbrQuestionIfWaiting()
         handleBolusAlarm()
         handleCalibrationData()
         handlePumpStatus()
@@ -5052,6 +5211,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     companion object {
         var isBusy = false
+
+        private const val HOUR_MS = 3_600_000L
+
+        /** T21: the 0 % record is stored with this length and ended at the reconnect. */
+        private const val ZERO_TBR_MAX_DURATION_MS = 24 * HOUR_MS
+        private const val SCHEDULED_BASAL_STEP_MS = 5 * 60_000L
 
         val pumpFreqValues = arrayOf<CharSequence>(
             RileyLinkTargetFrequency.MedtronicUS.key!!,

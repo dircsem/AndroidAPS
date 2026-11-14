@@ -21,4 +21,12 @@ enum class MedtronicLongNonKey(
 
     /** MedLink: hash of the pump profile the user chose to ignore (not asked again until the pump profile changes). */
     MedLinkIgnoredPumpProfile("medlink_ignored_pump_profile_hash", 0L),
+
+    /** MedLink T21: the 0 % TBR stored while the pump was not reached (old battery). 0 = none. Kept over an app restart. */
+    MedLinkZeroTbrTempId("medlink_zero_tbr_temp_id", 0L, exportable = false),
+    MedLinkZeroTbrStart("medlink_zero_tbr_start", 0L, exportable = false),
+    /** 0 while the pump is still not reached; the reconnect time once the question waits for the user. */
+    MedLinkZeroTbrEnd("medlink_zero_tbr_end", 0L, exportable = false),
+    /** Reservoir at the start of the outage, in 0.001 U; -1 = unknown. */
+    MedLinkZeroTbrReservoirBefore("medlink_zero_tbr_reservoir_before", -1L, exportable = false),
 }

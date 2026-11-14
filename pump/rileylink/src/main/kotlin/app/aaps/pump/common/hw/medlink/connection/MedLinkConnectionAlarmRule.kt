@@ -54,6 +54,9 @@ class MedLinkConnectionAlarmRule(
     /** Failed connections in a row (for the log). */
     val failureCount: Int get() = failures
 
+    /** Time of the first failure of this outage (T21); 0 when there is no failure. */
+    val outageStartTime: Long get() = if (failures > 0) outageStart else 0L
+
     fun onFailure(): Action {
         if (failures == 0) outageStart = clock.now()
         failures++
