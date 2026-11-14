@@ -696,6 +696,19 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
     só quando há linhas da bomba. Strings novas em core/ui: `tdd_pump_difference`, `tdd_total_short` (Total), `tdd_pump_short` (Pump / pt-BR Bmb), cabeçalhos curtos. **Arquivos upstream, manter no merge.**
 - Gráfico do dashboard: botões Stats / 6–24h / Treatments em linha própria (`DashboardGraphComposeCard`), a legenda
   Floor/Scenario empurrava o 12h para fora da tela.
+- **Evento "bolus mudou" (tela Tratamentos parada desde a abertura do app):** `InsertBolusWithTempIdTransaction`
+  usava `bolusDao.insert()` (cru), que não entra na lista de mudanças, então nenhum evento era enviado. As outras
+  bombas recebem o evento depois, no `syncBolusWithTempId` (update); a MedLink nunca atualiza a linha
+  (`syncBolusWithTempIdMedLink` chamava o mesmo insert). **Só para a MedLink, só bolus:** transação nova
+  `InsertBolusWithTempIdMedLinkTransaction` (igual à upstream, mas com `insertNewEntry`) →
+  `PersistenceLayer.insertBolusWithTempIdMedLink` → `PumpSyncImplementation.syncBolusWithTempIdMedLink`. Evento
+  enviado: a tela Tratamentos atualiza e o cache de IOB (`IobCobCalculatorPlugin` escuta BS) é invalidado na hora,
+  não só no próximo BG. As transações upstream (`InsertBolusWithTempIdTransaction`,
+  `InsertTemporaryBasalWithTempIdTransaction`) ficam como no upstream: outras bombas sem mudança. TBR não muda
+  (já funcionava). Teste novo em `InsertBolusWithTempIdMedLinkTransactionTest`. Removida a
+  `SyncBolusWithTempIdMedLinkTransaction` (sem uso desde o merge AAPS 4.0; só inseria para Veo).
+  **Manter no merge:** o método novo em `PersistenceLayer` / `PersistenceLayerImpl` e a chamada em `PumpSyncImplementation`.
+  Conhecido e não relacionado: `database:persistence` testes não compilam (`NewEntriesExtensionTest.kt:100`, falta `isig`).
 - **TBR na tela principal, todas as skins:** a caixa TBR mostra a TBR que está rodando (plano da MedLink:
   `MedLinkRunningTempBasal.rate` novo = base da bomba × %), ex. "1.250 U/h (150%)", com 3 casas. Caixa nova
   **"Last 30 min"**: basal entregue nos últimos N min (setting "Main screen TBR: minutes") com %, ex.
@@ -849,3 +862,54 @@ Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFull
 - `M answer lost, reading M again` — sessão encerrada antes da resposta do `M`.
 - Depois do fim de cada SUSPEND de basal temporária, deve haver um `writing <START` perto do horário do REACTIVATE (bug 4c).
 - `START refused: pump still suspended` / `START failed (...), failure N` / `START retry N` — bug 4. Depois do fim de uma basal 0% deve aparecer "pump normal state" (ou o reenvio).
+
+## 4am. Backlog 002: Stop do bolus fecha o diálogo, cores da bateria, mensagem de perfil, Glass (2026-11-14) — NÃO TESTADO EM CAMPO
+
+- **B8, Stop durante o bolus (diálogo preso):** depois do STOP o `M` mostra o nosso bolus novo, fora de andamento,
+  menor que o pedido. O interpretador chamava isso de DELIVERING até o fim esperado da dose **inteira**, então o
+  parcial só era gravado depois desse tempo e o diálogo ficava aberto. `MedLinkBolusTracker`: flag nova
+  `pumpStopped` (a bomba respondeu "suspended" depois da dose escrita); aí um `M` fora de andamento é final → PARTIAL
+  na hora, valor = último bolus da bomba (nunca mais que o pedido). `M` ainda em andamento continua sendo seguido.
+  Diálogo: "Stopping the bolus…" depois do Stop; parcial mostra "Bolus stopped: 0.50 U of 2.00 U delivered" (antes
+  "delivered successfully" com o total); recusa por bateria baixa mostra "Bolus not stopped". Strings novas (só en):
+  `medlink_bolus_stopping`, `medlink_bolus_stopped_partial`. Pendente: a barra vai a 100 % no fim
+  (`completeAndAutoClear`, core).
+- **B5, cor da bateria da bomba (Glass):** o pill usava só a idade. Funções novas compartilhadas
+  (`plugins/main/.../dashboard/StatusBoxLevels.kt`): `worseStatusLevel` (saiu do `worseLevel` privado do circle-top) e
+  `levelOrAgeBox` (nível quando a bomba dá, senão idade; cor = pior dos dois). Glass: `batteryAge`/`batteryAgeStatus`
+  → `batteryValue`/`batteryStatus`.
+- **B9, mensagem depois da troca de perfil:** `CommandQueueImplementation.postMedLinkProfileActive` (arquivo upstream,
+  **manter no merge**): só MedLink, não silenciosa, não enacted → `PROFILE_SET_OK` 60 min "Profile <nome> <%> is
+  active in AAPS" (`implementation` string nova, só en). `enacted` continua false.
+- **T15, títulos do Glass:** textos aprovados (en, pt-BR, ru, pl, até 15 caracteres). Traduções do fork em
+  `plugins/main/src/main/res/values-xx/strings_glass.xml` (fora do Crowdin, que sobrescreveria `strings.xml`); as 10
+  linhas pt-BR do Glass saíram do `strings.xml`. Strings Glass novas para idade de insulina / cânula / sensor e
+  "Basal %1$d min"; campos `insulinLabel`/`cannulaLabel`/`sensorLabel`/`batteryLabel` removidos.
+- **T16, Agora / Próx. no Glass:** texto simples em vez de caixas, linha escondida quando o valor é desconhecido;
+  strings `dashboard_glass_command_now_line` / `_next_line` (com placeholder).
+- **T20, alarme "bomba não alcançada":** regra `MedLinkConnectionAlarmRule` (pump/rileylink, testada).
+  `MedLinkBLE.pumpConnectionListener` ("ready" / "pump no response") → plugin. N falhas seguidas (setting, padrão 4):
+  notificação `MEDLINK_PUMP_UNREACHABLE` com OK / Silence 15 min, alarme AAPS em tela cheia com som (`runAlarm`) e
+  lanterna piscando (`MedLinkTorchBlinker`, no máx. 2 min, sempre apagada no `finally`). Volta a conexão → tudo para e
+  "Pump connection restored". Sem alarme com a bomba desconectada de propósito (`RM.Mode.DISCONNECTED_PUMP`). Settings
+  novas: alarme, nº de falhas, som, lanterna. Não conta ainda "sem resposta ao OK+CONN".
+- **B6, perfil da bomba → AAPS:** `AcceptPumpProfile` ligada por padrão. Comparação só depois de cada leitura do
+  perfil, com o perfil **ativo** e todos os valores; diferente → notificação nova `MEDLINK_PUMP_PROFILE_DIFFERS` com
+  Update AAPS / Not now (+ diálogo com a setting ligada); igual ou aceito → some. A mensagem antiga usava
+  `FAILED_UPDATE_PROFILE`, que a fila apaga depois de cada troca de perfil. Leitura: início, a cada 6 h, basal do `S`
+  diferente, linha desconhecida (`MedLinkProfileReadRule`); nunca durante bolus ou operação de TBR próxima, nunca 2x em
+  10 min. Removidos `MedLinkProfileDiff` (só basal) e suas strings. Leitura também ao abrir a tela Profiles (estrela da barra de baixo): `ProfileManagementViewModel.init` (upstream, **manter no merge**) → `MedLinkPumpPluginBase.onProfilesScreenOpened()`.
+- **B6 (análise de segurança, NÃO corrigido):** os microbolus da TBR > 100 % e as suspensões da TBR < 100 % são
+  calculados com o basal do **perfil do AAPS**, mas a bomba roda o **próprio** basal: com o basal da bomba maior,
+  entrega mais que a TBR pedida.
+- **T14, Glass:** reservatório colorido pelo pior entre idade da insulina e nível do reservatório.
+- **T17, Glass com a menor altura:** `GlassPillLayout.kt` (testado) decide os lugares: até 3 pills por coluna ao lado do
+  anel (esquerda primeiro), depois linhas de 3, na ordem fixa (bomba, CGM / loop, outros, Tools). Agora / Próx. numa
+  linha só: Próx. à esquerda, Agora à direita. Títulos dos pills com no máximo 11 caracteres (en, pt-BR, ru, pl).
+- **T21, TBR 0 % com bateria velha e bomba não alcançada:** `MedLinkZeroTbrRule` (testada). Bateria em modo idade e
+  vermelha + falhas do T20 → TBR 0 % só no AAPS (temp id, desde a 1ª falha), terminada na reconexão. Depois do
+  próximo status, notificação "Keep the 0 % basal?" com dica do reservatório; Sim mantém, Não invalida; depois roda o
+  loop na hora. Até a resposta: sem SMB e sem TBR > 100 % (constraints do plugin, motivo no status do loop). Estado
+  salvo nas preferências (sobrevive a reinício).
+- Testes: rileylink 532/532, medtronic 226/226 (`MedLinkProfileReadRuleTest`, `MedLinkZeroTbrRuleTest` novos, `MedLinkProfileDiffTest` removido),
+  `StatusBoxLevelsTest` 8/8, `CommandQueueImplementationTest` 40/40. `:app:compileFullDebugKotlin` OK.

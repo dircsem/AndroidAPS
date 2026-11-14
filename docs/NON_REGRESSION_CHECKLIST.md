@@ -79,8 +79,16 @@ When this fork includes the native Libre 3 plugin (`:plugins:libre3`, `Libre3Nat
 
 MedLink changes some upstream files. Keep them on every merge (search for `MedLink:` comments; details in `MEDLINK_CHANGES.md`).
 
+- [ ] MedLink bolus change event: `PersistenceLayer.insertBolusWithTempIdMedLink` / `PersistenceLayerImpl` → `InsertBolusWithTempIdMedLinkTransaction` (fork file, `insertNewEntry`), called by `PumpSyncImplementation.syncBolusWithTempIdMedLink`. The upstream `InsertBolusWithTempIdTransaction` / `InsertTemporaryBasalWithTempIdTransaction` stay as upstream (other pumps unchanged).
+- [ ] `CommandQueueImplementation.postMedLinkProfileActive` after the EPS is written in `onProfileChanged` (B9: "Profile … is active in AAPS" with MedLink), string `medlink_profile_active_in_aaps` in `implementation`.
+- [ ] `ProfileManagementViewModel.init` calls `MedLinkPumpPluginBase.onProfilesScreenOpened()` (B6: pump profile read when the Profiles screen opens).
+- [ ] `NotificationId`: the MedLink ids stay **appended last** (`MEDLINK_*`, the system id comes from the enum position): `MEDLINK_PUMP_PROFILE_DIFFERS`, `MEDLINK_PUMP_UNREACHABLE`, `MEDLINK_PUMP_CONNECTION_RESTORED`, `MEDLINK_ZERO_TBR_QUESTION`.
+- [ ] `app/src/main/res/values-pt-rBR/strings_medlink_pt.xml` (T18): pt-BR overrides of upstream Profiles screen strings; delete the lines Crowdin translates.
 - [ ] `LoopPlugin.invoke` "multiple SMBs" check: with MedLink uses `getLastNonTBRBolusTime()` (TBR boluses do not block SMBs).
 - [ ] Statistics TDD table (`StatsViewModel`, `TddStatsCompose`): Pump and Diff columns, strings `tdd_pump_difference`, `tdd_total_short`, `tdd_pump_short` in core/ui; columns only with MedLink (`StatsViewModel` checks the active pump).
+- [ ] Main screen TBR on every skin: `TbrDisplayData.medLinkRunning/medLinkDelivered`, `MedLinkTbrInfo` through the classic overview screens, `TbrChip(text)`, `MedLinkDeliveredChip`; dashboard/Glass "Last 30 min" box; core/ui strings `pump_basal_rate_3_decimals`, `basal_rate_with_percent`, `medlink_delivered_basal_label`.
+- [ ] `UiInteraction.openComposeMainAtElement` + `ComposeMainActivity.EXTRA_NAVIGATE_ELEMENT` (opens an `ElementType` with `navigateProtected`): used by the New dashboard status boxes (fill, battery, site, sensor change).
+- [ ] MedLink only (other pumps unchanged): profile basal with 3 decimals (`Profile.getBasalList(threeDecimals)`, `ProfileUiState.basalThreeDecimals`), TBR texts with 3 decimals in `OverviewViewModel`, Stats Pump/Diff columns (`StatsViewModel` checks the active pump).
 
 ---
 

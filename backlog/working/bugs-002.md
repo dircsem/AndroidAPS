@@ -1,4 +1,4 @@
-Status: OPEN
+Status: STARTED (2026-11-14, developer)
 
 # Development bugs
 
@@ -48,6 +48,25 @@ Field test: set `OverviewBattWarning` above the current pump battery % (or log a
 date in age mode). On the Glass skin, the pump battery pill must turn yellow, then red with the critical
 value. Test both battery modes. Check that the MedLink battery pill changes color too.
 Related: T14 (check all the other boxes).
+
+### Developer notes (2026-11-14) — done, needs field test
+- **Cause confirmed:** Glass colored the pump battery pill with the age status only, and showed the age only
+  (`GlassOverviewComposeEmbedded.kt:497-498`). In level mode it never turned yellow / red.
+- **Fix:** new plain functions in `plugins/main/.../dashboard/StatusBoxLevels.kt`, used by both skins:
+  `worseStatusLevel(a, b)` (moved from the private `worseLevel` of circle-top) and `levelOrAgeBox(...)` (value =
+  level when the pump gives one, else age; color = the worse of the two). Glass fields renamed
+  `batteryAge` / `batteryAgeStatus` → `batteryValue` / `batteryStatus`.
+- Small change in circle-top too: a known NORMAL level now wins over UNSPECIFIED (no battery change event). Before,
+  "good level + no change event" gave UNSPECIFIED. Both look the same today, but now the rule is clear.
+- Checked: `AimiDashboardComposeEmbedded` gets a non-null `StatusViewModel` from its only caller
+  (`AimiDashboardComposeRootView.kt:84`). `StatusViewModel` refreshes on every `EventPumpStatusChanged` and every 60 s
+  (tick), so a new battery value colors within a minute at most.
+- MedLink: in age mode `batteryLevel` is null (commit `220a2be01d`), so the age shows and colors; in level mode the
+  level shows and the worse of level / age colors. **Not checked (needs the pump):** does the voltage-based % really go
+  below 51 / 26 on a weak battery, and is the plugin's own `batteryAge` the same time as the `PUMP_BATTERY_CHANGE` event.
+- Tests: `StatusBoxLevelsTest` 8/8 (level only, age only, both, none, threshold, no-event case). `:plugins:main` compiles.
+- **User (2026-11-14): "the battery color is ok"** (field). The earlier report was a 75 h battery under the 216 h
+  warning, which correctly stays in the normal color.
 
 ## B6 — Pump profile differs, but the AAPS profile is never updated (only a message)
 Priority: P1 until proven otherwise (see "Safety")
@@ -154,6 +173,51 @@ More tests:
 - the read schedule: init, Profiles screen opened, every 6 h, basal differs; no read while a bolus or a TBR
   operation runs; no second read within a few minutes;
 - a changed IC with the same basal → the user is asked at the next timed read.
+
+### Developer notes (2026-11-14) — done in part, needs field test (user answer: 1a)
+- **Setting:** `AcceptPumpProfile` is now **on by default** (1a).
+- **Compare after each read, with the ACTIVE profile:** `isMedLinkProfileSet` only answers "set" (no compare with the
+  requested profile, so no message before the switch). After each pump profile read, `checkPumpProfile` compares the
+  pump profile with the active AAPS profile with ALL values (`MedLinkPumpProfileDiff`: basal, IC, ISF, targets).
+  - The same → the notification goes away, the log says which AAPS profile is active.
+  - Different → notification `MEDLINK_PUMP_PROFILE_DIFFERS` (new id) "The profile on the pump is different from the
+    AAPS profile: ... Update AAPS with the pump profile?" with **Update AAPS** (opens the confirm dialog with all
+    differences) and **Not now** (keeps AAPS, not asked again until the pump profile changes). With the setting on,
+    the confirm dialog also opens by itself. The notification stays until answered, so the question is not lost.
+  - Accept → new local profile + 100 % profile switch (as before) → the notification goes away; B9 then shows
+    "Profile ... is active in AAPS".
+- **Bug found:** the old message used the id `FAILED_UPDATE_PROFILE`, which `CommandQueueImplementation` dismisses after
+  every good profile write, so it could disappear by itself. The new id is MedLink only.
+- **Read schedule:** new plain rule `MedLinkProfileReadRule` (tested): app start (as before); **every 6 h** (constant,
+  T19 moves it to a setting); basal in `S` differs; unknown status line. Never while a bolus is in flight or a TBR
+  operation is due within 5 min (`isBusyForProfileRead`; tried again at the next status read); never twice within 10 min.
+  The timed read also works when no profile was read yet. The dead check `profile == null` (field never set) is gone
+  from the read path; the field stays because 4 other old places read it.
+- Removed: the basal-only diff (`MedLinkProfileDiff` + its test) and its strings (en, pt-BR, ru, pl), the old message
+  text "change it on the pump too".
+- **Not done:**
+  - ~~the read when the Profiles screen opens~~ — done after the T18 screenshot: `ProfileManagementViewModel.init`
+    (upstream file, marked) → `MedLinkPumpPluginBase.onProfilesScreenOpened()` → `MedLinkProfileReadRule` reason
+    `SCREEN_OPENED` (same busy / 10 min rules);
+  - "the dialog shows again when the app comes to the front": not done; the notification with the buttons stays
+    instead, so the question is not lost. Tell me if you still want the dialog to come back by itself;
+  - the new strings are English only (`CLAUDE.md`); the old message had pt-BR / ru / pl. Tell me if you want them;
+  - the over-delivery fix below (question 2, not answered yet).
+- Tests: `MedLinkProfileReadRuleTest` 7/7; medtronic 212/212. The plugin itself has no unit test harness, so the
+  notification / dialog paths are not unit tested.
+- **Safety answer (from the code): there IS an over-delivery path, so B6 stays P1.**
+  - TBR above 100 %: the microbolus amounts come from the **AAPS** profile basal: `scheduleTempBasalBolus` →
+    `extractTempProfiles(profile, ...)` → `calculateTempBasalDosage` → `calcTotalAmountAbs(abs, AAPS basal value, hours)`.
+    The pump keeps running **its own** basal underneath. If the pump basal is higher than the AAPS basal, the pump
+    delivers pump basal + (TBR − AAPS basal) = **more than the TBR the loop asked for**.
+  - TBR below 100 %: the suspended minutes come from `1 - rate / profile.getBasal()` (AAPS basal, `scheduleSuspension`).
+    If the pump basal is higher, the suspension removes less insulin than planned (also more insulin than asked).
+  - The `S` status display and `runningTempBasal` already use the pump basal (`medLinkBaseBasalRate`), so the screen can
+    look right while the plan is computed from the AAPS basal.
+  - Until B6 is done, the safe rule is: compute the plan from `medLinkBaseBasalRate` (the pump basal of this hour) when
+    it is known. That is a separate, small change in the dosing path; I did not make it without your OK.
+  - **Decision (user, 2026-11-14): NO.** The TBR plan stays computed from the AAPS profile basal. The guard is B6 itself:
+    the user is asked to take the pump profile into AAPS, so the two basals become equal. Not changed.
 
 
 ## B7 — ~~Profile changed in AAPS and activated with ">" is not activated~~ — CLOSED, not a bug
@@ -305,6 +369,26 @@ Log: `bolus stop: bolus DELIVERING, stopping the pump`, `BOLUS[id] state ... -> 
 `NORMAL bolus 2.0U result success=true delivered=0.5`, and **no** "MedLink did not answer the bolus".
 Docs: a section in `MEDLINK_CHANGES.md`.
 
+### Developer notes (2026-11-14) — done, needs field test
+- **Root cause found (code + test):** after the stop, `M` shows our bolus as new, not in progress, below the request.
+  `MedLinkBolusStatusInterpreter` calls that DELIVERING ("below requested before expected end") until the expected end
+  of the **full** dose. So the tracker kept reading `M` and recorded the partial only after that time; the dialog
+  stayed open all that time. The result path itself was fine: `trackedBolusExecutor` is never cleared, and the user
+  stop does not drop a written bolus (`MedLinkBLE.kt:649`), so `onQueueResult` is called once the tracker records.
+- **Fix (`MedLinkBolusTracker`):** new flag `pumpStopped`, set when the pump answers SUSPENDED after the dose was
+  written. Then an `M` with our bolus **not in progress** is final: PARTIAL at once, amount = the pump's last bolus
+  (never more than asked; the `record` limit still holds). An `M` still in progress keeps following the bolus.
+- **Dialog (`MedLinkMedtronicPumpPlugin`):** "Stopping the bolus…" after Stop; a partial result shows
+  "Bolus stopped: 0.50 U of 2.00 U delivered" (was "delivered successfully" with the full amount); the low-battery
+  refusal shows "Bolus not stopped" in the dialog, and the next progress update shows the bolus again.
+  New strings `medlink_bolus_stopping`, `medlink_bolus_stopped_partial` (English only, CLAUDE.md).
+- Not changed: `MedLinkCommandBolus` then calls `completeAndAutoClear`, which sets the bar to 100 % while the text
+  says the partial amount. The text is right; the bar is not. Fixing it needs a change in `BolusProgressData`
+  (core, upstream). Ask the owner if it is worth it.
+- Not changed: the dialog can already be hidden (`onDismissRequest`), upstream behaviour.
+- Tests: 3 new in `MedLinkBolusTrackerTest` (stop before the expected end → partial at once; still in progress
+  after stop → nothing recorded; no stop → still delivering). rileylink 519/519, `:pump:medtronic` compiles.
+
 ## B9 — No "profile updated" message after a profile switch with MedLink
 Priority: P3
 Seen: user, 2026-11-14: "Although the profile is updated, the 'profile has been updated' notification or message
@@ -333,3 +417,16 @@ pump → the upstream message is unchanged.
 Field test: switch the profile with ">" → the message "Profile <name> <%> is active in AAPS" shows. Accept the pump
 profile (B6) → the same message with the new name.
 Related: B6, B7 (closed).
+
+### Developer notes (2026-11-14) — done, needs field test
+- **Cause confirmed:** `postProfileWriteResult` posts `PROFILE_SET_OK` only when `enacted`; MedLink answers
+  success / not enacted.
+- **Fix (`CommandQueueImplementation`, upstream file, small and marked):** new `postMedLinkProfileActive(...)`, called
+  right after the EPS is written in `onProfileChanged`. Only with MedLink, not silent, not enacted → posts
+  `PROFILE_SET_OK` (60 min) with the new string `medlink_profile_active_in_aaps` = "Profile %1$s %2$d %% is active in
+  AAPS". `enacted` stays false (agreed rule, other logic reads it). Other pumps: no change.
+- "Update AAPS" of B6 makes a normal profile switch, so it gets the same message by this path.
+- **Not done: pt-BR.** `CLAUDE.md` says English only, and `implementation/src/main/res` is an upstream (Crowdin) module.
+  Tell me if you want a pt-BR text there anyway.
+- Tests: 4 new in `CommandQueueImplementationTest` (MedLink not silent → message with name and %; silent → none;
+  other pump → none; enacted → none). 40/40.
