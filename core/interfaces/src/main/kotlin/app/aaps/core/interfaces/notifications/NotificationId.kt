@@ -249,7 +249,13 @@ enum class NotificationId(
     MEDLINK_SUSPEND_LOW_BATTERY(IMPORTANT, PUMP),
 
     /** MedLink: a TBR bolus was not sent because the last TBR bolus was less than the SMB interval ago. Info only, no alarm. */
-    MEDLINK_TBR_BOLUS_SKIPPED(INFO, PUMP);
+    MEDLINK_TBR_BOLUS_SKIPPED(INFO, PUMP),
+
+    /** MedLink (T20): the pump was not reached several times in a row; buttons "OK" / "Silence 15 min". Appended last. */
+    MEDLINK_PUMP_UNREACHABLE(IMPORTANT, PUMP),
+
+    /** MedLink (T20): the pump is reached again after the alarm. Info only. Appended last. */
+    MEDLINK_PUMP_CONNECTION_RESTORED(INFO, PUMP);
 
     companion object {
 

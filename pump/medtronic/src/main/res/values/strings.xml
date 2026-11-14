@@ -222,4 +222,16 @@
     <string name="medlink_pump_profile_diff_target_high" comment="%1$s=start time, %2$s=end time, %3$.0f=pump value, %4$.0f=AAPS value">Target high %1$s–%2$s: pump %3$.0f, AAPS %4$.0f mg/dl</string>
     <string name="medlink_pump_profile_name" comment="Name of the new local profile made from the pump profile. %1$s=date and time (example: 13/11/2026 15:30)">MedLink pump %1$s</string>
     <string name="medlink_pump_profile_switch_failed" comment="%1$s=profile name">Could not switch to the pump profile %1$s.</string>
+    <string name="medlink_connection_alarm">Alarm when the pump is not reached</string>
+    <string name="medlink_connection_alarm_summary">Alarm when the MedLink cannot reach the pump several times in a row. Insulin may have stopped: check the pump.</string>
+    <string name="medlink_connection_alarm_failures">Failed connections before the alarm</string>
+    <string name="medlink_connection_alarm_failures_summary">How many failed pump connections in a row raise the alarm. Default 4.</string>
+    <string name="medlink_connection_alarm_sound">Alarm sound</string>
+    <string name="medlink_connection_alarm_sound_summary">Play the AAPS alarm sound. Off: only the notification and the flashlight.</string>
+    <string name="medlink_connection_alarm_torch">Flashlight</string>
+    <string name="medlink_connection_alarm_torch_summary">Blink the phone flashlight with the alarm (for at most 2 minutes). Phones without a flashlight skip it.</string>
+    <string name="medlink_pump_unreachable_title">Pump not reached</string>
+    <string name="medlink_pump_unreachable_message" comment="%1$d=failed connections in a row, example: 4. %2$s=time of the first failure, example: 14:05">The MedLink could not reach the pump %1$d times in a row (since %2$s). Insulin may have stopped. Check the pump: battery, distance, a message on the pump screen.</string>
+    <string name="medlink_silence_15_min">Silence 15 min</string>
+    <string name="medlink_pump_connection_restored">Pump connection restored</string>
 </resources>

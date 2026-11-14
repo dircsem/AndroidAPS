@@ -2080,11 +2080,16 @@ class MedLinkBLE //extends RileyLinkBLE
         return false
     }
 
+    /** T20: told after each pump connection result (true = the pump answered "ready", false = "pump no response"). */
+    var pumpConnectionListener: ((reached: Boolean) -> Unit)? = null
+
     fun clearNoResponse() {
         noResponse = 0
+        pumpConnectionListener?.invoke(true)
     }
 
     fun pumpConnectionError() {
+        pumpConnectionListener?.invoke(false)
         noResponse++
         if (noResponse > 2) {
             medLinkUtil?.sendBroadcastMessage(MedLinkConst.Intents.MedLinkConnectionError, context)

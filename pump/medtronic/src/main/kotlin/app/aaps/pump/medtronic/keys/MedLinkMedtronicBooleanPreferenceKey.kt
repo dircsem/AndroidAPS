@@ -33,4 +33,27 @@ enum class MedLinkMedtronicBooleanPreferenceKey(
         titleResId = R.string.medlink_accept_pump_profile,
         summaryResId = R.string.medlink_accept_pump_profile_summary
     ),
+
+    /** T20: alarm when the pump is not reached several times in a row. On by default. */
+    ConnectionAlarm(
+        "medlink_connection_alarm", true,
+        titleResId = R.string.medlink_connection_alarm,
+        summaryResId = R.string.medlink_connection_alarm_summary
+    ),
+
+    /** T20: the alarm plays the AAPS alarm sound (full screen alarm). Off: notification (and flashlight) only. */
+    ConnectionAlarmSound(
+        "medlink_connection_alarm_sound", true,
+        dependency = ConnectionAlarm,
+        titleResId = R.string.medlink_connection_alarm_sound,
+        summaryResId = R.string.medlink_connection_alarm_sound_summary
+    ),
+
+    /** T20: the alarm blinks the phone flashlight. */
+    ConnectionAlarmTorch(
+        "medlink_connection_alarm_torch", true,
+        dependency = ConnectionAlarm,
+        titleResId = R.string.medlink_connection_alarm_torch,
+        summaryResId = R.string.medlink_connection_alarm_torch_summary
+    ),
 }

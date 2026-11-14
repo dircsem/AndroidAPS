@@ -2,6 +2,11 @@ package app.aaps.pump.medtronic
 
 import app.aaps.core.interfaces.pump.PumpProfile
 import app.aaps.core.ui.compose.icons.IcLoopPausedPump
+import app.aaps.core.data.model.RM
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkClock
+import app.aaps.pump.common.hw.medlink.connection.MedLinkConnectionAlarmRule
+import kotlinx.coroutines.delay
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -4186,6 +4191,110 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             aapsLogger.warn(LTag.PUMP, "MedLink bolus alarm: $reason")
             uiInteraction.runAlarm(reason, rh.gs(R.string.medlink_bolus_alarm_title), app.aaps.core.ui.R.raw.boluserror)
         }
+        ble.pumpConnectionListener = { reached -> onPumpConnectionResult(reached) }
+    }
+
+    // ---- T20: alarm when the pump is not reached several times in a row ----
+
+    /** Read from the running mode before each rule call (the rule itself is not suspend). */
+    @Volatile private var pumpDisconnectedOnPurpose = false
+    private val connectionAlarmLock = Any()
+    private val connectionAlarmRule by lazy {
+        MedLinkConnectionAlarmRule(
+            MedLinkClock { System.currentTimeMillis() },
+            {
+                MedLinkConnectionAlarmRule.Settings(
+                    enabled = preferences.get(MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm),
+                    threshold = preferences.get(MedLinkMedtronicIntPreferenceKey.ConnectionAlarmFailures)
+                )
+            },
+            { pumpDisconnectedOnPurpose }
+        )
+    }
+    private val torchBlinker by lazy { context?.let { MedLinkTorchBlinker(it, aapsLogger, medLinkScope) } }
+
+    /** True while our full screen alarm may be on screen, so [UiInteraction.stopAlarm] never stops another alarm. */
+    @Volatile private var connectionAlarmSoundOn = false
+
+    private fun onPumpConnectionResult(reached: Boolean) {
+        medLinkScope.launch {
+            pumpDisconnectedOnPurpose = try {
+                persistenceLayer.getRunningModeActiveAt(dateUtil.now()).mode == RM.Mode.DISCONNECTED_PUMP
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.PUMP, "MedLink: running mode not read for the connection alarm", e)
+                false
+            }
+            val (action, failures) = synchronized(connectionAlarmLock) {
+                (if (reached) connectionAlarmRule.onSuccess() else connectionAlarmRule.onFailure()) to connectionAlarmRule.failureCount
+            }
+            if (!reached) aapsLogger.info(LTag.PUMP, "MedLink: pump not reached, $failures in a row")
+            handleConnectionAlarm(action)
+        }
+    }
+
+    private fun handleConnectionAlarm(action: MedLinkConnectionAlarmRule.Action) {
+        when (action) {
+            MedLinkConnectionAlarmRule.Action.None     -> Unit
+            is MedLinkConnectionAlarmRule.Action.Raise -> {
+                val text = rh.gs(R.string.medlink_pump_unreachable_message, action.failures, dateUtil.timeString(action.outageStart))
+                aapsLogger.warn(LTag.PUMP, "MedLink: connection alarm raised, ${action.failures} failures since ${action.outageStart}")
+                notificationManager.post(
+                    NotificationId.MEDLINK_PUMP_UNREACHABLE, text,
+                    actions = listOf(
+                        NotificationAction(app.aaps.core.ui.R.string.ok) { acknowledgeConnectionAlarm() },
+                        NotificationAction(R.string.medlink_silence_15_min) { silenceConnectionAlarm() }
+                    )
+                )
+                if (preferences.get(MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmSound)) {
+                    connectionAlarmSoundOn = true
+                    uiInteraction.runAlarm(text, rh.gs(R.string.medlink_pump_unreachable_title), app.aaps.core.ui.R.raw.alarm)
+                }
+                if (preferences.get(MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmTorch))
+                    torchBlinker?.start() ?: aapsLogger.warn(LTag.PUMP, "MedLink: no context, flashlight skipped")
+            }
+
+            MedLinkConnectionAlarmRule.Action.Stop     -> {
+                aapsLogger.info(LTag.PUMP, "MedLink: connection alarm stopped (setting off or pump disconnected on purpose)")
+                stopConnectionAlarmOutputs("MedLink connection alarm stopped")
+                notificationManager.dismiss(NotificationId.MEDLINK_PUMP_UNREACHABLE)
+            }
+
+            MedLinkConnectionAlarmRule.Action.Restored -> {
+                aapsLogger.info(LTag.PUMP, "MedLink: pump connection restored, connection alarm cleared")
+                stopConnectionAlarmOutputs("MedLink pump connection restored")
+                notificationManager.dismiss(NotificationId.MEDLINK_PUMP_UNREACHABLE)
+                notificationManager.post(NotificationId.MEDLINK_PUMP_CONNECTION_RESTORED, rh.gs(R.string.medlink_pump_connection_restored), validMinutes = 30)
+            }
+        }
+    }
+
+    private fun stopConnectionAlarmOutputs(reason: String) {
+        torchBlinker?.stop()
+        if (connectionAlarmSoundOn) {
+            connectionAlarmSoundOn = false
+            uiInteraction.stopAlarm(reason)
+        }
+    }
+
+    /** "OK": no new alarm until the pump is reached again. */
+    private fun acknowledgeConnectionAlarm() {
+        synchronized(connectionAlarmLock) { connectionAlarmRule.onAcknowledged() }
+        aapsLogger.info(LTag.PUMP, "MedLink: connection alarm OK pressed")
+        stopConnectionAlarmOutputs("MedLink connection alarm OK")
+        notificationManager.dismiss(NotificationId.MEDLINK_PUMP_UNREACHABLE)
+    }
+
+    /** "Silence 15 min": no sound and light; the alarm comes back after 15 min if the pump is still not reached. */
+    private fun silenceConnectionAlarm() {
+        synchronized(connectionAlarmLock) { connectionAlarmRule.onSilenced() }
+        aapsLogger.info(LTag.PUMP, "MedLink: connection alarm silenced for 15 min")
+        stopConnectionAlarmOutputs("MedLink connection alarm silenced")
+        medLinkScope.launch {
+            delay(MedLinkConnectionAlarmRule.SILENCE_MS)
+            handleConnectionAlarm(synchronized(connectionAlarmLock) { connectionAlarmRule.onTick() })
+        }
     }
 
     private fun readBolusData(detailedBolusInfo: DetailedBolusInfo) {
@@ -5080,7 +5189,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,
             MedLinkMedtronicDoublePreferenceKey.MinBasalAfterBolusDelta,
-            MedLinkMedtronicBooleanPreferenceKey.AcceptPumpProfile
+            MedLinkMedtronicBooleanPreferenceKey.AcceptPumpProfile,
+            MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm,
+            MedLinkMedtronicIntPreferenceKey.ConnectionAlarmFailures,
+            MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmSound,
+            MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmTorch
         ),
         icon = pluginDescription.icon
     )
