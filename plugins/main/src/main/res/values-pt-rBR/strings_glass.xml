@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink / Glass fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin
+     download of strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="dashboard_glass_last_carbs_short">U carbs</string>
+    <string name="dashboard_glass_basal_t_label">Taxa de basal</string>
+    <string name="dashboard_glass_treatment_short">Trat.</string>
+    <string name="dashboard_compact_label_delivered">Bas %1$dm</string>
+    <string name="dashboard_glass_pump_battery_short">Bat. bomba</string>
+    <string name="dashboard_glass_tbr_short">Basal temp.</string>
+    <string name="dashboard_glass_delivered_label">Bas. %1$d min</string>
+    <string name="dashboard_glass_insulin_age_label">Idade ins.</string>
+    <string name="dashboard_glass_cannula_age_label">Idade cân.</string>
+    <string name="dashboard_glass_sensor_age_label">Idade sens.</string>
+    <string name="dashboard_glass_loop_label">Loop</string>
+    <string name="dashboard_glass_activity_label">Atividade</string>
+    <string name="dashboard_glass_target_label">Alvo</string>
+    <string name="dashboard_glass_last_bolus_short">Últ. bolus</string>
+    <string name="dashboard_glass_tools_label">Ferramentas</string>
+    <string name="dashboard_glass_command_now_line">Agora: %1$s</string>
+    <string name="dashboard_glass_command_next_line">Próx.: %1$s</string>
+    <string name="dashboard_glass_batteries_label">Bomba ML</string>
+</resources>

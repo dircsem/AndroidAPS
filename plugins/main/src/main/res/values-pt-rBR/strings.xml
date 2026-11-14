@@ -14,14 +14,4 @@
     <!--    PersistentNotification-->
     <string name="description_persistent_notification">Mostra uma notificação em curso com um breve resumo do que o seu loop está a fazer</string>
     <string name="old_data">DADOS ANTIGOS</string>
-    <string name="dashboard_glass_pump_battery_short">B bat</string>
-    <string name="dashboard_glass_medlink_label">M bat</string>
-    <string name="dashboard_glass_last_bolus_short">U bolus</string>
-    <string name="dashboard_glass_last_carbs_short">U carbs</string>
-    <string name="dashboard_glass_tbr_short">TBR</string>
-    <string name="dashboard_glass_command_now">Agora</string>
-    <string name="dashboard_glass_command_next">Próx.</string>
-    <string name="dashboard_glass_basal_t_label">Taxa de basal</string>
-    <string name="dashboard_glass_treatment_short">Trat.</string>
-    <string name="dashboard_compact_label_delivered">Bas %1$dm</string>
 </resources>

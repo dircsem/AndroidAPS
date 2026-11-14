@@ -211,27 +211,32 @@
     <string name="dashboard_glass_tir_value" comment="TIR = time in range today. %1$s=percent. Example: TIR 78%">TIR %1$s</string>
     <string name="dashboard_glass_tir_up" comment="TIR = time in range today, better than yesterday. %1$s=percent today, %2$d=points gained vs yesterday. Example: TIR 78% ↑6">TIR %1$s ↑%2$d</string>
     <string name="dashboard_glass_tir_down" comment="TIR = time in range today, worse than yesterday. %1$s=percent today, %2$d=points lost vs yesterday. Example: TIR 72% ↓4">TIR %1$s ↓%2$d</string>
-    <string name="dashboard_glass_loop_label">Loop</string>
+    <string name="dashboard_glass_loop_label" comment="Glass pill title, at most 11 characters (longer titles are cut).">Loop</string>
     <string name="dashboard_glass_iob_label">IOB</string>
-    <string name="dashboard_glass_target_label">Target</string>
+    <string name="dashboard_glass_target_label" comment="Glass pill title, at most 11 characters (longer titles are cut). Glucose target.">Target</string>
     <string name="dashboard_glass_basal_t_label">Basal rate</string>
     <string name="dashboard_glass_last_bolus_label">Last Bolus</string>
     <string name="dashboard_glass_last_carbs_label">Last Carbs</string>
-    <string name="dashboard_glass_pump_battery_short" comment="Very short pill title: pump battery. P=pump, bat=battery. Keep it very short.">P bat</string>
-    <string name="dashboard_glass_medlink_label" comment="Very short pill title: battery of the MedLink device. M=MedLink (device name), bat=battery. Keep it very short.">M bat</string>
-    <string name="dashboard_glass_last_bolus_short" comment="Very short pill title: last bolus. L=last. Keep it very short.">L bolus</string>
+    <string name="dashboard_glass_pump_battery_short" comment="Glass pill title, at most 11 characters (longer titles are cut).">Pump batt.</string>
+    <string name="dashboard_glass_last_bolus_short" comment="Glass pill title, at most 11 characters (longer titles are cut).">Last bolus</string>
     <string name="dashboard_glass_last_carbs_short" comment="Very short pill title: last carbs. L=last. Keep it very short.">L carbs</string>
     <string name="dashboard_glass_treatment_short" comment="Very short button title: opens the treatments screen. Treat.=treatments. Keep it very short.">Treat.</string>
-    <string name="dashboard_glass_command_now" comment="Short title: the MedLink command running now. Keep it short.">Now</string>
-    <string name="dashboard_glass_command_next" comment="Short title: the next pump operation. Keep it short.">Next</string>
-    <string name="dashboard_glass_tbr_short" comment="Very short pill title: temporary basal rate (TBR). Keep it very short.">TBR</string>
+    <string name="dashboard_glass_command_now_line" comment="Glass, MedLink only: the MedLink command running now. %1$s=command, example: M - Read bolus status. Example: Now: M - Read bolus status">Now: %1$s</string>
+    <string name="dashboard_glass_command_next_line" comment="Glass, MedLink only: the next pump operation. %1$s=operation with time, example: Bolus 0.10 U 15:15. Example: Next: Bolus 0.10 U 15:15">Next: %1$s</string>
+    <string name="dashboard_glass_tbr_short" comment="Glass pill title, at most 11 characters (longer titles are cut). Temporary basal rate.">Temp basal</string>
     <string name="dashboard_glass_personalize_title">Personalize</string>
     <string name="dashboard_glass_personalize_button">Personalize</string>
     <string name="dashboard_glass_personalize_empty_hint">Nothing selected. These items stay hidden on the main screen until you pick at least one below.</string>
     <string name="dashboard_glass_personalize_section_main_screen">Main screen</string>
     <string name="dashboard_glass_personalize_section_tools">Tools screen</string>
-    <string name="dashboard_glass_activity_label">Activity</string>
-    <string name="dashboard_glass_tools_label">Tools</string>
+    <string name="dashboard_glass_activity_label" comment="Glass pill title, at most 11 characters (longer titles are cut).">Activity</string>
+    <string name="dashboard_glass_tools_label" comment="Glass pill title, at most 11 characters (longer titles are cut).">Tools</string>
+    <string name="dashboard_glass_insulin_age_label" comment="Glass pill title, at most 11 characters (longer titles are cut). The value is the insulin (reservoir) age.">Insulin age</string>
+    <string name="dashboard_glass_cannula_age_label" comment="Glass pill title, at most 11 characters (longer titles are cut). The value is the cannula age.">Cannula age</string>
+    <string name="dashboard_glass_sensor_age_label" comment="Glass pill title, at most 11 characters (longer titles are cut). The value is the sensor age.">Sensor age</string>
+    <string name="dashboard_glass_delivered_label" comment="Glass pill title, at most 11 characters (longer titles are cut). Basal delivered in the last minutes. %1$d=minutes. Example: Basal 30 min">Bas. %1$d min</string>
+    <string name="dashboard_glass_batteries_label" comment="Glass pill title, at most 11 characters: one pill with the pump battery and the MedLink battery. ML = MedLink (device name)">Pump ML</string>
+    <string name="dashboard_glass_two_values" comment="Glass pill value with two values. %1$s=pump battery, example: 3d3h. %2$s=MedLink battery, example: 38%. Example: 3d3h · 38%">%1$s · %2$s</string>
     <string name="dashboard_glass_personalize_pump_label">Pump</string>
     <string name="dashboard_glass_personalize_cannula_label">Cannula</string>
     <string name="dashboard_glass_personalize_battery_label">Battery</string>

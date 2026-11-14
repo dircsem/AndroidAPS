@@ -23,9 +23,9 @@ data class GlassPillCatalogEntry(
 )
 
 /**
- * Fixed, code-defined catalog of every selectable Glass pill. For `BOTTOM_ROW` entries, catalog order is
- * also the render order of the bottom row. `TOP_GRID` entries render in the fixed order their own
- * hand-written Composable calls appear in `StatusAgoraCard.kt`, independent of catalog order.
+ * Fixed, code-defined catalog of every selectable Glass pill (the Personalize screen and its saved selection).
+ * T17: where a pill renders on the card no longer depends on [location] or on this order: `layoutGlassPills`
+ * places the shown pills top-down beside the ring, then in rows, in the fixed [GlassSlot] order.
  */
 val GLASS_PILL_CATALOG: List<GlassPillCatalogEntry> = listOf(
     GlassPillCatalogEntry(GlassPillId.IOB, R.string.dashboard_glass_iob_label, GlassPillLocation.BOTTOM_ROW),

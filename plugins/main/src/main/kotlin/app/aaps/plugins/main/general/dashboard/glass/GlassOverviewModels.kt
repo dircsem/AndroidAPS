@@ -12,22 +12,19 @@ data class GlassUiState(
     val trendArrowRes: Int? = null,
     val timeAgo: String = "--",
     val insulinAge: String = "--",
-    val insulinAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
-    val insulinLabel: String = "Insulin",
+    /** Reservoir color: the worse of the insulin age status and the reservoir level status (user, 2026-11-14). */
+    val insulinStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val cannulaAge: String = "--",
     val cannulaAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
-    val cannulaLabel: String = "Cannula",
     /** Pump battery: the level when the pump gives one, else the age (B5). */
     val batteryValue: String = "--",
     /** Pump battery color: the worse of the level and the age status (B5). */
     val batteryStatus: StatusLevel = StatusLevel.UNSPECIFIED,
-    val batteryLabel: String = "Battery",
     /** MedLink only: battery level of the MedLink device. Null with other pumps (no pill). */
     val medLinkBattery: String? = null,
     val medLinkBatteryStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val sensorAge: String = "--",
     val sensorAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
-    val sensorLabel: String = "Sensor",
     val loopStatusText: String = "Loop",
     val loopIsRunning: Boolean = true,
     val iobText: String = "--",

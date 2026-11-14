@@ -58,6 +58,7 @@ import kotlin.math.roundToInt
 import app.aaps.ui.compose.overview.graphs.ChartConfig
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.plugins.main.general.dashboard.levelOrAgeBox
+import app.aaps.plugins.main.general.dashboard.worseStatusLevel
 import app.aaps.ui.compose.overview.statusLights.StatusItem
 import app.aaps.ui.compose.overview.statusLights.StatusUiState
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
@@ -490,20 +491,17 @@ internal fun buildGlassUiState(
         trendArrowRes = status.trendArrowRes,
         timeAgo = status.timeAgo,
         insulinAge = lights?.insulinStatus?.age ?: "--",
-        insulinAgeStatus = lights?.insulinStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
-        insulinLabel = lights?.insulinStatus?.label ?: "Insulin",
+        // T14: a low reservoir colors the pill too (level), not only an old insulin (age): the worse of the two
+        insulinStatus = worseStatusLevel(lights?.insulinStatus?.ageStatus, lights?.insulinStatus?.levelStatus) ?: StatusLevel.UNSPECIFIED,
         cannulaAge = lights?.cannulaStatus?.age ?: "--",
         cannulaAgeStatus = lights?.cannulaStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
-        cannulaLabel = lights?.cannulaStatus?.label ?: "Cannula",
         // B5: level when the pump gives one (else age), colored by the worse of the two, like circle-top
         batteryValue = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).text } ?: "--",
         batteryStatus = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).level } ?: StatusLevel.UNSPECIFIED,
-        batteryLabel = lights?.batteryStatus?.label ?: "Battery",
         medLinkBattery = lights?.medLinkBatteryStatus?.level,
         medLinkBatteryStatus = lights?.medLinkBatteryStatus?.levelStatus ?: StatusLevel.UNSPECIFIED,
         sensorAge = lights?.sensorStatus?.age ?: "--",
         sensorAgeStatus = lights?.sensorStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
-        sensorLabel = lights?.sensorStatus?.label ?: "Sensor",
         loopStatusText = status.loopStatusText,
         loopIsRunning = status.loopIsRunning,
         // lastSensorValueText holds the total IOB WITHOUT the "IOB: " prefix baked into status.iobText

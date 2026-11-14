@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink / Glass fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin
+     download of strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="dashboard_glass_pump_battery_short">Бат. помпы</string>
+    <string name="dashboard_glass_tbr_short">Врем. базал</string>
+    <string name="dashboard_glass_delivered_label">Баз. %1$d мин</string>
+    <string name="dashboard_glass_insulin_age_label">Срок инсул.</string>
+    <string name="dashboard_glass_cannula_age_label">Срок катет.</string>
+    <string name="dashboard_glass_sensor_age_label">Срок сенс.</string>
+    <string name="dashboard_glass_loop_label">Цикл</string>
+    <string name="dashboard_glass_activity_label">Нагрузка</string>
+    <string name="dashboard_glass_target_label">Цель</string>
+    <string name="dashboard_glass_last_bolus_short">Посл. болюс</string>
+    <string name="dashboard_glass_tools_label">Инструменты</string>
+    <string name="dashboard_glass_command_now_line">Сейчас: %1$s</string>
+    <string name="dashboard_glass_command_next_line">Далее: %1$s</string>
+    <string name="dashboard_glass_batteries_label">Помпа ML</string>
+</resources>

@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,7 +101,9 @@ internal fun GlassPill(
     isDark: Boolean,
     valueColor: Color? = null,
     modifier: Modifier = Modifier,
-    leadingIcon: (@Composable () -> Unit)? = null
+    leadingIcon: (@Composable () -> Unit)? = null,
+    // T17: a value with its own styles (for example two values in two warning colors); null = [value]
+    styledValue: AnnotatedString? = null
 ) {
     val shape = RoundedCornerShape(13.dp)
     val bgBrush = if (isDark) {
@@ -143,7 +146,7 @@ internal fun GlassPill(
                     lineHeight = 11.sp
                 )
                 Text(
-                    text = value,
+                    text = styledValue ?: AnnotatedString(value),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = valueColor ?: if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B),
