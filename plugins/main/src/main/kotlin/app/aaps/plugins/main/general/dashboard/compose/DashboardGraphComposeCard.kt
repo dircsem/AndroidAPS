@@ -234,12 +234,16 @@ internal fun DashboardGraphComposeCard(
                             )
                         }
                     }
-                    DashboardGraphComposeControls(
-                        composeState = composeState,
-                        modifier = Modifier.height(34.dp),
-                    )
                 }
             }
+            // Own line: with the Floor/Scenario legend on the line above, the range buttons did not fit.
+            DashboardGraphComposeControls(
+                composeState = composeState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = sectionSpacing)
+                    .height(34.dp),
+            )
             if (showScenarioNearBgHint) {
                 Text(
                     text = stringResource(R.string.graph_scenario_near_bg_hint),

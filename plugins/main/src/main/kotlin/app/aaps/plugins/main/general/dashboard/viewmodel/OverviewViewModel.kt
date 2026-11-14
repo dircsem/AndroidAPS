@@ -14,6 +14,7 @@ import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TB
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.model.TrendArrow
@@ -27,6 +28,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.MedLinkDeliveredBasal
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
 import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -680,12 +682,35 @@ class OverviewViewModel(
             },
             scheduledBasalRateUh = scheduledBasalRateUh,
         )
-        val effectiveBasalText = effectiveBasalRateUh?.let { rate ->
-            resourceHelper.gs(app.aaps.core.ui.R.string.pump_base_basal_rate, rate)
+        // MedLink: a temp basal above 100 % is TBR microboluses (no temp basal row). The TBR values below use the
+        // running plan; the "Last 30 min" box uses the basal delivered in the last minutes, from the database
+        // (MedLink setting "Main screen TBR: minutes"). Keep this when merging upstream.
+        val medLinkPump = activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase
+        val medLinkRunning = medLinkPump?.runningTempBasal(now)
+        val medLinkDelivered = medLinkPump?.let {
+            MedLinkDeliveredBasal.calculate(now, it.tbrDisplayMinutes(), profileFunction, iobCobCalculator, persistenceLayer)
+        }
+        // MedLink: 3 decimals (Medtronic steps are 0.025 U/h); other pumps as upstream
+        val basalRateFormat = if (medLinkPump != null) app.aaps.core.ui.R.string.pump_basal_rate_3_decimals else app.aaps.core.ui.R.string.pump_base_basal_rate
+        val effectiveBasalText = (medLinkRunning?.rate ?: effectiveBasalRateUh)?.let { rate ->
+            resourceHelper.gs(basalRateFormat, rate)
+        }
+        val medLinkDeliveredText = medLinkDelivered?.let {
+            resourceHelper.gs(
+                app.aaps.core.ui.R.string.basal_rate_with_percent,
+                resourceHelper.gs(app.aaps.core.ui.R.string.pump_basal_rate_3_decimals, it.rate),
+                it.percent
+            )
         }
 
         // 6. Activity % — delta vs scheduled basal during an active TBR (not the same framing as the "% of profile" on the TBR line).
-        val activityPctText = activeTempBasal?.let { tbr ->
+        val activityPctText = if (medLinkRunning != null) {
+            if (medLinkRunning.percent == 0) resourceHelper.gs(R.string.dashboard_activity_tbr_basal_delivery_stopped)
+            else {
+                val pct = medLinkRunning.percent - 100
+                if (pct >= 0) "+$pct%" else "$pct%"
+            }
+        } else activeTempBasal?.let { tbr ->
             profile?.let { p ->
                 val currentBasal = p.getBasal(now)
                 if (currentBasal > 0) {
@@ -721,21 +746,34 @@ class OverviewViewModel(
             }
 
         // 9. TBR: compact strip shows rate only (full line in étendu keeps % vs profil — long string was easy to clip in the horizontal chips row)
-        val tbrRateCompactText = activeTempBasal?.let { tbr ->
-            decimalFormatter.to2Decimal(tbr.rate) + " U/h"
-        } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
-
-        val tbrRateText = activeTempBasal?.let { tbr ->
-            val rateUh = decimalFormatter.to2Decimal(tbr.rate) + " U/h"
-            val pctStr = profile?.let { p ->
-                val currentBasal = p.getBasal(now)
-                if (currentBasal > 0) {
-                    val pct = ((tbr.rate / currentBasal) * 100).toInt()
-                    " ($pct%)"
-                } else ""
-            } ?: ""
-            rateUh + pctStr
-        } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
+        val tbrRateCompactText: String
+        val tbrRateText: String
+        if (medLinkPump != null) {
+            // MedLink: the running plan, 3 decimals (Medtronic basal steps are 0.025 U/h)
+            val tbrRateUh = medLinkRunning?.rate ?: activeTempBasal?.rate ?: 0.0
+            tbrRateCompactText = resourceHelper.gs(app.aaps.core.ui.R.string.pump_basal_rate_3_decimals, tbrRateUh)
+            val tbrPercent = medLinkRunning?.percent ?: activeTempBasal?.let { tbr ->
+                profile?.getBasal(now)?.takeIf { it > 0 }?.let { currentBasal -> ((tbr.rate / currentBasal) * 100).toInt() }
+            }
+            tbrRateText =
+                if (tbrPercent != null) resourceHelper.gs(app.aaps.core.ui.R.string.basal_rate_with_percent, tbrRateCompactText, tbrPercent)
+                else tbrRateCompactText
+        } else {
+            tbrRateCompactText = activeTempBasal?.let { tbr ->
+                decimalFormatter.to2Decimal(tbr.rate) + " U/h"
+            } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
+            tbrRateText = activeTempBasal?.let { tbr ->
+                val rateUh = decimalFormatter.to2Decimal(tbr.rate) + " U/h"
+                val pctStr = profile?.let { p ->
+                    val currentBasal = p.getBasal(now)
+                    if (currentBasal > 0) {
+                        val pct = ((tbr.rate / currentBasal) * 100).toInt()
+                        " ($pct%)"
+                    } else ""
+                } ?: ""
+                rateUh + pctStr
+            } ?: (decimalFormatter.to2Decimal(0.0) + " U/h")
+        }
 
         // 10. Steps & HR
         var stepsText: String = "--"
@@ -937,6 +975,12 @@ class OverviewViewModel(
             activityPctText = activityPctText,
             tbrRateText = tbrRateText,
             tbrRateCompactText = tbrRateCompactText,
+            medLinkDeliveredText = medLinkDeliveredText,
+            medLinkDeliveredMinutes = medLinkDelivered?.minutes,
+            medLinkDeliveredPercent = medLinkDelivered?.percent,
+            medLinkTbrPercent = medLinkRunning?.percent,
+            medLinkCommandNow = medLinkPump?.currentCommandText(),
+            medLinkCommandNext = medLinkPump?.nextCommandText(),
             basalText = basalText,
             effectiveBasalText = effectiveBasalText,
             stepsText = stepsText,
@@ -1598,6 +1642,18 @@ data class StatusCardState(
     val tbrRateText: String? = null,
     /** TBR rate only (no % of profile) for the horizontal compact chip row. */
     val tbrRateCompactText: String? = null,
+    /** MedLink only: basal delivered in the last minutes ("0.975 U/h (117%)") and its box label ("Last 30 min"). */
+    val medLinkDeliveredText: String? = null,
+    /** MedLink only: minutes of [medLinkDeliveredText] (setting "Main screen TBR: minutes"), for short titles. */
+    val medLinkDeliveredMinutes: Int? = null,
+    /** MedLink only: [medLinkDeliveredText] as % of the profile basal, for the short boxes. */
+    val medLinkDeliveredPercent: Int? = null,
+    /** MedLink only: the running TBR plan in % of the pump base basal; null = no plan running. */
+    val medLinkTbrPercent: Int? = null,
+    /** MedLink only: the MedLink command running now; null when idle or other pump. */
+    val medLinkCommandNow: String? = null,
+    /** MedLink only: the next pump operation (TBR plan or scheduled read); null if none or other pump. */
+    val medLinkCommandNext: String? = null,
     val basalText: String? = null,
     /** Active TBR rate when present, otherwise scheduled profile basal; always formatted in U/h. */
     val effectiveBasalText: String? = null,

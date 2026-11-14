@@ -130,6 +130,12 @@
                     android:overScrollMode="never"
                     android:scrollbars="none">
 
+                    <!-- Line 1: reservoir + pump battery. Line 2: site + MedLink battery (MedLink only). -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -178,12 +184,20 @@
                             app:strokeWidth="2dp"
                             app:strokeColor="@color/dashboard_card_stroke"
                             tools:text="Batt. —" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="horizontal">
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/dashboard_pump_chip_site"
                             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/dashboard_chip_spacing"
                             android:minHeight="32dp"
                             android:paddingStart="8dp"
                             android:paddingEnd="10dp"
@@ -199,6 +213,30 @@
                             app:strokeWidth="2dp"
                             app:strokeColor="@color/dashboard_card_stroke"
                             tools:text="Site 3d 4h" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/dashboard_pump_chip_medlink_battery"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="32dp"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="10dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/dashboard_on_surface"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:visibility="gone"
+                            app:cornerRadius="16dp"
+                            app:backgroundTint="@color/dashboard_chip_background"
+                            app:strokeWidth="2dp"
+                            app:strokeColor="@color/dashboard_card_stroke"
+                            tools:text="MedLink 80%"
+                            tools:visibility="visible" />
+                    </LinearLayout>
                     </LinearLayout>
                 </HorizontalScrollView>
 
@@ -368,6 +406,32 @@
 
                     <TextView
                         android:id="@+id/dashboard_compact_basal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textAppearance="@style/TextAppearance.AAPS.Dashboard.PrimaryLine"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <!-- MedLink only: basal delivered in the last minutes. Keep this when merging upstream. -->
+                <LinearLayout
+                    android:id="@+id/dashboard_compact_delivered_container"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="@dimen/dashboard_compact_metric_min_width"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/dashboard_compact_delivered_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textAppearance="@style/TextAppearance.AAPS.Dashboard.MetaLabel" />
+
+                    <TextView
+                        android:id="@+id/dashboard_compact_delivered"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="--"

@@ -4742,6 +4742,24 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun tbrDisplayMinutes(): Int = preferences.get(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes)
 
+    override fun currentCommandText(): String? {
+        val command = medLinkMedtronicService?.medLinkBLE?.shownCommand ?: return null
+        if (command.descriptionRes == 0) return null
+        return rh.gs(R.string.medlink_command_with_code, command.code, rh.gs(command.descriptionRes))
+    }
+
+    /** First not sent operation of the TBR plan; without a plan, the next scheduled read (status, history...). */
+    override fun nextCommandText(): String? {
+        val op = tempBasalMicrobolusOperations.operations.firstOrNull { !it.isCommandIssued }
+            ?: return nextScheduledCommand()?.takeIf { it.isNotBlank() }
+        val time = op.releaseTime.toString("HH:mm")
+        return when (op.operationType) {
+            TempBasalMicroBolusPair.OperationType.BOLUS      -> rh.gs(R.string.medlink_next_tbr_bolus, rh.gs(app.aaps.core.ui.R.string.format_insulin_units, op.dose), time)
+            TempBasalMicroBolusPair.OperationType.SUSPEND    -> rh.gs(R.string.medlink_next_suspend, time)
+            TempBasalMicroBolusPair.OperationType.REACTIVATE -> rh.gs(R.string.medlink_next_reactivate, time)
+        }
+    }
+
     override fun isBatteryAge(): Boolean {
         return preferences.get(MedLinkStringPreferenceKey.BatteryInfo) == rh.gs(app.aaps.core.ui.R.string.medtronic_pump_battery_age)
     }

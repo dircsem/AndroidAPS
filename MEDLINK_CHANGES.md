@@ -694,6 +694,8 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
   só lê linhas CACHE).
   - Tabela TDD das Estatísticas (`StatsViewModel`, `TddStatsCompose`): colunas **Pump** e **Diff** (bomba − AAPS),
     só quando há linhas da bomba. Strings novas em core/ui: `tdd_pump_difference`, `tdd_total_short` (Total), `tdd_pump_short` (Pump / pt-BR Bmb), cabeçalhos curtos. **Arquivos upstream, manter no merge.**
+- Gráfico do dashboard: botões Stats / 6–24h / Treatments em linha própria (`DashboardGraphComposeCard`), a legenda
+  Floor/Scenario empurrava o 12h para fora da tela.
 - **TBR na tela principal, todas as skins:** a caixa TBR mostra a TBR que está rodando (plano da MedLink:
   `MedLinkRunningTempBasal.rate` novo = base da bomba × %), ex. "1.250 U/h (150%)", com 3 casas. Caixa nova
   **"Last 30 min"**: basal entregue nos últimos N min (setting "Main screen TBR: minutes") com %, ex.
@@ -715,7 +717,23 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
     removida `dashboard_tbr_rate_medlink`.
 - **Colunas Pump/Diff das estatísticas só com MedLink** (`StatsViewModel` com `ActivePlugin`): outras bombas que
   gravam TDD (Dana, Medtronic RileyLink) não mostram as colunas.
-- Testes: medtronic e rileylink passam; `:ui` e `:plugins:aps` compilam.
+- Conhecido e não relacionado: testes do módulo `ui` não compilam (`GraphViewModelTest`,
+  `RunningModeManagementViewModelTest`, construtores mudaram no merge).
+- **New dashboard: caixas abrem o diálogo de troca** (todas as bombas): Res → Fill (troca de cartucho), Batt → troca de
+  bateria, Site → troca de cânula, badge do sensor → inserção de sensor (a info de CGM/suavização passou para o toque
+  longo). Medlink e "Pump unreachable" não abrem nada. Caminho novo `UiInteraction.openComposeMainAtElement` →
+  `ComposeMainActivity.EXTRA_NAVIGATE_ELEMENT` → `navigateProtected` (mesma proteção/senha do menu).
+  `DashboardHeroCommands.openElement`. Glass não mudou (já abre as telas de detalhe próprias). **`UiInteraction`,
+  `UiInteractionImpl` e `ComposeMainActivity` são upstream, manter no merge.**
+- Compilado: `:ui`, `:pump:medtronic`, `:plugins:main`, `:plugins:aps`. Testes: rileylink 516/516, medtronic 189/189.
+
+## 4al. Glass: pills nas colunas, comando atual/próximo; botão "Use pump profile" (2026-11-13) — NÃO TESTADO EM CAMPO
+
+- Glass: TBR e Bas 30m (só MedLink, em %) no fim da coluna esquerda; Target e U bolus no fim da direita (antes de
+  Tools), mesmo estilo do pill M bat (`SidePill`). A linha de baixo fica só com IOB e U carbs.
+- Glass, só MedLink: onde ficava o Bas 30m, duas linhas "Agora" (comando do MedLink em execução,
+  `MedLinkBLE.shownCommand`) e "Próx." (próxima operação do plano da TBR; sem plano, próxima leitura agendada).
+  `MedLinkPumpPluginBase.currentCommandText()` / `nextCommandText()`.
 
 ## 4ak. Primeira operação da TBR nunca acontecia (2026-11-13) — NÃO TESTADO EM CAMPO
 

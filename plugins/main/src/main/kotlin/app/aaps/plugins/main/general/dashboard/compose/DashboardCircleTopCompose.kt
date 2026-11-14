@@ -70,6 +70,7 @@ import app.aaps.core.ui.compose.dashboard.GlucoseHeroRing
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.plugins.main.R
+import app.aaps.core.ui.R as CoreUiR
 import app.aaps.plugins.main.general.dashboard.DashboardEmbeddedComposeState
 import app.aaps.plugins.main.general.dashboard.viewmodel.OverviewViewModel
 import app.aaps.plugins.main.general.dashboard.viewmodel.StatusCardState
@@ -482,48 +483,41 @@ private fun CompactMetricRow(
     usePillBadges: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    // MedLink: two rows of 3 boxes of the same size (Pas, IOB, FC / TBR %, Bas 30m %, empty).
+    // Other pumps: one row of 4 as upstream. Keep this when merging upstream.
+    val deliveredPercent = state.medLinkDeliveredPercent
+    val tbrCompact = state.tbrRateCompactText ?: state.tbrRateText ?: "—"
+    val steps = stringResource(R.string.dashboard_compact_label_steps) to (state.stepsText ?: "—")
+    val iob = stringResource(R.string.dashboard_compact_label_iob) to state.iobText.trim().ifBlank { "—" }
+    val hr = stringResource(R.string.dashboard_compact_label_hr) to (state.hrText ?: "—")
+    val tbrLabel = stringResource(R.string.dashboard_compact_label_tbr)
+    val rows: List<List<Pair<String, String>?>> = if (deliveredPercent == null) {
+        listOf(listOf(steps, iob, hr, tbrLabel to tbrCompact))
+    } else {
+        val tbrPercent = state.medLinkTbrPercent?.let { stringResource(CoreUiR.string.format_percent, it) } ?: "—"
+        val delivered = stringResource(R.string.dashboard_compact_label_delivered, state.medLinkDeliveredMinutes ?: 0) to
+            stringResource(CoreUiR.string.format_percent, deliveredPercent)
+        listOf(listOf(steps, iob, hr), listOf(tbrLabel to tbrPercent, delivered, null))
+    }
+    val equalWidth = rows.size > 1
+    Column(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = if (usePillBadges) Arrangement.spacedBy(6.dp) else Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (usePillBadges) {
-            MetricPill(
-                label = stringResource(R.string.dashboard_compact_label_steps),
-                value = state.stepsText ?: "—",
-                modifier = Modifier.weight(1f),
-            )
-            MetricPill(
-                label = stringResource(R.string.dashboard_compact_label_iob),
-                value = state.iobText.trim().ifBlank { "—" },
-                modifier = Modifier.weight(1f),
-            )
-            MetricPill(
-                label = stringResource(R.string.dashboard_compact_label_hr),
-                value = state.hrText ?: "—",
-                modifier = Modifier.weight(1f),
-            )
-            MetricPill(
-                label = stringResource(R.string.dashboard_compact_label_tbr),
-                value = state.tbrRateCompactText ?: state.tbrRateText ?: "—",
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            MetricCell(
-                stringResource(R.string.dashboard_compact_label_steps),
-                state.stepsText ?: "—",
-            )
-            MetricCell(
-                stringResource(R.string.dashboard_compact_label_iob),
-                state.iobText.trim().ifBlank { "—" },
-            )
-            MetricCell(
-                stringResource(R.string.dashboard_compact_label_hr),
-                state.hrText ?: "—",
-            )
-            MetricCell(
-                stringResource(R.string.dashboard_compact_label_tbr),
-                state.tbrRateCompactText ?: state.tbrRateText ?: "—",
-            )
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (usePillBadges) Arrangement.spacedBy(6.dp) else Arrangement.SpaceEvenly,
+            ) {
+                row.forEach { cell ->
+                    when {
+                        cell == null  -> Spacer(modifier = Modifier.weight(1f))
+                        usePillBadges -> MetricPill(label = cell.first, value = cell.second, modifier = Modifier.weight(1f))
+                        equalWidth    -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) { MetricCell(cell.first, cell.second) }
+                        else          -> MetricCell(cell.first, cell.second)
+                    }
+                }
+            }
         }
     }
 }

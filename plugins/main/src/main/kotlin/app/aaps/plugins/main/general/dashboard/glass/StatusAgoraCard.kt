@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +62,18 @@ import app.aaps.core.ui.R as CoreUiR
 
 // Only ever called for GlassPillLocation.BOTTOM_ROW entries (see the bottom-row filter below), but the
 // `when` must still cover every GlassPillId since top-grid IDs share the same enum.
+/**
+ * Short pill title on the main screen ("TBR", "L bolus"). The Personalize screen keeps the full name of the
+ * catalog (labelRes).
+ */
+@StringRes
+private fun glassPillShortTitle(id: GlassPillId, @StringRes labelRes: Int): Int = when (id) {
+    GlassPillId.BASAL_RATE -> R.string.dashboard_glass_tbr_short
+    GlassPillId.LAST_BOLUS -> R.string.dashboard_glass_last_bolus_short
+    GlassPillId.LAST_CARBS -> R.string.dashboard_glass_last_carbs_short
+    else                   -> labelRes
+}
+
 private fun glassPillValue(id: GlassPillId, state: GlassUiState): String = when (id) {
     GlassPillId.IOB -> state.iobText
     GlassPillId.TARGET -> state.targetText
@@ -154,7 +168,7 @@ internal fun StatusAgoraCard(
                     }
                     if (GlassPillId.BATTERY in selectedPills) {
                         GlassPill(
-                            label = state.batteryLabel,
+                            label = stringResource(R.string.dashboard_glass_pump_battery_short),
                             value = state.batteryAge,
                             isDark = isDark,
                             valueColor = statusLevelToColor(state.batteryAgeStatus),
@@ -169,20 +183,44 @@ internal fun StatusAgoraCard(
                             }
                         )
                     }
-                    GlassPill(
-                        label = stringResource(R.string.dashboard_glass_tools_label),
-                        value = "",
-                        isDark = isDark,
-                        modifier = Modifier.width(100.dp).clickable { onOpenTools() },
-                        leadingIcon = {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_glyco_settings),
-                                contentDescription = null,
-                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
-                                modifier = Modifier.size(14.dp)
+                    // MedLink only: battery of the MedLink device, shown together with the pump battery pill
+                    val medLinkBattery = state.medLinkBattery
+                    if (GlassPillId.BATTERY in selectedPills && medLinkBattery != null) {
+                        GlassPill(
+                            label = stringResource(R.string.dashboard_glass_medlink_label),
+                            value = medLinkBattery,
+                            isDark = isDark,
+                            valueColor = statusLevelToColor(state.medLinkBatteryStatus),
+                            modifier = Modifier.width(100.dp).clickable { onOpenBattery() },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_glyco_battery),
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        )
+                    }
+                    // TBR and (MedLink only) basal delivered in the last minutes: small pills like the battery
+                    if (GlassPillId.BASAL_RATE in selectedPills) {
+                        SidePill(
+                            label = stringResource(R.string.dashboard_glass_tbr_short),
+                            value = state.basalPercentText,
+                            iconRes = R.drawable.ic_glyco_insulin,
+                            isDark = isDark,
+                            onClick = onOpenBasal
+                        )
+                        state.medLinkDeliveredPercent?.let { percent ->
+                            SidePill(
+                                label = stringResource(R.string.dashboard_compact_label_delivered, state.medLinkDeliveredMinutes),
+                                value = stringResource(CoreUiR.string.format_percent, percent),
+                                iconRes = R.drawable.ic_glyco_insulin,
+                                isDark = isDark,
+                                onClick = onOpenBasal
                             )
                         }
-                    )
+                    }
                 }
 
                 // CENTER: glucose, inside today's TIR ring
@@ -351,6 +389,40 @@ internal fun StatusAgoraCard(
                             }
                         )
                     }
+                    if (GlassPillId.TARGET in selectedPills) {
+                        SidePill(
+                            label = stringResource(R.string.dashboard_glass_target_label),
+                            value = state.targetText,
+                            iconRes = R.drawable.ic_glyco_sensor,
+                            isDark = isDark,
+                            onClick = onOpenTarget,
+                            valueColor = if (state.isTempTargetActive) TEMP_TARGET_COLOR else null
+                        )
+                    }
+                    if (GlassPillId.LAST_BOLUS in selectedPills) {
+                        SidePill(
+                            label = stringResource(R.string.dashboard_glass_last_bolus_short),
+                            value = state.lastBolusText,
+                            iconRes = R.drawable.ic_glyco_insulin,
+                            isDark = isDark,
+                            onClick = onOpenInsulin
+                        )
+                    }
+                    // Tools: right column (was the last pill of the left column, which now also holds the MedLink battery)
+                    GlassPill(
+                        label = stringResource(R.string.dashboard_glass_tools_label),
+                        value = "",
+                        isDark = isDark,
+                        modifier = Modifier.width(100.dp).clickable { onOpenTools() },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_glyco_settings),
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    )
                 }
             }
 
@@ -359,7 +431,10 @@ internal fun StatusAgoraCard(
                 CgmLinkBannerText(banner)
             }
 
-            val bottomRowPills = GLASS_PILL_CATALOG.filter { it.location == GlassPillLocation.BOTTOM_ROW && it.id in selectedPills }
+            // TBR, Target and last bolus are small pills in the side columns (above), not in this row
+            val bottomRowPills = GLASS_PILL_CATALOG.filter {
+                it.location == GlassPillLocation.BOTTOM_ROW && it.id in selectedPills && it.id !in SIDE_COLUMN_PILLS
+            }
             if (bottomRowPills.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -370,7 +445,7 @@ internal fun StatusAgoraCard(
                     bottomRowPills.forEach { entry ->
                         val isTarget = entry.id == GlassPillId.TARGET
                         BottomMetricPill(
-                            title = if (isTarget && state.isTempTargetActive) "" else stringResource(entry.labelRes),
+                            title = if (isTarget && state.isTempTargetActive) "" else stringResource(glassPillShortTitle(entry.id, entry.labelRes)),
                             value = glassPillValue(entry.id, state),
                             isDark = isDark,
                             onClick = when (entry.id) {
@@ -383,13 +458,65 @@ internal fun StatusAgoraCard(
                                 GlassPillId.SENSOR, GlassPillId.LOOP_STATUS, GlassPillId.ACTIVITY -> null
                             },
                             modifier = Modifier.weight(1f),
-                            accentColor = if (isTarget && state.isTempTargetActive) Color(0xFFF4D700) else null
+                            accentColor = if (isTarget && state.isTempTargetActive) TEMP_TARGET_COLOR else null
                         )
                     }
                 }
             }
+
+            // MedLink only: the MedLink command running now and the next pump operation. Keep this when merging upstream.
+            if (state.medLinkDeliveredPercent != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BottomMetricPill(
+                        title = stringResource(R.string.dashboard_glass_command_now),
+                        value = state.medLinkCommandNow ?: "—",
+                        isDark = isDark,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    BottomMetricPill(
+                        title = stringResource(R.string.dashboard_glass_command_next),
+                        value = state.medLinkCommandNext ?: "—",
+                        isDark = isDark,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
+}
+
+/** Yellow of an active temporary target. */
+private val TEMP_TARGET_COLOR = Color(0xFFF4D700)
+
+/** Pills shown in the side columns, so they are left out of the bottom row. */
+private val SIDE_COLUMN_PILLS = setOf(GlassPillId.BASAL_RATE, GlassPillId.TARGET, GlassPillId.LAST_BOLUS)
+
+/** Small side column pill (label over value, icon), same look as the battery pills. */
+@Composable
+private fun SidePill(
+    label: String,
+    value: String,
+    @DrawableRes iconRes: Int,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    valueColor: Color? = null
+) {
+    GlassPill(
+        label = label,
+        value = value,
+        isDark = isDark,
+        valueColor = valueColor,
+        modifier = Modifier.width(100.dp).clickable { onClick() },
+        leadingIcon = {
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = null,
+                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    )
 }
 
 /**

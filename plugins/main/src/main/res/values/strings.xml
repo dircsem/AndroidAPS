@@ -163,6 +163,7 @@
     <string name="dashboard_compact_label_iob">IOB</string>
     <string name="dashboard_compact_label_hr">FC</string>
     <string name="dashboard_compact_label_tbr">TBR</string>
+    <string name="dashboard_compact_label_delivered" comment="Very short box title: basal delivered in the last minutes. Bas=basal, %1$d=minutes, m=minutes. Example: Bas 30m">Bas %1$dm</string>
     <string name="show_calibration_button_summary">Sends a calibration to xDrip+ (ensure \'Accept Calibrations\' is enabled in xDrip+ under Inter-App settings).</string>
     <string name="show_cgm_button_summary">Opens xDrip+ or Dexcom App (you can use back button to return to AAPS).</string>
     <string name="not_available_full">Not available</string>
@@ -213,9 +214,17 @@
     <string name="dashboard_glass_loop_label">Loop</string>
     <string name="dashboard_glass_iob_label">IOB</string>
     <string name="dashboard_glass_target_label">Target</string>
-    <string name="dashboard_glass_basal_t_label">Basal T</string>
+    <string name="dashboard_glass_basal_t_label">Basal rate</string>
     <string name="dashboard_glass_last_bolus_label">Last Bolus</string>
     <string name="dashboard_glass_last_carbs_label">Last Carbs</string>
+    <string name="dashboard_glass_pump_battery_short" comment="Very short pill title: pump battery. P=pump, bat=battery. Keep it very short.">P bat</string>
+    <string name="dashboard_glass_medlink_label" comment="Very short pill title: battery of the MedLink device. M=MedLink (device name), bat=battery. Keep it very short.">M bat</string>
+    <string name="dashboard_glass_last_bolus_short" comment="Very short pill title: last bolus. L=last. Keep it very short.">L bolus</string>
+    <string name="dashboard_glass_last_carbs_short" comment="Very short pill title: last carbs. L=last. Keep it very short.">L carbs</string>
+    <string name="dashboard_glass_treatment_short" comment="Very short button title: opens the treatments screen. Treat.=treatments. Keep it very short.">Treat.</string>
+    <string name="dashboard_glass_command_now" comment="Short title: the MedLink command running now. Keep it short.">Now</string>
+    <string name="dashboard_glass_command_next" comment="Short title: the next pump operation. Keep it short.">Next</string>
+    <string name="dashboard_glass_tbr_short" comment="Very short pill title: temporary basal rate (TBR). Keep it very short.">TBR</string>
     <string name="dashboard_glass_personalize_title">Personalize</string>
     <string name="dashboard_glass_personalize_button">Personalize</string>
     <string name="dashboard_glass_personalize_empty_hint">Nothing selected. These items stay hidden on the main screen until you pick at least one below.</string>

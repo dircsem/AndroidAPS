@@ -70,6 +70,12 @@ interface MedLinkPumpPluginBase {
      * minutes, calculated from the database (temp basals / suspensions + TBR microboluses).
      */
     fun tbrDisplayMinutes(): Int = 30
+
+    /** Main screen: the MedLink command running now, for example "M - Read bolus status"; null when idle. */
+    fun currentCommandText(): String? = null
+
+    /** Main screen: the next pump operation, for example "Bolus 0.1 U 15:15" or "Status 15:20"; null if none. */
+    fun nextCommandText(): String? = null
 }
 
 /**

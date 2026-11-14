@@ -20,6 +20,9 @@ data class GlassUiState(
     val batteryAge: String = "--",
     val batteryAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val batteryLabel: String = "Battery",
+    /** MedLink only: battery level of the MedLink device. Null with other pumps (no pill). */
+    val medLinkBattery: String? = null,
+    val medLinkBatteryStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val sensorAge: String = "--",
     val sensorAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val sensorLabel: String = "Sensor",
@@ -29,6 +32,15 @@ data class GlassUiState(
     val isTempTargetActive: Boolean = false,
     val targetText: String = "--",
     val basalPercentText: String = "--",
+    /** MedLink only: basal delivered in the last [medLinkDeliveredMinutes] minutes; null = not shown. */
+    val medLinkDeliveredText: String? = null,
+    val medLinkDeliveredMinutes: Int = 0,
+    /** MedLink only: delivered basal and running TBR in %, for the short pills; null = not shown / no TBR. */
+    val medLinkDeliveredPercent: Int? = null,
+    val medLinkTbrPercent: Int? = null,
+    /** MedLink only: command running now and next pump operation; null = not known. */
+    val medLinkCommandNow: String? = null,
+    val medLinkCommandNext: String? = null,
     val stepsText: String = "--",
     val hrText: String = "--",
     val lastBolusText: String = "--",

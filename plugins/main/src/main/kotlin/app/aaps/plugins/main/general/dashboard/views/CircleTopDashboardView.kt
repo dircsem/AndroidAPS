@@ -34,6 +34,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.ui.R as CoreUiR
+import app.aaps.plugins.main.R
 import app.aaps.core.interfaces.rx.events.AdaptiveSmoothingQualityTier
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.compose.AapsTheme
@@ -334,6 +336,14 @@ class CircleTopDashboardView @JvmOverloads constructor(
             state.iobText.trim().takeUnless { it.isEmpty() } ?: "--"
         binding.dashboardCompactHr.text = state.hrText ?: "--"
         binding.dashboardCompactBasal.text = state.tbrRateCompactText ?: state.tbrRateText ?: "--"
+        // MedLink only: TBR and basal delivered in the last minutes, in % (short, like the other boxes)
+        val deliveredPercent = state.medLinkDeliveredPercent
+        binding.dashboardCompactDeliveredContainer.isGone = deliveredPercent == null
+        if (deliveredPercent != null) {
+            binding.dashboardCompactBasal.text = state.medLinkTbrPercent?.let { context.getString(CoreUiR.string.format_percent, it) } ?: "--"
+            binding.dashboardCompactDeliveredLabel.text = context.getString(R.string.dashboard_compact_label_delivered, state.medLinkDeliveredMinutes ?: 0)
+            binding.dashboardCompactDelivered.text = context.getString(CoreUiR.string.format_percent, deliveredPercent)
+        }
     }
 
     /**
@@ -524,6 +534,17 @@ class CircleTopDashboardView @JvmOverloads constructor(
                 binding.dashboardPumpChipBattery.isFocusable = false
                 binding.dashboardPumpChipSite.isClickable = false
                 binding.dashboardPumpChipSite.isFocusable = false
+                // MedLink device battery: second line, next to the site (hidden with other pumps)
+                val medLinkV = state.medLinkBatteryText?.trim()
+                binding.dashboardPumpChipMedlinkBattery.isVisible = medLinkV != null
+                if (medLinkV != null) {
+                    binding.dashboardPumpChipMedlinkBattery.text =
+                        context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_medlink_battery, medLinkV)
+                    binding.dashboardPumpChipMedlinkBattery.contentDescription =
+                        context.getString(app.aaps.plugins.main.R.string.dashboard_pump_pill_medlink_battery_a11y, medLinkV)
+                }
+                binding.dashboardPumpChipMedlinkBattery.isClickable = false
+                binding.dashboardPumpChipMedlinkBattery.isFocusable = false
             }
 
             val extendedMetrics =

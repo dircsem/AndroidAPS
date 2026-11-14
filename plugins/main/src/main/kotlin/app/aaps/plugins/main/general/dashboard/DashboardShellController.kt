@@ -1228,7 +1228,8 @@ internal class DashboardShellController(
             val boluses = runCatching {
                 persistenceLayer.getBolusesFromTimeToTime(dbFromMs, toMs, true)
             }.getOrElse { emptyList() }
-            val validBoluses = boluses.filter { it.isValid && it.amount > 0.0 }
+            // MedLink TBR microboluses are part of the basal graph, not bolus markers
+            val validBoluses = boluses.filter { it.isValid && it.amount > 0.0 && it.type != BS.Type.TBR }
             val smbExplicit = validBoluses
                 .filter { it.type == BS.Type.SMB }
                 .map {
