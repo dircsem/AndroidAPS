@@ -694,6 +694,25 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
   só lê linhas CACHE).
   - Tabela TDD das Estatísticas (`StatsViewModel`, `TddStatsCompose`): colunas **Pump** e **Diff** (bomba − AAPS),
     só quando há linhas da bomba. Strings novas em core/ui: `tdd_pump_difference`, `tdd_total_short` (Total), `tdd_pump_short` (Pump / pt-BR Bmb), cabeçalhos curtos. **Arquivos upstream, manter no merge.**
+- **TBR na tela principal, todas as skins:** a caixa TBR mostra a TBR que está rodando (plano da MedLink:
+  `MedLinkRunningTempBasal.rate` novo = base da bomba × %), ex. "1.250 U/h (150%)", com 3 casas. Caixa nova
+  **"Last 30 min"**: basal entregue nos últimos N min (setting "Main screen TBR: minutes") com %, ex.
+  "0.975 U/h (117%)". Cálculo único em `MedLinkDeliveredBasal.calculate` (core/interfaces, saiu do OverviewViewModel).
+  - New dashboard Compose (`DashboardCircleTopCompose.CompactMetricRow`): com MedLink duas linhas de 3 caixas iguais
+    (Pas, IOB, FC / TBR %, Bas 30m %, vazia), só o %, título curto `dashboard_compact_label_delivered`.
+  - New dashboard View (`CircleTopDashboardView` + `component_circle_top_status_hybrid.xml`): bloco novo, só MedLink;
+    TBR e Bas 30m mostram só o %.
+  - Glass (`StatusAgoraCard`): pill basal com a TBR rodando; pill "Bas 30m" em linha própria (com o pill basal).
+    Títulos curtos só no Glass (strings `dashboard_glass_*_short`, en + pt-BR): P bat / B bat, M bat, L bolus /
+    U bolus, L carbs / U carbs, TBR, Bas 30m, botão Treat. / Trat. A tela Personalize mantém os nomes completos;
+    "Basal T" virou "Basal rate" / "Taxa de basal" (o valor é a basal atual, com ou sem TBR).
+  - Clássicas (Classic/Buttons/Large/LowRes): `TbrDisplayData` ganhou `medLinkRunning`/`medLinkDelivered`;
+    `MedLinkTbrInfo` passa por MainViewModel → MainScreen → OverviewScreen* → `OverviewChipsColumn`; `TbrChip` com
+    texto opcional + `MedLinkDeliveredChip` novo, em linha própria. Atualiza também a cada bolus (evento BS).
+  - **Só com MedLink.** Outras bombas: textos de TBR do dashboard/Glass como no upstream (2 casas); nas clássicas
+    nada muda (chip só ícone).
+  - Strings novas em core/ui: `pump_basal_rate_3_decimals`, `basal_rate_with_percent`, `medlink_delivered_basal_label`;
+    removida `dashboard_tbr_rate_medlink`.
 - **Colunas Pump/Diff das estatísticas só com MedLink** (`StatsViewModel` com `ActivePlugin`): outras bombas que
   gravam TDD (Dana, Medtronic RileyLink) não mostram as colunas.
 - Testes: medtronic e rileylink passam; `:ui` e `:plugins:aps` compilam.

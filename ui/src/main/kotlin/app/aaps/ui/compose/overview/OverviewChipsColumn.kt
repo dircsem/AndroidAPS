@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import app.aaps.core.ui.R as CoreUiR
 import androidx.compose.ui.unit.dp
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
@@ -25,6 +26,7 @@ import app.aaps.ui.compose.overview.chips.IobUiState
 import app.aaps.ui.compose.overview.chips.ProfileChip
 import app.aaps.ui.compose.overview.chips.RunningModeChip
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
+import app.aaps.ui.compose.overview.chips.MedLinkDeliveredChip
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
 
@@ -46,6 +48,7 @@ fun OverviewChipsColumn(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean = false,
     tbrState: TbrState,
+    medLinkTbr: MedLinkTbrInfo? = null,
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
@@ -90,6 +93,7 @@ fun OverviewChipsColumn(
                             tempTargetReason = tempTargetReason,
                             tempTargetSceneManaged = tempTargetSceneManaged,
                             tbrState = tbrState,
+                            medLinkTbr = medLinkTbr,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
                             commandsAllowed = commandsAllowed
@@ -119,6 +123,7 @@ fun OverviewChipsColumn(
                 tempTargetReason = tempTargetReason,
                 tempTargetSceneManaged = tempTargetSceneManaged,
                 tbrState = tbrState,
+                medLinkTbr = medLinkTbr,
                 onNavigate = onNavigate,
                 onTbrChipClick = onTbrChipClick,
                 commandsAllowed = commandsAllowed
@@ -154,6 +159,7 @@ private fun NarrowChips(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean,
     tbrState: TbrState,
+    medLinkTbr: MedLinkTbrInfo? = null,
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     commandsAllowed: Boolean
@@ -201,10 +207,43 @@ private fun NarrowChips(
                 enabled = commandsAllowed
             )
         }
-        TbrChip(
-            state = tbrState,
-            onClick = onTbrChipClick
-        )
+        if (medLinkTbr == null) {
+            TbrChip(
+                state = tbrState,
+                onClick = onTbrChipClick
+            )
+        }
+    }
+    // MedLink: TBR with its rate and the "Last 30 min" chip on their own row, so both fit. Keep this when merging upstream.
+    if (medLinkTbr != null) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)
+        ) {
+            val running = medLinkTbr.running
+            TbrChip(
+                state = tbrState,
+                onClick = onTbrChipClick,
+                text = running?.let {
+                    stringResource(
+                        CoreUiR.string.basal_rate_with_percent,
+                        stringResource(CoreUiR.string.pump_basal_rate_3_decimals, it.rate),
+                        it.percent
+                    )
+                }
+            )
+            medLinkTbr.delivered?.let { delivered ->
+                MedLinkDeliveredChip(
+                    label = stringResource(CoreUiR.string.medlink_delivered_basal_label, delivered.minutes),
+                    value = stringResource(
+                        CoreUiR.string.basal_rate_with_percent,
+                        stringResource(CoreUiR.string.pump_basal_rate_3_decimals, delivered.rate),
+                        delivered.percent
+                    ),
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
+        }
     }
 }
 

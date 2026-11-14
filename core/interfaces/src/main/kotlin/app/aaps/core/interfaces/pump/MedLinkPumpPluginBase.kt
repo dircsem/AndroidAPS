@@ -58,4 +58,24 @@ interface MedLinkPumpPluginBase {
     /** T0: suspend requested by the user. Sent immediately, aborts a running bolus on purpose. */
     fun userSuspend(callback: Callback?)
 
+    /**
+     * The running MedLink temp basal (plan of microboluses and suspensions), for the TBR chip on the main screen.
+     * A MedLink temp basal above 100 % is not stored as a temp basal in the database, so the chip asks here.
+     * Null when no plan is running.
+     */
+    fun runningTempBasal(now: Long): MedLinkRunningTempBasal? = null
+
+    /**
+     * MedLink setting "Main screen TBR: minutes": the main screen shows as TBR the basal delivered in this many
+     * minutes, calculated from the database (temp basals / suspensions + TBR microboluses).
+     */
+    fun tbrDisplayMinutes(): Int = 30
 }
+
+/**
+ * @param percent what the plan delivers from now to its end, in % of the pump base basal (100 = no change)
+ * @param start start of the temp basal (ms)
+ * @param duration length of the temp basal (ms)
+ * @param rate the same as [percent], in U/h (pump base basal * percent / 100)
+ */
+data class MedLinkRunningTempBasal(val percent: Int, val start: Long, val duration: Long, val rate: Double)

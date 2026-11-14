@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.overview.graph.TbrState
+import app.aaps.ui.compose.overview.MedLinkTbrInfo
 
 /**
  * State of the TempTarget chip in Overview
@@ -47,6 +48,8 @@ data class MainUiState(
     val runningModeRecordId: Long = 0, // DB record ID (for scene override detection)
     // Running TBR state for chip (HIGH / LOW / NONE)
     val tbrState: TbrState = TbrState.NONE,
+    /** MedLink only: TBR text next to the TBR chip and the "Last 30 min" chip. */
+    val medLinkTbr: MedLinkTbrInfo? = null,
     // SMB enabled in APS preferences — drives a small triangle marker on the running-mode chip
     val smbEnabled: Boolean = false,
     // QuickWizard entries for treatment bottom sheet

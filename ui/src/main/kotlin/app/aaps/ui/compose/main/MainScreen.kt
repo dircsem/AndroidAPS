@@ -308,6 +308,7 @@ fun MainScreen(
                                 runningModeProgress = uiState.runningModeProgress,
                                 runningModeRecordId = uiState.runningModeRecordId,
                                 tbrState = uiState.tbrState,
+                                medLinkTbr = uiState.medLinkTbr,
                                 smbEnabled = uiState.smbEnabled,
                                 isSimpleMode = uiState.isSimpleMode,
                                 calcProgress = calcProgress,

@@ -3,6 +3,8 @@ package app.aaps.core.interfaces.overview.graph
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.model.TrendArrow
+import app.aaps.core.interfaces.pump.MedLinkDeliveredBasal
+import app.aaps.core.interfaces.pump.MedLinkRunningTempBasal
 
 /**
  * Domain models for calculated graph data.
@@ -397,7 +399,11 @@ enum class TbrState {
 data class TbrDisplayData(
     val state: TbrState,
     val timestamp: Long,                 // When TBR started (0 if none)
-    val duration: Long                   // TBR duration in ms (0 if none)
+    val duration: Long,                  // TBR duration in ms (0 if none)
+    // MedLink only (null for other pumps): the running temp basal and the basal delivered in the last minutes,
+    // shown as text next to the TBR chip. Keep this when merging upstream.
+    val medLinkRunning: MedLinkRunningTempBasal? = null,
+    val medLinkDelivered: MedLinkDeliveredBasal? = null
 )
 
 // ============================================================================

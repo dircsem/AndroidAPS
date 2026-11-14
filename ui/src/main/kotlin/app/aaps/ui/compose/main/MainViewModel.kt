@@ -76,6 +76,7 @@ import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
 import app.aaps.ui.compose.quickLaunch.QuickLaunchResolver
 import app.aaps.ui.compose.quickLaunch.QuickLaunchSerializer
 import app.aaps.ui.compose.quickLaunch.ResolvedQuickLaunchItem
+import app.aaps.ui.compose.overview.MedLinkTbrInfo
 import app.aaps.ui.compose.tempTarget.toTTPresetsWithNameRes
 import app.aaps.ui.compose.wizardDialog.showWizardBolusConfirmation
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -232,6 +233,7 @@ class MainViewModel @Inject constructor(
             runningModeProgress = chip.runningModeProgress,
             runningModeRecordId = chip.runningModeRecordId,
             tbrState = chip.tbrState,
+            medLinkTbr = chip.medLinkTbr,
             smbEnabled = ev.smbEnabled,
             quickWizardItems = chip.quickWizardItems
         )
@@ -347,6 +349,9 @@ class MainViewModel @Inject constructor(
             runningModeProgress = rmProgress,
             runningModeRecordId = if (rmExpired) 0 else rmData?.recordId ?: 0,
             tbrState = if (tbrExpired) TbrState.NONE else tbrData?.state ?: TbrState.NONE,
+            medLinkTbr = tbrData?.takeIf { it.medLinkRunning != null || it.medLinkDelivered != null }?.let {
+                MedLinkTbrInfo(running = if (tbrExpired) null else it.medLinkRunning, delivered = it.medLinkDelivered)
+            },
             quickWizardItems = computeQuickWizardItems(rmData?.mode)
         )
     }
@@ -873,5 +878,6 @@ private data class ChipState(
     val runningModeProgress: Float = 0f,
     val runningModeRecordId: Long = 0,
     val tbrState: TbrState = TbrState.NONE,
+    val medLinkTbr: MedLinkTbrInfo? = null,
     val quickWizardItems: List<QuickWizardItem> = emptyList()
 )

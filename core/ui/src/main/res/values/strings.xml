@@ -32,6 +32,9 @@
     <string name="pump_unreachable">Pump unreachable</string>
     <string name="insulin_unit_shortname">U</string>
     <string name="pump_base_basal_rate">%1$.2f U/h</string>
+    <string name="pump_basal_rate_3_decimals" comment="Basal or temp basal rate with 3 decimals (Medtronic steps are 0.025 U/h). Example: 1.250 U/h">%1$.3f U/h</string>
+    <string name="basal_rate_with_percent" comment="%1$s=basal rate with unit (example: 1.250 U/h), %2$d=percent of the profile basal (example: 150). Example: 1.250 U/h (150%)">%1$s (%2$d%%)</string>
+    <string name="medlink_delivered_basal_label" comment="Main screen box title: basal delivered in the last minutes. %1$d=minutes (example: 30)">Last %1$d min</string>
     <string name="pump_base_basal_rate_dynamic">%1$s U/h</string>
     <string name="pump_not_initialized_profile_not_set">Pump not initialized, profile not set!</string>
     <string name="failed_update_basal_profile">Failed to update basal profile</string>

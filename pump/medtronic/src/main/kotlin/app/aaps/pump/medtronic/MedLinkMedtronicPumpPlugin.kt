@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.PumpInsulin
+import app.aaps.core.interfaces.pump.MedLinkRunningTempBasal
 import app.aaps.core.interfaces.pump.PumpRate
 import app.aaps.core.interfaces.pump.mapState
 import app.aaps.core.interfaces.notifications.NotificationId
@@ -151,6 +152,7 @@ import app.aaps.pump.medtronic.data.dto.MedLinkModelParser
 import app.aaps.pump.medtronic.data.dto.TempBasalMicroBolusDTO
 import app.aaps.pump.medtronic.data.dto.TempBasalMicroBolusPair
 import app.aaps.pump.medtronic.data.dto.TempBasalMicrobolusOperations
+import app.aaps.pump.medtronic.data.MedLinkBasalPercent
 import app.aaps.pump.medtronic.data.dto.TempBasalPair
 import app.aaps.pump.medtronic.defs.BasalProfileStatus
 import app.aaps.pump.medtronic.defs.BatteryType
@@ -4722,6 +4724,22 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         return Triple(app.aaps.pump.medtronic.data.MedLinkBasalPercent.pump(state), plan, hour)
     }
 
+    /** Same "plan" % as the MedLink tab (MedLinkBasalPercent.plan), with the start and length of the temp basal. */
+    override fun runningTempBasal(now: Long): MedLinkRunningTempBasal? {
+        val p = tempBasalMicrobolusOperations
+        if (p.endsAt <= now || p.durationInMinutes <= 0) return null
+        val percent = MedLinkBasalPercent.plan(
+            now, p.endsAt, medLinkBaseBasalRate, medLinkPumpStatus.pumpRunningState.isSuspended(),
+            p.operations.map { MedLinkBasalPercent.Op(it.releaseTime.toDate().time, it.operationType, it.dose) }
+        ) ?: return null
+        val duration = p.durationInMinutes * 60_000L
+        return MedLinkRunningTempBasal(
+            percent = percent, start = p.endsAt - duration, duration = duration, rate = medLinkBaseBasalRate * percent / 100.0
+        )
+    }
+
+    override fun tbrDisplayMinutes(): Int = preferences.get(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes)
+
     override fun isBatteryAge(): Boolean {
         return preferences.get(MedLinkStringPreferenceKey.BatteryInfo) == rh.gs(app.aaps.core.ui.R.string.medtronic_pump_battery_age)
     }
@@ -4896,6 +4914,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedtronicBooleanPreferenceKey.SetNeutralTemp,
             MedLinkMedtronicIntPreferenceKey.CommandAttempts,
             MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend,
+            MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes,
             MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,
