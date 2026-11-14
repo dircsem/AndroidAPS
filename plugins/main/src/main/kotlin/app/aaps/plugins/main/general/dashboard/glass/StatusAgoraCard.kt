@@ -169,9 +169,9 @@ internal fun StatusAgoraCard(
                     if (GlassPillId.BATTERY in selectedPills) {
                         GlassPill(
                             label = stringResource(R.string.dashboard_glass_pump_battery_short),
-                            value = state.batteryAge,
+                            value = state.batteryValue,
                             isDark = isDark,
-                            valueColor = statusLevelToColor(state.batteryAgeStatus),
+                            valueColor = statusLevelToColor(state.batteryStatus),
                             modifier = Modifier.width(100.dp).clickable { onOpenBattery() },
                             leadingIcon = {
                                 Icon(

@@ -57,6 +57,7 @@ import app.aaps.plugins.main.general.dashboard.viewmodel.StatusCardState
 import kotlin.math.roundToInt
 import app.aaps.ui.compose.overview.graphs.ChartConfig
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
+import app.aaps.plugins.main.general.dashboard.levelOrAgeBox
 import app.aaps.ui.compose.overview.statusLights.StatusItem
 import app.aaps.ui.compose.overview.statusLights.StatusUiState
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
@@ -494,8 +495,9 @@ internal fun buildGlassUiState(
         cannulaAge = lights?.cannulaStatus?.age ?: "--",
         cannulaAgeStatus = lights?.cannulaStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
         cannulaLabel = lights?.cannulaStatus?.label ?: "Cannula",
-        batteryAge = lights?.batteryStatus?.age ?: "--",
-        batteryAgeStatus = lights?.batteryStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
+        // B5: level when the pump gives one (else age), colored by the worse of the two, like circle-top
+        batteryValue = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).text } ?: "--",
+        batteryStatus = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).level } ?: StatusLevel.UNSPECIFIED,
         batteryLabel = lights?.batteryStatus?.label ?: "Battery",
         medLinkBattery = lights?.medLinkBatteryStatus?.level,
         medLinkBatteryStatus = lights?.medLinkBatteryStatus?.levelStatus ?: StatusLevel.UNSPECIFIED,

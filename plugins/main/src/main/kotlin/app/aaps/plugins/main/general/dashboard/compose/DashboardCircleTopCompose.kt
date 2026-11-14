@@ -72,6 +72,7 @@ import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.plugins.main.R
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.plugins.main.general.dashboard.DashboardEmbeddedComposeState
+import app.aaps.plugins.main.general.dashboard.worseStatusLevel
 import app.aaps.plugins.main.general.dashboard.viewmodel.OverviewViewModel
 import app.aaps.plugins.main.general.dashboard.viewmodel.StatusCardState
 import kotlinx.coroutines.delay
@@ -622,7 +623,7 @@ private fun PumpCompactBadgeRow(state: StatusCardState, statusLights: StatusUiSt
                 text = stringResource(R.string.dashboard_pump_pill_battery, battV),
                 contentDescription = stringResource(R.string.dashboard_pump_pill_battery_a11y, battV),
                 // age or level, whichever the pump shows: the worse of the two
-                level = worseLevel(statusLights?.batteryStatus?.ageStatus, statusLights?.batteryStatus?.levelStatus),
+                level = worseStatusLevel(statusLights?.batteryStatus?.ageStatus, statusLights?.batteryStatus?.levelStatus),
                 element = ElementType.BATTERY_CHANGE,
             )
         )
@@ -674,12 +675,6 @@ private val PUMP_BADGE_SPACING = 6.dp
 
 /** @param element change dialog opened on tap (reservoir: fill, battery: battery change, site: site change); null = no tap */
 private data class PumpBadgeSpec(val text: String, val contentDescription: String, val level: StatusLevel?, val element: ElementType? = null)
-
-private fun worseLevel(a: StatusLevel?, b: StatusLevel?): StatusLevel? = when {
-    a == StatusLevel.CRITICAL || b == StatusLevel.CRITICAL -> StatusLevel.CRITICAL
-    a == StatusLevel.WARNING || b == StatusLevel.WARNING   -> StatusLevel.WARNING
-    else                                                     -> a ?: b
-}
 
 /**
  * @param level warning / critical colors the background (same levels as the AAPS status lights)

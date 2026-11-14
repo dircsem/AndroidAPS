@@ -17,8 +17,10 @@ data class GlassUiState(
     val cannulaAge: String = "--",
     val cannulaAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val cannulaLabel: String = "Cannula",
-    val batteryAge: String = "--",
-    val batteryAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
+    /** Pump battery: the level when the pump gives one, else the age (B5). */
+    val batteryValue: String = "--",
+    /** Pump battery color: the worse of the level and the age status (B5). */
+    val batteryStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val batteryLabel: String = "Battery",
     /** MedLink only: battery level of the MedLink device. Null with other pumps (no pill). */
     val medLinkBattery: String? = null,
