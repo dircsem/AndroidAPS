@@ -378,6 +378,10 @@ class MedLinkBLE //extends RileyLinkBLE
 
     /** True after a command was shown in the pump status: the status goes back to "Connected" when the queue is empty. */
     @Volatile private var commandStatusShown = false
+
+    /** The MedLink command now running (only commands with a description), null when idle. For the main screen. */
+    @Volatile var shownCommand: MedLinkCommandType? = null
+        private set
     private var previousLine = ""
 
     //    private long latestReceivedCommand = 0l;
@@ -3041,6 +3045,7 @@ class MedLinkBLE //extends RileyLinkBLE
             resourceHelper.gs(command.descriptionRes)
         )
         commandStatusShown = true
+        shownCommand = command
         rxBus?.send(EventPumpStatusChanged(text))
     }
 
@@ -3048,6 +3053,7 @@ class MedLinkBLE //extends RileyLinkBLE
     private fun clearCommandStatus() {
         if (!commandStatusShown) return
         commandStatusShown = false
+        shownCommand = null
         rxBus?.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED))
     }
 
