@@ -16,7 +16,6 @@ import org.json.JSONObject
 import java.lang.Double
 import java.util.*
 import java.util.function.Supplier
-import java.util.regex.Matcher
 import java.util.regex.Pattern
 import java.util.stream.Stream
 import javax.inject.Inject
@@ -32,6 +31,7 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
 ): MedLinkProfileParser<T, BasalProfile> {
 
     private val hourPattern = Pattern.compile("\\d{2}:\\d{2}")
+    private val carbRatioPattern = Pattern.compile(":\\s*(\\d+(?:\\.\\d+)?)\\s*gr/u")
     private var units: String? = null
     @Throws(JSONException::class) override fun parseProfile(answer: Supplier<Stream<String>>, basalProfile: BasalProfile?): ProfileSealed? {
         val profileData = answer.get().map { obj: String -> obj.lowercase(Locale.getDefault()) }.iterator()
@@ -161,12 +161,15 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         buffer.append(",")
         buffer = addData(buffer, "basal", true)
         var toAppend = "["
-        for (basalEntry in basalProfile) {
+        // the basal entries can come twice for the same time: keep one per time (same value)
+        for (basalEntry in basalProfile.distinctBy { it.startTime?.toString("HH:mm") }) {
             buffer.append(toAppend)
             addTimeValue(buffer, basalEntry.startTime!!.toString("HH:mm"),
                          basalEntry.rate)
             toAppend = ","
         }
+        // no entry: still a valid (empty) JSON array
+        if (toAppend == "[") buffer.append("[")
         buffer.append("]")
         return buffer
     }
@@ -182,22 +185,18 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
                 var toAppend = "["
                 //                buffer.append(toAppend);
                 while (!ratioText.contains("insulin sensitivities")) {
-                    if (ratioText.contains("u\\ex")) {
-                        val pattern = Pattern.compile("\\d+\\.\\d+")
-                        val carbMatcher = pattern.matcher(ratioText)
-                        if (carbMatcher.find()) {
-                            carbMatcher(carbMatcher, buffer, ratioText, toAppend)
-                        }
-                    } else {
-                        val pattern = Pattern.compile("\\d{2}")
-                        val carbMatcher = pattern.matcher(ratioText)
-                        if (carbMatcher.find()) {
-                            carbMatcher(carbMatcher, buffer, ratioText, toAppend)
-                        }
+                    // "rate 1: 12gr/u from 00:00" or with decimals "rate 1: 12.5gr/u from 00:00".
+                    // Exchanges ("u/ex") are not known well enough to convert: skipped, so no wrong ratio is used.
+                    val carbMatcher = carbRatioPattern.matcher(ratioText)
+                    if (carbMatcher.find()) {
+                        if (carbRatio(carbMatcher.group(1), buffer, ratioText, toAppend)) toAppend = ","
+                    } else if (ratioText.contains("rate")) {
+                        aapsLogger.warn(LTag.PUMPBTCOMM, "carb ratio not in gr/u, skipped: $ratioText")
                     }
-                    toAppend = ","
                     ratioText = getNextValidLine(profileText)
                 }
+                // no ratio added: still a valid (empty) JSON array; the profile is then not valid and not offered
+                if (toAppend == "[") buffer.append("[")
                 buffer.append("]")
             } else {
                 aapsLogger.info(LTag.PUMPBTCOMM, "profile doesn't have carb ratios")
@@ -206,26 +205,18 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         return buffer
     }
 
-    private fun carbMatcher(carbMatcher: Matcher, buffer: StringBuffer, ratioText: String, toAppend: String) {
-        var toAppend: String? = toAppend
-        val carbs = carbMatcher.group(0)
+    /** Adds one carb ratio (g/U, decimals kept). @return true when it was added */
+    private fun carbRatio(carbs: String, buffer: StringBuffer, ratioText: String, toAppend: String): Boolean {
         aapsLogger.info(LTag.PUMPBTCOMM, "$ratioText $carbs")
-        var ratio = 0
-        ratio = if (carbs.contains("\\.")) {
-            val rat = Double.valueOf(carbs)
-            Math.toIntExact(Math.round(rat * 10))
-        } else {
-            Integer.valueOf(carbs)
-        }
+        val ratio = carbs.toDouble()
         val matcher = hourPattern.matcher(ratioText)
-        if (matcher.find()) {
-            val hour = matcher.group(0)
-            buffer.append(toAppend)
-            addTimeValue(buffer, hour, ratio)
-            toAppend = ","
-        } else {
+        if (!matcher.find()) {
             aapsLogger.info(LTag.PUMPBTCOMM, "carbratio matcher doesn't found hour")
+            return false
         }
+        buffer.append(toAppend)
+        addTimeValue(buffer, matcher.group(0), ratio)
+        return true
     }
 
     private fun getNextValidLine(profileText: Iterator<String>): String {

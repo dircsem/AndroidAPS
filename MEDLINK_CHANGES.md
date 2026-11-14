@@ -715,6 +715,10 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
     nada muda (chip só ícone).
   - Strings novas em core/ui: `pump_basal_rate_3_decimals`, `basal_rate_with_percent`, `medlink_delivered_basal_label`;
     removida `dashboard_tbr_rate_medlink`.
+- **Perfil com 3 casas, só com MedLink:** `Profile.getBasalList(rh, dateUtil, threeDecimals = false)` (parâmetro
+  novo); `ProfileManagementViewModel` passa `true` com MedLink. Editor (`ProfileEditorScreen`, basal) usa `DECIMAL_3`
+  quando `ProfileUiState.basalThreeDecimals` (MedLink). Outras bombas: 2 casas como antes. `ProfileSealedTest` testa
+  os dois. **Arquivos upstream, manter no merge.**
 - **Colunas Pump/Diff das estatísticas só com MedLink** (`StatsViewModel` com `ActivePlugin`): outras bombas que
   gravam TDD (Dana, Medtronic RileyLink) não mostram as colunas.
 - Conhecido e não relacionado: testes do módulo `ui` não compilam (`GraphViewModelTest`,
@@ -725,6 +729,23 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
   `ComposeMainActivity.EXTRA_NAVIGATE_ELEMENT` → `navigateProtected` (mesma proteção/senha do menu).
   `DashboardHeroCommands.openElement`. Glass não mudou (já abre as telas de detalhe próprias). **`UiInteraction`,
   `UiInteractionImpl` e `ComposeMainActivity` são upstream, manter no merge.**
+- **Aceitar o perfil da bomba (setting nova "Accept profile changes from the pump", desligada por padrão):**
+  - Leitura do perfil (E + F) só nos gatilhos que já existiam: início do app e quando o basal do `S` não é o esperado.
+  - Depois de cada leitura, `ProfileCallback` chama `onPumpProfileRead`: guarda `lastPumpProfile`/`lastPumpProfileReadAt`;
+    com a setting ligada compara com o perfil efetivo do AAPS (`MedLinkPumpProfileDiff`, a cada 30 min: basal
+    arredondado ao passo da bomba, IC, ISF e alvos em mg/dl, com tolerância) e mostra `EventShowDialog.OkCancel` com
+    todas as diferenças.
+  - Aceitar: `ProfileRepository.copyFrom` + `add` → perfil local novo "MedLink pump <data hora>" e
+    `createProfileSwitch` 100 %, sem timeshift, DIA/insulina (iCfg) do perfil atual. Falha → notificação.
+  - Cancelar: guarda o hash do perfil da bomba (`MedtronicLongNonKey.MedLinkIgnoredPumpProfile`), não pergunta de novo
+    até o perfil da bomba mudar.
+  - Limite: o diálogo só aparece com a tela do AAPS aberta (host global de diálogos); se o app estiver em segundo
+    plano, pergunta de novo na próxima leitura.
+- **Parser do perfil (`MedLinkProfileParserImpl`) corrigido:** entradas de basal repetidas (mesma hora 2x) agora uma só;
+  carb ratio com decimais (12.5 gr/u) mantido (antes `"\\."` literal nunca casava e virava 12); linhas em trocas
+  (u/ex) são ignoradas com log (formato não conhecido, evitar ratio errado); lista vazia de carb ratio/basal gera
+  JSON válido. Testes novos: `MedLinkProfileParserImplTest` (resposta real do log), `MedLinkPumpProfileDiffTest`.
+- Testes: rileylink 516/516, medtronic 196/196.
 - Compilado: `:ui`, `:pump:medtronic`, `:plugins:main`, `:plugins:aps`. Testes: rileylink 516/516, medtronic 189/189.
 
 ## 4al. Glass: pills nas colunas, comando atual/próximo; botão "Use pump profile" (2026-11-13) — NÃO TESTADO EM CAMPO
@@ -734,6 +755,10 @@ O AAPS 4.0 mudou a API por baixo do MedLink:
 - Glass, só MedLink: onde ficava o Bas 30m, duas linhas "Agora" (comando do MedLink em execução,
   `MedLinkBLE.shownCommand`) e "Próx." (próxima operação do plano da TBR; sem plano, próxima leitura agendada).
   `MedLinkPumpPluginBase.currentCommandText()` / `nextCommandText()`.
+- Mensagem "perfil da bomba diferente": mostra TODAS as diferenças (antes no máximo 8) e, com o perfil completo
+  já lido, tem o botão "Use pump profile": mostra todas as diferenças (basal, IC, ISF, alvos) e pede confirmação,
+  mesmo com a setting desligada ou com o perfil ignorado antes. A setting só controla o diálogo automático.
+  O card do Glass corta o texto em 3 linhas; a lista completa está no diálogo e na lista de notificações.
 
 ## 4ak. Primeira operação da TBR nunca acontecia (2026-11-13) — NÃO TESTADO EM CAMPO
 

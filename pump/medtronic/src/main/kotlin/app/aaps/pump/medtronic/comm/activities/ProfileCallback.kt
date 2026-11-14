@@ -40,6 +40,8 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
             }
              if (profile != null){
                  medLinkMedtronicPumpPlugin.initProfile(profile)
+                 // keep the full pump profile and, if the setting is on, ask to take it over when it differs
+                 medLinkMedtronicPumpPlugin.onPumpProfileRead(profile)
              }
         } catch (e: JSONException) {
             e.printStackTrace()

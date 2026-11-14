@@ -18,4 +18,7 @@ enum class MedtronicLongNonKey(
     LastPrime("medtronic_last_sent_prime", 0L),
     LastRewind("medtronic_last_sent_rewind", 0L),
     LastBatteryChange("medtronic_last_sent_battery_change", 0L),
+
+    /** MedLink: hash of the pump profile the user chose to ignore (not asked again until the pump profile changes). */
+    MedLinkIgnoredPumpProfile("medlink_ignored_pump_profile_hash", 0L),
 }
