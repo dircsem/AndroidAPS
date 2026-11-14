@@ -65,6 +65,7 @@ import app.aaps.database.transactions.CancelTherapyEventTransaction
 import app.aaps.database.transactions.CgmSourceTransaction
 import app.aaps.database.transactions.CutCarbsTransaction
 import app.aaps.database.transactions.InsertAndCancelCurrentTemporaryTargetTransaction
+import app.aaps.database.transactions.InsertBolusWithTempIdMedLinkTransaction
 import app.aaps.database.transactions.InsertBolusWithTempIdTransaction
 import app.aaps.database.transactions.InsertIfNewByTimestampCarbsTransaction
 import app.aaps.database.transactions.InsertIfNewByTimestampTherapyEventTransaction
@@ -367,6 +368,22 @@ class PersistenceLayerImpl @Inject constructor(
             transactionResult
         } catch (e: Exception) {
             aapsLogger.error(LTag.DATABASE, "Error while saving Bolus", e)
+            throw e
+        }
+    }
+
+    // MedLink: insert tracked as a change, so the "bolus changed" event is sent at once. Keep this when merging upstream.
+    override suspend fun insertBolusWithTempIdMedLink(bolus: BS): PersistenceLayer.TransactionResult<BS> = withContext(Dispatchers.IO) {
+        try {
+            val result = repository.runTransactionForResultSuspend(InsertBolusWithTempIdMedLinkTransaction(bolus.toDb()))
+            val transactionResult = PersistenceLayer.TransactionResult<BS>()
+            result.inserted.forEach {
+                aapsLogger.debug(LTag.DATABASE, "Inserted MedLink Bolus $it")
+                transactionResult.inserted.add(it.fromDb())
+            }
+            transactionResult
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.DATABASE, "Error while saving MedLink Bolus", e)
             throw e
         }
     }

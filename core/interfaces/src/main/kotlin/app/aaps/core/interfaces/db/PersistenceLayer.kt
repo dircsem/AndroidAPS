@@ -207,6 +207,15 @@ interface PersistenceLayer {
     suspend fun insertBolusWithTempId(bolus: BS): TransactionResult<BS>
 
     /**
+     * MedLink: the same as [insertBolusWithTempId], but the insert sends the "bolus changed" event at once
+     * (Treatments screen, IOB cache). MedLink never updates the row later, so it needs the event here.
+     *
+     * @param bolus record
+     * @return List of inserted records
+     */
+    suspend fun insertBolusWithTempIdMedLink(bolus: BS): TransactionResult<BS>
+
+    /**
      * Invalidate record with id
      *
      * @param id record id

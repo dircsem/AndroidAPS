@@ -502,7 +502,8 @@ class PumpSyncImplementation @Inject constructor(
         }
         aapsLogger.info(LTag.DATABASE, bolus.toString())
         // as before the AAPS 4.0 merge: true only when an existing record was updated
-        return persistenceLayer.insertBolusWithTempId(bolus).updated.isNotEmpty()
+        // MedLink insert: sends the "bolus changed" event at once (other pumps get it on their later update)
+        return persistenceLayer.insertBolusWithTempIdMedLink(bolus).updated.isNotEmpty()
     }
 
     override suspend fun syncStopTemporaryBasalWithPumpIdMedLink(timestamp: Long, endPumpId: Long, pumpType: PumpType, pumpSerial: String): Boolean {
