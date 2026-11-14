@@ -1,3 +1,5 @@
+Status: STARTED (2026-11-07, developer)
+
 MedlinkBle has the interface to communicate with medlink device.
 Whenever it connects to the Medlink device, before connecting to the pump a connection command should be done. 
 Medlink display a command confirmed for each command that has been applied. But if there is any message being displayed at the pump screene, it won't accept any command tha changes it's status (bolus, stop, start)

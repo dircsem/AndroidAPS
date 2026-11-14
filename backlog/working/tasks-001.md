@@ -1,6 +1,8 @@
+Status: STARTED (2026-11-07, developer)
+
 # MedLink bolus / stop reliability — task backlog
 
-Source: `BUGs.md`. Tasks written from a PO perspective, grounded in the current code.
+Source: `bugs-001.md`. Tasks written from a PO perspective, grounded in the current code.
 
 ## Pump behaviour (facts this plan relies on)
 
@@ -345,7 +347,7 @@ Kept here because T1–T7 all depend on it. It is the cleanest way to get rid of
 **Changes**
 - `startPump()` guard (`:447`): use `medLinkPumpStatus.pumpRunningState` only if it came from an `A` answer newer than the last stop. Otherwise send the start.
 - `MedLinkBLE.removeFirstCommand` `:152-154`: drop the `removeIf { contains(StartPump) }`, or limit it to duplicate executors with no callback.
-- `BleStartCommand` `:52-55`: on `pump suspend state` the start was not applied (pump showing a message, see `BUGs.md`) → `clearExecutedCommand` + `retryCommand` with a bounded count. When exhausted → alarm "Pump still suspended — resume manually".
+- `BleStartCommand` `:52-55`: on `pump suspend state` the start was not applied (pump showing a message, see `bugs-001.md`) → `clearExecutedCommand` + `retryCommand` with a bounded count. When exhausted → alarm "Pump still suspended — resume manually".
 - Resuming is not an over-delivery risk, so retrying here is allowed. The bolus rules don't apply.
 
 ## T11 — no sleeps on the BLE thread

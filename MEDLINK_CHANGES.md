@@ -1,6 +1,6 @@
 # MedLink — registro de alterações (bolus / stop / fila de comandos)
 
-Alterações feitas em 2026-11-07 a partir de `BUGs.md` e `BUGs_TASKS.md` (tarefas T0–T13), mais o bug do `M` → "invalid command".
+Alterações feitas em 2026-11-07 a partir de `backlog/working/bugs-001.md` e `backlog/working/tasks-001.md` (tarefas T0–T13), mais o bug do `M` → "invalid command".
 Regra principal (DEV.md): **nunca entregar insulina a mais**. Tudo foi feito com TDD (teste antes do código).
 
 > Estado: **testado só com testes unitários**. As respostas `M`/`A` usadas nos testes são sintéticas. Falta o teste de campo com a bomba.
@@ -99,7 +99,7 @@ Antes, um bolus que o `M` mostrava como entregue depois de uma desconexão nunca
 
 ---
 
-## 4b. Bug 4 (BUGs.md): bomba não reativa depois de basal temporária 0% (2026-11-08, T13)
+## 4b. Bug 4 (backlog/working/bugs-001.md): bomba não reativa depois de basal temporária 0% (2026-11-08, T13)
 
 **Causa**
 - O START tem dois passos: `A` (lê o estado) e `START`. O `BleStartCommand` tratava "pump suspend state" sempre do mesmo jeito, chamando `completedCommand()`.
