@@ -15,5 +15,5 @@
     <string name="dashboard_glass_tools_label">Narzędzia</string>
     <string name="dashboard_glass_command_now_line">Teraz: %1$s</string>
     <string name="dashboard_glass_command_next_line">Dalej: %1$s</string>
-    <string name="dashboard_glass_batteries_label">Pompa ML</string>
+    <string name="dashboard_glass_batteries_label" formatted="false">Pompa ML%</string>
 </resources>

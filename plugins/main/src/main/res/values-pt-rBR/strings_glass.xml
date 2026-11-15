@@ -19,5 +19,5 @@
     <string name="dashboard_glass_tools_label">Ferramentas</string>
     <string name="dashboard_glass_command_now_line">Agora: %1$s</string>
     <string name="dashboard_glass_command_next_line">Próx.: %1$s</string>
-    <string name="dashboard_glass_batteries_label">Bomba ML</string>
+    <string name="dashboard_glass_batteries_label" formatted="false">Bomba ML%</string>
 </resources>

@@ -15,5 +15,5 @@
     <string name="dashboard_glass_tools_label">Инструменты</string>
     <string name="dashboard_glass_command_now_line">Сейчас: %1$s</string>
     <string name="dashboard_glass_command_next_line">Далее: %1$s</string>
-    <string name="dashboard_glass_batteries_label">Помпа ML</string>
+    <string name="dashboard_glass_batteries_label" formatted="false">Помпа ML%</string>
 </resources>

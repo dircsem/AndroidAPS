@@ -498,7 +498,8 @@ internal fun buildGlassUiState(
         // B5: level when the pump gives one (else age), colored by the worse of the two, like circle-top
         batteryValue = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).text } ?: "--",
         batteryStatus = lights?.batteryStatus?.let { levelOrAgeBox(it.age, it.ageStatus, it.level, it.levelStatus).level } ?: StatusLevel.UNSPECIFIED,
-        medLinkBattery = lights?.medLinkBatteryStatus?.level,
+        // MedLink battery as a plain number: the pill title says "ML%" (user, 2026-11-15). levelPercent = 1 - level / 100
+        medLinkBattery = lights?.medLinkBatteryStatus?.let { if (it.levelPercent >= 0f) ((1f - it.levelPercent) * 100).roundToInt().toString() else "-" },
         medLinkBatteryStatus = lights?.medLinkBatteryStatus?.levelStatus ?: StatusLevel.UNSPECIFIED,
         sensorAge = lights?.sensorStatus?.age ?: "--",
         sensorAgeStatus = lights?.sensorStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,

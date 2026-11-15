@@ -253,6 +253,8 @@ Related: T15, T16 (same file; do T15 → T16 → T17 in one go so the titles hav
   - The first row under the ring starts lower (`AapsSpacing.large`, was 6 dp), so it does not cover the "TIR …" text.
   - Sketch A now: left Cannula / Bomba ML / TBR, right Bas 30m / Sensor / Target+Tools, one row with Last bolus.
   - `GlassPillLayoutTest` 10/10; `:plugins:main` compiles.
+- **2026-11-15 (user):** battery pill title "Pump ML%" / "Bomba ML%" / "Помпа ML%" / "Pompa ML%" (`formatted="false"`), and the
+  MedLink value without "%" (the number from `levelPercent`, no string cutting).
 - **Third round (user, 2026-11-14):**
   - Target back to a **normal pill** (the value was not seen in a half pill), with the AAPS target icon `IcTtManual`.
     `TARGET_TOOLS` removed. **Tools** is always its own **small pill** (icon only, 50 dp, name for screen readers), last.

@@ -235,7 +235,7 @@
     <string name="dashboard_glass_cannula_age_label" comment="Glass pill title, at most 11 characters (longer titles are cut). The value is the cannula age.">Cannula age</string>
     <string name="dashboard_glass_sensor_age_label" comment="Glass pill title, at most 11 characters (longer titles are cut). The value is the sensor age.">Sensor age</string>
     <string name="dashboard_glass_delivered_label" comment="Glass pill title, at most 11 characters (longer titles are cut). Basal delivered in the last minutes. %1$d=minutes. Example: Basal 30 min">Bas. %1$d min</string>
-    <string name="dashboard_glass_batteries_label" comment="Glass pill title, at most 11 characters: one pill with the pump battery and the MedLink battery. ML = MedLink (device name)">Pump ML</string>
+    <string name="dashboard_glass_batteries_label" formatted="false" comment="Glass pill title, at most 11 characters: one pill with the pump battery and the MedLink battery. ML = MedLink (device name); ML% = the second value is the MedLink battery in %, shown without the % sign">Pump ML%</string>
     <string name="dashboard_glass_two_values" comment="Glass pill value with two values. %1$s=pump battery, example: 3d3h. %2$s=MedLink battery, example: 38%. Example: 3d3h · 38%">%1$s · %2$s</string>
     <string name="dashboard_glass_personalize_pump_label">Pump</string>
     <string name="dashboard_glass_personalize_cannula_label">Cannula</string>
