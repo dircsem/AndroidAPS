@@ -870,10 +870,10 @@ Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFull
   parcial só era gravado depois desse tempo e o diálogo ficava aberto. `MedLinkBolusTracker`: flag nova
   `pumpStopped` (a bomba respondeu "suspended" depois da dose escrita); aí um `M` fora de andamento é final → PARTIAL
   na hora, valor = último bolus da bomba (nunca mais que o pedido). `M` ainda em andamento continua sendo seguido.
-  Diálogo: "Stopping the bolus…" depois do Stop; parcial mostra "Bolus stopped: 0.50 U of 2.00 U delivered" (antes
-  "delivered successfully" com o total); recusa por bateria baixa mostra "Bolus not stopped". Strings novas (só en):
-  `medlink_bolus_stopping`, `medlink_bolus_stopped_partial`. Pendente: a barra vai a 100 % no fim
-  (`completeAndAutoClear`, core).
+  Diálogo (usuário, 2026-11-14): o Stop **fecha o diálogo na hora**; quando a bomba informa o resultado, uma notificação
+  (`MEDLINK_BOLUS_STOPPED`) diz "Bolus stopped: 0.50 U of 2.00 U delivered" (ou "amount not known, check the pump
+  history"); recusa por bateria baixa: o diálogo fica e mostra "Bolus not stopped". Strings novas (só en):
+  `medlink_bolus_stopped_partial`, `medlink_bolus_stopped_unknown`.
 - **B5, cor da bateria da bomba (Glass):** o pill usava só a idade. Funções novas compartilhadas
   (`plugins/main/.../dashboard/StatusBoxLevels.kt`): `worseStatusLevel` (saiu do `worseLevel` privado do circle-top) e
   `levelOrAgeBox` (nível quando a bomba dá, senão idade; cor = pior dos dois). Glass: `batteryAge`/`batteryAgeStatus`

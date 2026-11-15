@@ -205,6 +205,31 @@ More tests:
   - the over-delivery fix below (question 2, not answered yet).
 - Tests: `MedLinkProfileReadRuleTest` 7/7; medtronic 212/212. The plugin itself has no unit test harness, so the
   notification / dialog paths are not unit tested.
+- **Read at app start, two fixes (user asked, 2026-11-14):**
+  1. A failed read counted as a read: `lastProfileRead` is set when the read is **requested**, so after a failed start
+     read (BLE drop) the next timed read came only 6 h later. Now the rule has two times: `lastRequestAt` (only for the
+     10 min gap) and `lastSuccessAt` (`lastPumpProfileReadAt`, set in `onPumpProfileRead`) for the 6 h interval. A failed
+     read is tried again at the next status read after 10 min.
+  2. `postInit` is called again after a MedLink wake-up (`InitializeMedLinkPumpManagerTask` → `wakeUp` when the pump was
+     not seen for 5 min → `MedLinkMedtronicCommunicationManager.wakeUp` → `postInit`), and each call read the profile
+     with no rule. Now `postInit` uses the new reason `APP_START`: it reads only while no read has succeeded yet in this
+     app run, and never during a bolus / TBR operation or within 10 min of the last request.
+  - `MedLinkProfileReadRuleTest` 10/10; medtronic 229/229.
+- **User (2026-11-14): "the pump isn't comparing the ISF, probably neither the IC".** Cause in the COMMITTED code: the
+  "different" message came from `isMedLinkProfileSet` → `MedLinkProfileDiff` = **basal only**; the full compare ran
+  only with `AcceptPumpProfile` on (off by default). The uncommitted B6 above fixes it (full compare after every read,
+  setting on by default). New end-to-end tests with the real `F` answer: other ISF + other IC → exactly ISF and IC
+  found; the same profile → nothing.
+- **Parser fixes found on the way (`MedLinkProfileParserImpl`):**
+  - ISF was read with a fixed 4-char slice: "rate 1: 39mg/dl" (one space) → `Integer.valueOf(" 39m")` threw (not a
+    `JSONException`, so the whole read was lost). Now a pattern, decimals allowed.
+  - mmol/l: the unit "mmol/l" was given to `GlucoseUnit.fromText`, which knows only "mmol" → read as mg/dl. Now mapped
+    to "mmol" / "mg/dl"; targets read with a pattern too (decimals, and the non-breaking hyphen "70‑140").
+  - Tests: `MedLinkProfileParserImplTest` 8/8 (4 new).
+- **`initProfile` only for the first good read:** each read called `initProfile`, which sends the stored TBRs to the
+  pump again. With more reads now (6 h, Profiles screen, retries) that could send TBR plans again during the day.
+  `ProfileCallback` calls it only while `lastPumpProfile == null`.
+- medtronic 235/235.
 - **Safety answer (from the code): there IS an over-delivery path, so B6 stays P1.**
   - TBR above 100 %: the microbolus amounts come from the **AAPS** profile basal: `scheduleTempBasalBolus` →
     `extractTempProfiles(profile, ...)` → `calculateTempBasalDosage` → `calcTotalAmountAbs(abs, AAPS basal value, hours)`.
@@ -388,6 +413,15 @@ Docs: a section in `MEDLINK_CHANGES.md`.
 - Not changed: the dialog can already be hidden (`onDismissRequest`), upstream behaviour.
 - Tests: 3 new in `MedLinkBolusTrackerTest` (stop before the expected end → partial at once; still in progress
   after stop → nothing recorded; no stop → still delivering). rileylink 519/519, `:pump:medtronic` compiles.
+- **Change (user, 2026-11-14): Stop closes the dialog at once**, and a notification tells the result:
+  - when the USER STOP is really sent (not refused for low battery), `bolusProgressData.clear(currentGeneration)`
+    closes the modal dialog; the later `completeAndAutoClear` of `MedLinkCommandBolus` finds no state and does nothing;
+  - when the tracker reports the result: notification `MEDLINK_BOLUS_STOPPED` (60 min) "Bolus stopped: 0.50 U of 2.00 U
+    delivered" (amount from the pump), or "Bolus stopped: the delivered amount is not known. Check the pump history."
+    when the result is not known (`medlink_bolus_stopped_unknown`);
+  - low battery: the stop is refused, the dialog stays and says "Bolus not stopped" (as before);
+  - removed: the "Stopping the bolus…" / partial text in the dialog (no dialog any more), `medlink_bolus_stopping`,
+    `PARTIAL_BOLUS_TOLERANCE_U`. `:pump:medtronic` compiles.
 
 ## B9 — No "profile updated" message after a profile switch with MedLink
 Priority: P3
