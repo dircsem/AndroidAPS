@@ -187,6 +187,8 @@
     <string name="medlink_battery_device_phone">phone</string>
     <string name="medlink_suspend_low_battery">Suspension not sent: %1$s battery %2$d%% (minimum %3$d%%). Charge it to allow temp basals below 100%%.</string>
     <string name="medlink_bolus_not_stopped">Bolus not stopped</string>
+    <string name="medlink_bolus_stopped_partial" comment="Bolus dialog after Stop. %1$s=delivered insulin with unit, %2$s=requested insulin with unit. Example: Bolus stopped: 0.50 U of 2.00 U delivered">Bolus stopped: %1$s of %2$s delivered</string>
+    <string name="medlink_bolus_stopped_unknown">Bolus stopped: the delivered amount is not known. Check the pump history.</string>
     <string name="medlink_bolus_stop_low_battery" comment="%1$s=device, example: MedLink or Phone. %2$d=its battery level, example: 15. %3$d=minimum level for a suspension, example: 20">The pump was not stopped: %1$s battery %2$d%% (minimum %3$d%%). The bolus goes on. Charge it to allow stopping the pump.</string>
     <string name="medlink_basal_percents">Pump %1$s · plan %2$s · this hour %3$s</string>
     <string name="medlink_min_battery_for_suspend" formatted="false">Minimum battery for suspension (%)</string>

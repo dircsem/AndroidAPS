@@ -543,6 +543,46 @@ class MedLinkBolusTrackerTest {
         assertEquals(0, tracker.resendCount())
     }
 
+    // B8: Stop pressed during a manual bolus. The pump aborts the bolus and suspends long before the expected end of the
+    // full dose. The partial amount must be recorded at once, so the bolus dialog closes and the queue goes on.
+    @Test
+    fun `stop before the expected end - M with the aborted bolus records the partial at once (B8)`() {
+        sendLoopBolus(2.0, MedLinkBolusOrigin.MANUAL)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        tracker.onStatus(MedLinkBolusFixtures.snapshot(2.0, applied(2.0).lastBolusTime, square = 2.0, delivered = 0.5, readAt = clock.now()))
+        assertEquals(ReadStatusAt(clock.now()), tracker.onPumpState(MedLinkPumpAnswerState.SUSPENDED))
+        clock.advance(5_000)
+        assertTrue(clock.now() < tracker.current!!.expectedEndAt)
+
+        assertEquals(Record(0.5, applied(0.5).lastBolusTime), tracker.onStatus(applied(0.5)))
+        assertEquals(MedLinkBolusState.PARTIAL, tracker.current!!.state)
+        assertTrue(tracker.canSendNewBolus())
+        assertEquals(0, tracker.resendCount())
+        assertTrue(tracker.current!!.appliedTotal <= tracker.current!!.requested)
+    }
+
+    @Test
+    fun `stop before the expected end - M still in progress keeps following the bolus, nothing recorded (B8)`() {
+        sendLoopBolus(2.0, MedLinkBolusOrigin.MANUAL)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        tracker.onPumpState(MedLinkPumpAnswerState.SUSPENDED)
+        val action = tracker.onStatus(MedLinkBolusFixtures.snapshot(2.0, applied(2.0).lastBolusTime, square = 2.0, delivered = 0.6, readAt = clock.now()))
+        assertInstanceOf(ReadStatusAt::class.java, action)
+        assertFalse(tracker.current!!.state.isFinal)
+        assertEquals(0.0, tracker.current!!.appliedTotal)
+    }
+
+    @Test
+    fun `without a stop, a new bolus below the request before the expected end is still delivering`() {
+        sendLoopBolus(2.0, MedLinkBolusOrigin.MANUAL)
+        tracker.onConfirmed()
+        clock.advance(20_000)
+        assertInstanceOf(ReadStatusAt::class.java, tracker.onStatus(applied(0.5)))
+        assertFalse(tracker.current!!.state.isFinal)
+    }
+
     @Test
     fun `pump bolusing state moves a confirmed bolus to delivering`() {
         sendLoopBolus(1.0)

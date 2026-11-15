@@ -117,6 +117,13 @@ class MedLinkBolusRequest(
     /** `M` proved the bolus was not started and a re-send was decided: other boluses may join it (4i). */
     internal var resendAllowed: Boolean = false
 
+    /**
+     * B8: the pump answered "suspended" after the dose was written (a stop aborted the bolus). A suspended pump
+     * delivers nothing, so an `M` that shows our bolus as not in progress is the final amount, also before
+     * [expectedEndAt].
+     */
+    internal var pumpStopped: Boolean = false
+
     val expectedEndAt: Long
         get() = sentAt + ((programmed ?: requested) * MedLinkBolusTracker.MS_PER_UNIT).roundToLong() + MedLinkBolusTracker.DELIVERY_MARGIN_MS
 
@@ -394,9 +401,11 @@ class MedLinkBolusTracker(
                 else MedLinkBolusAction.None
 
             // a stop may have aborted the bolus (T3): read what was delivered right away
-            MedLinkPumpAnswerState.SUSPENDED ->
+            MedLinkPumpAnswerState.SUSPENDED -> {
+                r.pumpStopped = true
                 (if (r.state != MedLinkBolusState.UNRESOLVED) transition(r, MedLinkBolusState.UNRESOLVED) else null)
                     ?: MedLinkBolusAction.ReadStatusAt(clock.now())
+            }
 
             MedLinkPumpAnswerState.RUNNING   -> MedLinkBolusAction.None
         }
@@ -457,8 +466,10 @@ class MedLinkBolusTracker(
         r.lastSnapshot = snapshot ?: r.lastSnapshot
         val now = clock.now()
         val interpreted = MedLinkBolusStatusInterpreter.interpret(snapshot, MedLinkBolusCheck(r.requested, r.sentAt, r.baseline, r.expectedEndAt), now)
-        val outcome = if (pumpIdle && interpreted.type == MedLinkBolusOutcome.Type.DELIVERING && interpreted.pumpBolusTime != null)
-            interpreted.copy(type = MedLinkBolusOutcome.Type.PARTIAL, reason = "pump idle: bolus over below the request")
+        // B8: after a stop the pump is suspended; our bolus not in progress any more is over, even before the expected end
+        val stoppedAndOver = r.pumpStopped && snapshot?.inProgress == false
+        val outcome = if ((pumpIdle || stoppedAndOver) && interpreted.type == MedLinkBolusOutcome.Type.DELIVERING && interpreted.pumpBolusTime != null)
+            interpreted.copy(type = MedLinkBolusOutcome.Type.PARTIAL, reason = if (pumpIdle) "pump idle: bolus over below the request" else "pump stopped: bolus aborted below the request")
         else interpreted
         log("BOLUS[${r.id}] M outcome=${outcome.type} delivered=${outcome.deliveredAmount} requested=${r.requested} ${outcome.reason} raw=${snapshot?.raw}")
 

@@ -258,7 +258,10 @@ enum class NotificationId(
     MEDLINK_PUMP_CONNECTION_RESTORED(INFO, PUMP),
 
     /** MedLink (T21): keep the 0 % basal stored while the pump was not reached? Buttons yes / no. Appended last. */
-    MEDLINK_ZERO_TBR_QUESTION(IMPORTANT, PUMP);
+    MEDLINK_ZERO_TBR_QUESTION(IMPORTANT, PUMP),
+
+    /** MedLink (B8): a manual bolus was stopped by the user; tells the delivered amount. Appended last. */
+    MEDLINK_BOLUS_STOPPED(NORMAL, PUMP);
 
     companion object {
 

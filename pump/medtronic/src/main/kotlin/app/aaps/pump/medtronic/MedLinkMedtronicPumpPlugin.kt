@@ -2047,6 +2047,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     override val baseBasalRate: PumpRate
         get() = PumpRate(medLinkBaseBasalRate)
 
+    /** B8: Stop was pressed for the manual bolus in flight: its result is told by a notification (the dialog is closed). */
+    @Volatile private var manualBolusStopRequested = false
+
     override fun stopBolusDelivering() {
         bolusDeliveryType = BolusDeliveryType.CancelDelivery
         // Not written yet (still QUEUED): the flag above and the queue removal are enough
@@ -2058,6 +2061,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (low != null) {
             // Same rule as every suspension: nobody could start the pump again. The bolus goes on.
             aapsLogger.warn(LTag.PUMP, "bolus stop: pump not stopped, ${low.device} battery ${low.level}% (minimum $minimum%)")
+            // B8: the dialog says so; the next progress update shows the bolus again (it goes on)
+            bolusProgressData.state.value?.let { bolusProgressData.updateProgress(it.percent, rh.gs(R.string.medlink_bolus_not_stopped), it.delivered) }
             uiInteraction.runAlarm(
                 rh.gs(R.string.medlink_bolus_stop_low_battery, batteryDeviceName(low), low.level, minimum),
                 rh.gs(R.string.medlink_bolus_not_stopped),
@@ -2066,6 +2071,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             return
         }
         aapsLogger.info(LTag.PUMP, "bolus stop: bolus ${request.state}, stopping the pump")
+        // B8 (user 2026-11-14): the dialog closes at once; a notification tells the delivered amount when the pump reports it
+        manualBolusStopRequested = true
+        bolusProgressData.clear(bolusProgressData.currentGeneration)
         // USER stop: sent at once, aborts the bolus. The tracker then reads M and records the partial amount.
         stopPump(object : Callback() {
             override fun run() {
@@ -4071,13 +4079,24 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             // the one result of this bolus (resolved by the tracker, merged, dropped): the first call wins
             val resultSent = java.util.concurrent.atomic.AtomicBoolean(false)
             val manual = bolus.bolusType == BS.Type.NORMAL
+            if (manual) manualBolusStopRequested = false
             bleBolusCommand.onQueueResult = { success, delivered ->
                 if (resultSent.compareAndSet(false, true)) {
                     aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U result success=$success delivered=$delivered")
                     if (success) bolusDeliveryType = BolusDeliveryType.Idle
-                    if (manual) {
+                    if (manual && manualBolusStopRequested) {
+                        // B8: the dialog was closed at Stop; tell what the pump really delivered
+                        manualBolusStopRequested = false
+                        val text = if (success) rh.gs(
+                            R.string.medlink_bolus_stopped_partial,
+                            rh.gs(app.aaps.core.ui.R.string.format_insulin_units, delivered),
+                            rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolus.insulin)
+                        ) else rh.gs(R.string.medlink_bolus_stopped_unknown)
+                        aapsLogger.info(LTag.PUMP, "bolus stop: result told to the user: $text")
+                        notificationManager.post(NotificationId.MEDLINK_BOLUS_STOPPED, text, validMinutes = 60)
+                    } else if (manual && success) {
                         // the dialog is closed by MedLinkCommandBolus (completeAndAutoClear / clear) with this result
-                        if (success) bolusProgressData.updateProgress(percent = 100)
+                        bolusProgressData.updateProgress(percent = 100)
                     }
                     func.invoke(
                         pumpEnactResultProvider.get().success(success).enacted(success).bolusDelivered(delivered)
