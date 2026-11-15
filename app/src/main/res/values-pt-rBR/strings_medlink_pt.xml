@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    T18 (user, 2026-11-14): pt-BR texts of the Profiles screen (star icon of the bottom bar) that AAPS / Crowdin has not
+    translated yet. These strings belong to the :ui and :core:ui modules. A resource of the app module with the same name
+    overrides the library one without a build error, and Crowdin does not touch this file name.
+    When Crowdin has approved pt-BR texts for these names, delete the lines here (or the whole file).
+-->
+<resources>
+    <string name="activate_label">Ativar</string>
+    <string name="active_profile_indicator">ATIVO</string>
+    <string name="add_new_profile">Adicionar perfil</string>
+    <string name="add_time_block">Adicionar faixa de horário</string>
+    <string name="back">Voltar</string>
+    <string name="basal_short">BAS</string>
+    <string name="carousel_move_earlier">Mover para antes</string>
+    <string name="carousel_move_later">Mover para depois</string>
+    <string name="carousel_position">%1$d / %2$d</string>
+    <string name="carousel_position_description">Posição %1$d de %2$d</string>
+    <string name="carousel_show_card">Mostrar detalhes</string>
+    <string name="change">Alterar</string>
+    <string name="confirm_clone_profile">Clonar o perfil \"%1$s\"?</string>
+    <string name="confirm_remove_profile">Remover o perfil \"%1$s\"?</string>
+    <string name="discard">Descartar</string>
+    <string name="edit_label">Editar</string>
+    <string name="edit_profile_name">Editar nome do perfil</string>
+    <string name="ic_dynamic_label_warning">Seu algoritmo pode calcular o IC de forma dinâmica. Os valores abaixo só são usados se faltarem dados ou como valor de referência.</string>
+    <string name="isf_dynamic_label_warning">Seu algoritmo pode calcular o FSI de forma dinâmica. Os valores abaixo só são usados se faltarem dados ou como valor de referência.</string>
+    <string name="localprofile">Perfil</string>
+    <string name="more_options">Mais opções</string>
+    <string name="profile_basal_not_compatible_with_pump">A taxa basal não é compatível com a bomba atual e não pode ser ativada. Reduza a porcentagem ou ajuste a taxa basal.</string>
+    <string name="profile_name">Nome do perfil:</string>
+    <string name="profile_name_contains_dot">Alguns nomes de perfil contêm pontos.\nO NS não aceita isso.\nOs perfis não serão enviados ao NS.</string>
+    <string name="profile_no_longer_exists">A lista de perfis mudou neste meio-tempo. Tente de novo.</string>
+    <string name="profile_not_saved_activate">Perfil não salvo. Salve o perfil antes de ativar.</string>
+    <string name="profile_pump_incompatible_label">Limite da bomba</string>
+    <string name="profile_switch_select_insulin_hint">Nenhuma insulina em uso ainda. Selecione a insulina que você usa, para que esta troca de perfil a registre.</string>
+    <string name="remove_entry">Remover item</string>
+    <string name="remove_label">Remover</string>
+    <string name="reorder">Reordenar</string>
+    <string name="reset">Restaurar</string>
+    <string name="running">Em uso</string>
+    <string name="switch_to_edit">Editar</string>
+    <string name="target_high_label">Alto</string>
+    <string name="target_low_label">Baixo</string>
+    <string name="target_short">ALVO</string>
+    <string name="timeshift_label">Deslocamento de horário</string>
+    <string name="units_colon">Unidades:</string>
+    <string name="unsaved_changes">Alterações não salvas</string>
+    <string name="unsaved_changes_message">Você tem alterações não salvas. O que deseja fazer?</string>
+</resources>
