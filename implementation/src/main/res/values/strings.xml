@@ -2,6 +2,7 @@
 <resources>
     <string name="executing_right_now">Command is executed right now</string>
     <string name="basal_value_below_minimum">Basal value below minimum. Profile not set!</string>
+    <string name="medlink_profile_active_in_aaps" comment="MedLink: after a profile switch (the pump profile is not written). %1$s=profile name, %2$d=percentage. Example: Profile std 100 % is active in AAPS">Profile %1$s %2$d %% is active in AAPS</string>
 
     <!--       Stats -->
     <string name="carbs_short" comment="max 6 characters">Carbs</string>

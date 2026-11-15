@@ -309,6 +309,41 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         verifyNothingPosted()
     }
 
+    // B9: MedLink does not write the pump (success=true, enacted=false), so the upstream message never shows.
+
+    @Test
+    fun postMedLinkProfileActive_notSilent_postsNameAndPercent() {
+        // the test base formats rh.gs(id, args) with the template of rh.gs(id)
+        whenever(rh.gs(app.aaps.implementation.R.string.medlink_profile_active_in_aaps)).thenReturn("Profile %1\$s %2\$d %% is active in AAPS")
+
+        commandQueue.postMedLinkProfileActive(medLink = true, profileName = "std", percentage = 90, enacted = false, silent = false)
+
+        verifyOkPosted("Profile std 90 % is active in AAPS")
+    }
+
+    @Test
+    fun postMedLinkProfileActive_silent_postsNothing() {
+        commandQueue.postMedLinkProfileActive(medLink = true, profileName = "std", percentage = 100, enacted = false, silent = true)
+
+        verifyNothingPosted()
+    }
+
+    @Test
+    fun postMedLinkProfileActive_otherPump_postsNothing() {
+        // another pump: only the upstream message from postProfileWriteResult, unchanged
+        commandQueue.postMedLinkProfileActive(medLink = false, profileName = "std", percentage = 100, enacted = false, silent = false)
+
+        verifyNothingPosted()
+    }
+
+    @Test
+    fun postMedLinkProfileActive_enacted_postsNothing() {
+        // enacted: the upstream message was already posted, do not post a second one
+        commandQueue.postMedLinkProfileActive(medLink = true, profileName = "std", percentage = 100, enacted = true, silent = false)
+
+        verifyNothingPosted()
+    }
+
     @Test
     fun postProfileWriteResult_error_ringsFailureAlarmAndDoesNotPersist() {
         // any error: success=false → persistent FAILED_UPDATE_PROFILE card rung with boluserror; driver comment surfaces.

@@ -187,6 +187,8 @@ class CommandQueueImplementation @Inject constructor(
                     iCfg = it.iCfg
                 )
                 persistenceLayer.insertOrUpdateEffectiveProfileSwitch(eps)
+                // MedLink (B9): the pump is not written, so tell the user that the profile is active in AAPS
+                postMedLinkProfileActive(activePlugin.activePumpInternal is MedLinkPumpPluginBase, it.profileName, it.percentage, result?.enacted == true, silent)
             }
         }
     }
@@ -223,6 +225,17 @@ class CommandQueueImplementation @Inject constructor(
         if (result.enacted && !silent)
             notificationManager.post(NotificationId.PROFILE_SET_OK, rh.gs(app.aaps.core.ui.R.string.profile_set_ok), validMinutes = 60)
         return true
+    }
+
+    /**
+     * MedLink (B9): MedLink cannot write the basal profile to the Veo, so its set-profile command answers
+     * success / not enacted, and [postProfileWriteResult] posts no confirmation. After the EPS is written, post
+     * "Profile <name> <%> is active in AAPS" with the same id and time as the upstream message, so they replace each
+     * other. Not for silent switches (same rule as upstream). Keep this when merging upstream.
+     */
+    internal fun postMedLinkProfileActive(medLink: Boolean, profileName: String, percentage: Int, enacted: Boolean, silent: Boolean) {
+        if (!medLink || enacted || silent) return
+        notificationManager.post(NotificationId.PROFILE_SET_OK, rh.gs(R.string.medlink_profile_active_in_aaps, profileName, percentage), validMinutes = 60)
     }
 
     private fun executingNowError(): PumpEnactResult =
