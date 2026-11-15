@@ -27,13 +27,6 @@ enum class MedLinkMedtronicBooleanPreferenceKey(
         summaryResId = R.string.medlink_min_basal_after_bolus_enabled_summary
     ),
 
-    /** Ask to take over the profile read from the pump when it differs from the AAPS profile. Off by default. */
-    AcceptPumpProfile(
-        "medlink_accept_pump_profile", false,
-        titleResId = R.string.medlink_accept_pump_profile,
-        summaryResId = R.string.medlink_accept_pump_profile_summary
-    ),
-
     /** T20: alarm when the pump is not reached several times in a row. On by default. */
     ConnectionAlarm(
         "medlink_connection_alarm", true,

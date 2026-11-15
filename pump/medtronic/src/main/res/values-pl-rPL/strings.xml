@@ -89,8 +89,6 @@
     <string name="medlink_bolus_phase_sending_try">Wysyłanie polecenia bolusa (próba %1$d z %2$d)…</string>
     <string name="medlink_bolus_phase_confirmed">Polecenie bolusa potwierdzone, oczekiwanie na rozpoczęcie przez pompę…</string>
     <string name="medlink_bolus_phase_waiting_other">Pompa podaje inny bolus, oczekiwanie na jego zakończenie…</string>
-    <string name="medlink_profile_differs_from_pump">Profil bazy w pompie różni się od profilu AAPS:\n%1$s\nMedLink nie może zmienić profilu w pompie: zmień go również w pompie.</string>
-    <string name="medlink_profile_diff_line">%1$s–%2$s: pompa %3$.2f U/h, AAPS %4$.2f U/h</string>
     <string name="medlink_min_basal_after_bolus_percent" formatted="false">Minimalna baza po bolusie (%)</string>
     <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">Po bolusie ręcznym, gdy glikemia jest na celu lub wyżej i rośnie, bazy tymczasowe poniżej tego % bazy pompy są do niego podnoszone (także 0%). 0 = wyłączone.</string>
     <string name="medlink_min_basal_after_bolus_minutes">Minimalna baza po bolusie: czas (min)</string>

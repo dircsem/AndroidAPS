@@ -87,7 +87,6 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
-import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.rx.events.EventRefreshButtonState
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.source.BgSync
@@ -159,6 +158,7 @@ import app.aaps.pump.medtronic.comm.activities.StatusCallback
 import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
 import app.aaps.pump.medtronic.data.EnliteInterval
 import app.aaps.pump.medtronic.data.MedLinkMedtronicHistoryData
+import app.aaps.pump.medtronic.data.MedLinkProfileReadRule
 import app.aaps.pump.medtronic.data.MedLinkPumpProfileDiff
 import app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule
 import app.aaps.pump.medtronic.data.NextStartStop
@@ -436,9 +436,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private val busyTimestamps: MutableList<Long> = ArrayList()
     var tempBasalMicrobolusOperations: TempBasalMicrobolusOperations =
         TempBasalMicrobolusOperations()
+    // Never set: always null (old code still reads it). B6 removed its dead check from the profile read path.
+    private val profile: Profile? = null
     private var percent: Int? = null
     private var durationInMinutes: Int? = null
-    private val profile: Profile? = null
     private var result: PumpEnactResult? = null
     private var bolusDeliveryType = BolusDeliveryType.Idle
     private var customActions: List<CustomAction>? = null
@@ -1251,10 +1252,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 }
             }
         }
-        if (medLinkPumpStatus.readProfile > 0 && System.currentTimeMillis() - medLinkPumpStatus.readProfile > 240000 && profile == null) {
-            aapsLogger.info(LTag.PUMP, "reading profile")
-            readPumpProfile()
-        }
+        if (medLinkPumpStatus.readProfile > 0 && System.currentTimeMillis() - medLinkPumpStatus.readProfile > 240000)
+            readPumpProfileIfAllowed(MedLinkProfileReadRule.Reason.UNKNOWN_STATUS_LINE)
         if (medLinkStatusRefreshMap.isEmpty() || System.currentTimeMillis() - lastTryToConnect >= 600000) {
             val additionalMillis = if (medLinkStatusRefreshMap.isEmpty()) {
                 300000L
@@ -1541,11 +1540,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         // configuration (once and then if history shows config changes)
         //        medLinkService.getMedtronicUIComm().executeCommand(MedLinkMedtronicCommandType.getSettings(medtronicUtil.getMedtronicPumpModel()));
 
-        // read profile (once, later its controlled by isThisProfileSet method)
-
-        //        if (initCommands.contains(getRh().gs(R.string.key_medlink_init_commands_profile))) {
-        readPumpProfile()
-        //        }
+        // B6: read the pump profile at app start. postInit is also called again after a MedLink wake-up (pump not seen
+        // for 5 min): then the rule reads only if no read succeeded yet, and never during a bolus or a TBR operation.
+        readPumpProfileIfAllowed(MedLinkProfileReadRule.Reason.APP_START)
 
 
         if (preferences.get(
@@ -1840,53 +1837,66 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             LTag.PUMP,
             "isThisProfileSet: basalInitalized=" + medLinkPumpStatus.basalProfileStatus
         )
-        if (!isInitialized) return true
-        // 4v: MedLink cannot write the basal profile to the Veo, so the profile is set in AAPS only and the user has
-        // to change it on the pump too. The pump profile is compared only to warn the user; answering "not set" made
-        // the queue ask again forever and the profile switch never became effective in AAPS.
-        val pumpByHour = medLinkPumpStatus.basalsByHour
-        // pump profile not read (or changed and not read again): nothing to compare
-        if (medLinkPumpStatus.basalProfileStatus === BasalProfileStatus.ProfileOK && pumpByHour != null) {
-            val aapsByHour = (0 until 24).map { pumpDescription.pumpType.determineCorrectBasalSize(profile.getBasalTimeFromMidnight(it * 3600)) }
-            updatePumpProfileMismatch(app.aaps.pump.medtronic.data.MedLinkProfileDiff.differences(pumpByHour, aapsByHour))
-        }
+        // 4v: MedLink cannot write the basal profile to the Veo, so the profile is set in AAPS only; answering "not set"
+        // made the queue ask again forever. B6: the pump profile is compared after each pump profile read, with the
+        // ACTIVE AAPS profile (onPumpProfileRead), not here with the requested one (that message came before the switch).
         return true
     }
 
-    /** Last full profile read from the pump (basal + carb ratios + ISF + BG targets) and when; null = not read yet. */
+    /**
+     * Last profile read from the pump as an AAPS profile (basal + carb ratios + ISF + BG targets), for "Update AAPS".
+     * Null = not read yet, or AAPS cannot hold it (times not on the hour: AAPS profiles use whole hours only).
+     */
     @Volatile var lastPumpProfile: Profile? = null
         private set
+
+    /** When the last pump profile answer was read and parsed (also when AAPS cannot hold it): the 6 h read counts from here. */
     @Volatile var lastPumpProfileReadAt: Long = 0L
         private set
 
-    /** Hash of the pump profile whose dialog is on screen, so the next read does not ask again at the same time. */
-    @Volatile private var pumpProfileAsked: Long? = null
+    /** The pump values per 30 min of the last read, exactly as on the pump (also times not on the hour). */
+    @Volatile private var lastPumpValues: Map<MedLinkPumpProfileDiff.Kind, List<Double>>? = null
+
+    /** Times of the last pump profile that are not on the hour ("12:30"): AAPS cannot take such a profile. */
+    @Volatile private var lastPumpOffHourTimes: List<String> = emptyList()
+
+    private val pumpBasalRound: (Double) -> Double = { rate -> pumpDescription.pumpType.determineCorrectBasalSize(rate) }
 
     /**
-     * Called after the profile commands (E + F) were parsed. Keeps the pump profile and, with the setting
-     * "Accept profile changes from the pump", asks the user to take it over when it differs from the AAPS profile.
-     * The reads come at app start and when the basal in the status (S) is not the expected one.
+     * Called after the profile commands (E + F) were parsed (B6). Keeps the pump values and compares them with the
+     * active AAPS profile: always pump -> AAPS, never AAPS -> pump (the Veo cannot be written). The reads come at app
+     * start, every [MedLinkProfileReadRule.INTERVAL_MS], on the Profiles screen and when the basal in `S` differs.
+     *
+     * @param json the profile as parsed from the pump answer (keeps half hour times)
+     * @param pumpProfile the same as an AAPS profile; null when AAPS cannot hold it (times not on the hour)
      */
-    fun onPumpProfileRead(pumpProfile: Profile) {
-        val firstRead = lastPumpProfile == null
-        lastPumpProfile = pumpProfile
+    fun onPumpProfileRead(json: JSONObject, pumpProfile: Profile?) {
+        // a parsed answer is a finished read, also when AAPS cannot hold it: no new read every 10 min (field log 2026-11-15)
         lastPumpProfileReadAt = System.currentTimeMillis()
-        // the "different" message may be on screen already, without the button (no pump profile then)
-        if (firstRead) pumpProfileMismatch?.let { postPumpProfileMismatch(it) }
-        if (!preferences.get(MedLinkMedtronicBooleanPreferenceKey.AcceptPumpProfile)) return
-        launchPumpProfileCheck(pumpProfile, askedByUser = false)
+        val values = MedLinkPumpProfileDiff.values(json, pumpBasalRound) ?: run {
+            aapsLogger.warn(LTag.PUMP, "MedLink: pump profile read, but a list (basal, carb ratio, ISF, targets) is missing: not compared")
+            return
+        }
+        lastPumpValues = values
+        lastPumpProfile = pumpProfile
+        lastPumpOffHourTimes = MedLinkPumpProfileDiff.offHourTimes(json)
+        if (pumpProfile == null)
+            aapsLogger.warn(LTag.PUMP, "MedLink: the pump profile has times not on the hour $lastPumpOffHourTimes: AAPS profiles use whole hours, it can only be compared")
+        launchPumpProfileCheck(fromButton = false)
     }
 
-    /** Button "Use pump profile" of the "profile is different" message: always asks, also when ignored before. */
+    /** Button "Update AAPS" of the "profile is different" message: the one confirmation (user, 2026-11-15). */
     private fun reviewPumpProfile() {
-        val pumpProfile = lastPumpProfile ?: return
-        launchPumpProfileCheck(pumpProfile, askedByUser = true)
+        if (lastPumpProfile == null) return
+        launchPumpProfileCheck(fromButton = true)
     }
 
-    private fun launchPumpProfileCheck(pumpProfile: Profile, askedByUser: Boolean) {
+    private fun launchPumpProfileCheck(fromButton: Boolean) {
         medLinkScope.launch {
             try {
-                askToAcceptPumpProfile(pumpProfile, askedByUser)
+                checkPumpProfile(fromButton)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 aapsLogger.error(LTag.PUMP, "MedLink: pump profile check failed", e)
             }
@@ -1894,36 +1904,65 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     /**
-     * Shows ALL differences (basal, carb ratio, ISF, targets) and asks to take over the pump profile.
-     * @param askedByUser true from the button: no check of the ignored profile and of a dialog already open
+     * B6: compares the pump values with the ACTIVE AAPS profile, with ALL values (basal, carb ratio, ISF, targets), every
+     * 30 min, so a pump change at 12:30 is seen exactly.
+     * Different: ONE question (user, 2026-11-15): the notification with all differences and "Update AAPS" / "Not now". It
+     * stays until answered, so it is not lost. "Update AAPS" takes the pump profile at once (no second dialog).
+     * When AAPS cannot hold the pump profile (times not on the hour): the differences and the times, and the user is asked
+     * to move them on the pump to whole hours; only "Not now" (user, 2026-11-15).
+     * The same: the notification goes away. A pump profile the user said "not now" to is not asked again until it changes.
+     * @param fromButton true from "Update AAPS": compare again with the profile active now, then take the pump profile
      */
-    private suspend fun askToAcceptPumpProfile(pumpProfile: Profile, askedByUser: Boolean) {
-        val aapsProfile = profileFunction.get().getProfile() ?: return
-        val roundBasal = { rate: Double -> pumpDescription.pumpType.determineCorrectBasalSize(rate) }
-        val differences = MedLinkPumpProfileDiff.differences(pumpProfile, aapsProfile, roundBasal)
-        if (differences.isEmpty()) {
-            if (askedByUser) aapsLogger.info(LTag.PUMP, "MedLink: the pump profile read is the same as the AAPS profile")
+    private suspend fun checkPumpProfile(fromButton: Boolean) {
+        val pumpValues = lastPumpValues ?: return
+        val pumpProfile = lastPumpProfile
+        val aapsProfile = profileFunction.get().getProfile() ?: run {
+            aapsLogger.info(LTag.PUMP, "MedLink: pump profile read, but no active AAPS profile to compare")
             return
         }
-        val hash = MedLinkPumpProfileDiff.values(pumpProfile, roundBasal).hashCode().toLong()
-        if (!askedByUser && (hash == preferences.get(MedtronicLongNonKey.MedLinkIgnoredPumpProfile) || hash == pumpProfileAsked)) return
-        pumpProfileAsked = hash
-        aapsLogger.info(LTag.PUMP, "MedLink: the pump profile is different from the AAPS profile, asking the user: $differences")
-        rxBus.send(
-            EventShowDialog.OkCancel(
-                title = rh.gs(R.string.medlink_pump_profile_changed_title),
-                message = rh.gs(R.string.medlink_pump_profile_changed_message, differences.joinToString("\n") { pumpProfileDiffLine(it) }),
-                onOk = {
-                    pumpProfileAsked = null
-                    acceptPumpProfile(pumpProfile, aapsProfile)
-                },
-                onCancel = {
-                    pumpProfileAsked = null
-                    preferences.put(MedtronicLongNonKey.MedLinkIgnoredPumpProfile, hash)
-                    aapsLogger.info(LTag.PUMP, "MedLink: pump profile ignored by the user")
-                }
+        val differences = MedLinkPumpProfileDiff.differences(pumpValues, MedLinkPumpProfileDiff.values(aapsProfile, pumpBasalRound))
+        if (differences.isEmpty()) {
+            aapsLogger.info(LTag.PUMP, "MedLink: the pump profile is the same as the active AAPS profile ${profileFunction.get().getProfileName()}")
+            notificationManager.dismiss(NotificationId.MEDLINK_PUMP_PROFILE_DIFFERS)
+            return
+        }
+        if (fromButton) {
+            // the user confirmed in the notification, which showed these differences
+            if (pumpProfile == null) return
+            aapsLogger.info(LTag.PUMP, "MedLink: user pressed Update AAPS, taking the pump profile: $differences")
+            acceptPumpProfile(pumpProfile, aapsProfile)
+            return
+        }
+        val hash = pumpValues.hashCode().toLong()
+        if (hash == preferences.get(MedtronicLongNonKey.MedLinkIgnoredPumpProfile)) {
+            aapsLogger.info(LTag.PUMP, "MedLink: the pump profile is different, but the user said not now to this pump profile: $differences")
+            return
+        }
+        val lines = differences.joinToString("\n") { pumpProfileDiffLine(it) }
+        if (pumpProfile == null) {
+            val times = lastPumpOffHourTimes.joinToString(", ")
+            aapsLogger.warn(LTag.PUMP, "MedLink: the pump profile is different from the active AAPS profile and has times not on the hour ($times): $differences")
+            notificationManager.post(
+                NotificationId.MEDLINK_PUMP_PROFILE_DIFFERS, rh.gs(R.string.medlink_pump_profile_not_on_hour, lines, times),
+                actions = listOf(NotificationAction(R.string.medlink_not_now) { ignorePumpProfile(hash) })
+            )
+            return
+        }
+        aapsLogger.warn(LTag.PUMP, "MedLink: the pump profile is different from the active AAPS profile, asking the user: $differences")
+        notificationManager.post(
+            NotificationId.MEDLINK_PUMP_PROFILE_DIFFERS, rh.gs(R.string.medlink_pump_profile_differs_update, lines),
+            actions = listOf(
+                NotificationAction(R.string.medlink_update_aaps) { reviewPumpProfile() },
+                NotificationAction(R.string.medlink_not_now) { ignorePumpProfile(hash) }
             )
         )
+    }
+
+    /** "Not now" / Cancel: keep AAPS as it is, and do not ask again until the pump profile changes. */
+    private fun ignorePumpProfile(hash: Long) {
+        preferences.put(MedtronicLongNonKey.MedLinkIgnoredPumpProfile, hash)
+        notificationManager.dismiss(NotificationId.MEDLINK_PUMP_PROFILE_DIFFERS)
+        aapsLogger.info(LTag.PUMP, "MedLink: pump profile not taken by the user (not asked again until it changes)")
     }
 
     private fun pumpProfileDiffLine(range: MedLinkPumpProfileDiff.Range): String = rh.gs(
@@ -1968,40 +2007,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             notificationManager.post(NotificationId.FAILED_UPDATE_PROFILE, rh.gs(R.string.medlink_pump_profile_switch_failed, single.name), level = NotificationLevel.NORMAL)
         } else {
             aapsLogger.info(LTag.PUMP, "MedLink: pump profile accepted, switched to ${single.name}")
+            notificationManager.dismiss(NotificationId.MEDLINK_PUMP_PROFILE_DIFFERS)
         }
-    }
-
-    /** Last differences shown, so the notification is not re-added on every check (KeepAlive asks every 5 min). */
-    private var pumpProfileMismatch: List<app.aaps.pump.medtronic.data.MedLinkProfileDiff.Range>? = null
-
-    private fun updatePumpProfileMismatch(differences: List<app.aaps.pump.medtronic.data.MedLinkProfileDiff.Range>) {
-        if (pumpProfileMismatch == differences) return
-        pumpProfileMismatch = differences
-        if (differences.isEmpty()) {
-            notificationManager.dismiss(NotificationId.FAILED_UPDATE_PROFILE)
-            return
-        }
-        postPumpProfileMismatch(differences)
-    }
-
-    /**
-     * The "basal profile on the pump is different" message, with all differences. With the full pump profile
-     * read, it has the button "Use pump profile" (shows all differences and asks to confirm).
-     */
-    private fun postPumpProfileMismatch(differences: List<app.aaps.pump.medtronic.data.MedLinkProfileDiff.Range>) {
-        val lines = differences.joinToString("\n") {
-            rh.gs(
-                R.string.medlink_profile_diff_line,
-                app.aaps.pump.medtronic.data.MedLinkProfileDiff.hour(it.fromHour), app.aaps.pump.medtronic.data.MedLinkProfileDiff.hour(it.toHour),
-                it.pump, it.aaps
-            )
-        }
-        aapsLogger.warn(LTag.PUMP, "MedLink: the basal profile on the pump is different from the AAPS profile: $differences")
-        val actions = if (lastPumpProfile != null) listOf(NotificationAction(R.string.medlink_use_pump_profile) { reviewPumpProfile() }) else emptyList()
-        notificationManager.post(
-            NotificationId.FAILED_UPDATE_PROFILE, rh.gs(R.string.medlink_profile_differs_from_pump, lines),
-            level = NotificationLevel.NORMAL, actions = actions
-        )
     }
 
     private fun isProfileSame(profile: Profile): Boolean {
@@ -3484,56 +3491,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
 
-    fun comparePumpBasalProfile(profile: BasalProfile): PumpEnactResult {
-        val validProfile = isProfileValid(profile)
-        aapsLogger.info(LTag.PUMPBTCOMM, "valid profile $validProfile")
-        if (validProfile != null && !validProfile.isEmpty()) {
-            return pumpEnactResultProvider.get() //
-                .success(false) //
-                .enacted(false) //
-                .comment(rh.gs(R.string.medtronic_cmd_set_profile_pattern_overflow, validProfile))
-        }
-        return if (this.profile == null) {
-
-            //            this.setNewBasalProfile(profile);
-            pumpEnactResultProvider.get() //
-                .success(false) //
-                .enacted(false) //
-                .comment(
-                    rh.gs(
-                        R.string.medtronic_cmd_set_profile_pattern_overflow,
-                        profile.basalProfileToString()
-                    )
-                )
-        } else if (convertProfileToMedtronicProfile(this.profile) != profile) {
-            //            getAapsLogger().info(LTag.PUMPBTCOMM,profile.toString());
-            aapsLogger.info(LTag.PUMPBTCOMM, this.profile.toString())
-            Toast.makeText(
-                context,
-                rh.gs(R.string.need_manual_profile_set, 40), Toast.LENGTH_LONG
-            ).show()
-
-            // showToastInUiThread(
-            //     context, rxBus, rh.gs(info.nightscout.androidaps.plugins.pump.common.R.string.need_manual_profile_set, 40),
-            //     Toast.LENGTH_LONG
-            // )
-            pumpEnactResultProvider.get() //
-                .success(false) //
-                .enacted(false) //
-                .comment(
-                    rh.gs(
-                        R.string.medtronic_cmd_set_profile_pattern_overflow,
-                        profile.basalProfileToString()
-                    )
-                )
-        } else {
-            pumpEnactResultProvider.get() //
-                .success(true) //
-                .enacted(true) //
-                .comment(rh.gs(R.string.medtronic_cmd_set_profile_pattern_overflow))
-        }
-    }
-
     override suspend fun setNewBasalProfile(profile: PumpProfile): PumpEnactResult {
         aapsLogger.info(LTag.PUMP, logPrefix + "setNewBasalProfile")
 
@@ -4979,27 +4936,52 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     private fun handleProfile() {
-        if (basalProfile != null) {
-            val rate = "%.3f".format(
-                basalProfile?.getEntryForTime(
-                    Instant(medLinkPumpStatus.lastDataTime)
-                )?.rate ?: 0.0
-            ).replace(",", ".").toDouble()
-            if (lastProfileRead > 0 && System.currentTimeMillis() - lastProfileRead > 600000 && basalProfile != null && rate != medLinkPumpStatus
-                    .currentBasal && medLinkPumpStatus.pumpRunningState == PumpRunningState.Running
-            ) {
-                aapsLogger.info(LTag.PUMPBTCOMM, "reading profile")
-                aapsLogger.info(LTag.PUMPBTCOMM, "" + lastProfileRead)
-                aapsLogger.info(LTag.PUMPBTCOMM, "" + rate)
-                aapsLogger.info(
-                    LTag.PUMPBTCOMM, "" + medLinkPumpStatus
-                        .currentBasal
-                )
-                basalProfile?.toString()?.let { aapsLogger.info(LTag.PUMPBTCOMM, it) }
-
-                readPumpProfile()
-            }
+        // basal of this hour in the last read profile (null: no profile read yet)
+        val rate = basalProfile?.getEntryForTime(Instant(medLinkPumpStatus.lastDataTime))?.rate?.let {
+            "%.3f".format(it).replace(",", ".").toDouble()
         }
+        val basalDiffers = rate != null && rate != medLinkPumpStatus.currentBasal && medLinkPumpStatus.pumpRunningState == PumpRunningState.Running
+        val reason = if (basalDiffers) MedLinkProfileReadRule.Reason.BASAL_DIFFERS else MedLinkProfileReadRule.Reason.TIMED
+        // B6: read when the basal differs, and every 6 h (a change of IC / ISF / targets is not seen in S)
+        if (basalDiffers) aapsLogger.info(LTag.PUMPBTCOMM, "profile basal $rate, pump basal ${medLinkPumpStatus.currentBasal}: basal differs")
+        readPumpProfileIfAllowed(reason)
+    }
+
+    override fun onProfilesScreenOpened() {
+        readPumpProfileIfAllowed(MedLinkProfileReadRule.Reason.SCREEN_OPENED)
+    }
+
+    /**
+     * B6: one place for every pump profile read (E + F) with [MedLinkProfileReadRule], and a log line for every read
+     * and every skip with its reason, so a field log shows why a read did not run. The timed read logs its skips only
+     * while no read succeeded yet (it is asked at every status read).
+     */
+    private fun readPumpProfileIfAllowed(reason: MedLinkProfileReadRule.Reason) {
+        val now = System.currentTimeMillis()
+        val busy = profileReadBusyReason(now)
+        if (MedLinkProfileReadRule.shouldRead(now, lastProfileRead, lastPumpProfileReadAt, reason, busy != null)) {
+            aapsLogger.info(LTag.PUMPBTCOMM, "reading profile: $reason")
+            readPumpProfile()
+            return
+        }
+        if (reason == MedLinkProfileReadRule.Reason.TIMED && lastPumpProfileReadAt > 0L) return
+        val why = when {
+            busy != null                                                                    -> busy
+            lastProfileRead > 0L && now - lastProfileRead < MedLinkProfileReadRule.MIN_GAP_MS -> "requested ${(now - lastProfileRead) / 1000} s ago"
+            else                                                                            -> "not due (last good read $lastPumpProfileReadAt)"
+        }
+        aapsLogger.info(LTag.PUMPBTCOMM, "profile read $reason skipped: $why")
+    }
+
+    /**
+     * B6: why a profile read (E + F, a few seconds) should wait now, or null. A bolus in flight blocks it; a TBR step only
+     * when it is due within [PROFILE_READ_TBR_MARGIN_MS] (the plan has a step every few minutes: a longer margin blocked
+     * the read nearly all day, field log 2026-11-15; a step after the read only waits a few seconds in the queue).
+     */
+    private fun profileReadBusyReason(now: Long): String? {
+        if (medLinkMedtronicService?.medLinkBLE?.bolusTracker?.hasUnresolved() == true) return "bolus in flight"
+        val step = tempBasalMicrobolusOperations.operations.firstOrNull { !it.isCommandIssued && it.releaseTime.toDate().time <= now + PROFILE_READ_TBR_MARGIN_MS }
+        return step?.let { "TBR step ${it.operationType} at ${it.releaseTime.toString("HH:mm:ss")}" }
     }
 
     private fun handleBolusAlarm() {
@@ -5237,6 +5219,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         private const val ZERO_TBR_MAX_DURATION_MS = 24 * HOUR_MS
         private const val SCHEDULED_BASAL_STEP_MS = 5 * 60_000L
 
+        /** B6: no pump profile read when a TBR step is due within this time (E + F take a few seconds). */
+        private const val PROFILE_READ_TBR_MARGIN_MS = 60_000L
+
         val pumpFreqValues = arrayOf<CharSequence>(
             RileyLinkTargetFrequency.MedtronicUS.key!!,
             RileyLinkTargetFrequency.MedtronicWorldWide.key!!
@@ -5373,7 +5358,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,
             MedLinkMedtronicDoublePreferenceKey.MinBasalAfterBolusDelta,
-            MedLinkMedtronicBooleanPreferenceKey.AcceptPumpProfile,
             MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm,
             MedLinkMedtronicIntPreferenceKey.ConnectionAlarmFailures,
             MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmSound,

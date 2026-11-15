@@ -76,6 +76,12 @@ interface MedLinkPumpPluginBase {
 
     /** Main screen: the next pump operation, for example "Bolus 0.1 U 15:15" or "Status 15:20"; null if none. */
     fun nextCommandText(): String? = null
+
+    /**
+     * B6: the user opened the Profiles screen. Reads the pump profile (when no bolus / TBR operation runs and the last read
+     * is not too recent), so the user is asked about the current pump profile.
+     */
+    fun onProfilesScreenOpened() {}
 }
 
 /**

@@ -261,7 +261,10 @@ enum class NotificationId(
     MEDLINK_ZERO_TBR_QUESTION(IMPORTANT, PUMP),
 
     /** MedLink (B8): a manual bolus was stopped by the user; tells the delivered amount. Appended last. */
-    MEDLINK_BOLUS_STOPPED(NORMAL, PUMP);
+    MEDLINK_BOLUS_STOPPED(NORMAL, PUMP),
+
+    /** MedLink (B6): the pump profile is different from the active AAPS profile; buttons "Update AAPS" / "Not now". Appended last. */
+    MEDLINK_PUMP_PROFILE_DIFFERS(NORMAL, PUMP);
 
     companion object {
 

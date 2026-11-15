@@ -230,6 +230,46 @@ More tests:
   pump again. With more reads now (6 h, Profiles screen, retries) that could send TBR plans again during the day.
   `ProfileCallback` calls it only while `lastPumpProfile == null`.
 - medtronic 235/235.
+- **User field log 2026-11-15 (`logs/profile_read.log`, build 2026-11-14 19:59 = committed code, no B6):** pump with
+  another basal and ISF, app running > 6 h, nothing reported. The profile WAS read at 01:47: `E` gave the 24 rates,
+  `F` gave carb ratios 12 / 10 and ISF 35 / 45 / 30 / 45 / 30 / 50 / 35 / 50. Why nothing was reported:
+  - the full compare (ISF / IC) runs only with `AcceptPumpProfile` on (off by default) and returns with no log line;
+  - `ProfileCallback` calls `isMedLinkProfileSet(pumpProfile)`: the PUMP basal compared with itself → "no difference"
+    → the basal message is dismissed.
+  Both are fixed by B6 (not committed when the log was taken).
+  - Also cleaned: `BasalCallback` called `comparePumpBasalProfile` before the raw data existed, against a profile that
+    is never set → it always failed ("Error reading profile in max retries", `BasalComparisonError`): removed, with the
+    dead function. `MedLinkBasalProfileParser` added each basal entry twice (same object): once now.
+  - medtronic 235/235.
+- **Second field log 2026-11-15 (new build of the tree): read and parsed, but never compared.** Cause: the pump ISF has
+  times at **12:30 and 19:30**; AAPS profiles take whole hours only (`blockFromJsonArray`: `tas % 3600 != 0` → null), so
+  `pureProfileFromJson` returned null, silently, and `ProfileCallback` did nothing. Also, no read counted as done, so the
+  6 h read ran every ~12 min. Fixes (user: 1, 2, 3, 4b):
+  1. Never silent: the parser logs "pump profile is not a valid AAPS profile (times not on the hour?)"; the plugin logs
+     the times; the notification tells the user (below).
+  2. A parsed answer is a finished read (`lastPumpProfileReadAt` set in `onPumpProfileRead` also without an AAPS
+     profile): the next timed read is 6 h later.
+  3. The compare uses the pump values straight from the parsed JSON (`MedLinkPumpProfileDiff.values(json)`, per 30 min,
+     mmol → mg/dl), so 12:30 is compared exactly. `ProfileCallback` passes `MedLinkProfileParserImpl.lastProfileJson`.
+  4b. Pump profile with times not on the hour: notification `medlink_pump_profile_not_on_hour` with the differences, the
+     times, "Move these times on the pump to whole hours", only "Not now"; no "Update AAPS", no dialog.
+  - Tests: `MedLinkPumpProfileDiffTest` 10/10 (5 new: values from the JSON with 12:30, off-hour times, a 12:30 ISF
+    difference, mmol, missing list), `MedLinkProfileParserImplTest` 9/9 (12:30 → no AAPS profile, JSON kept);
+    medtronic 240/240 + 1.
+- **User 2026-11-15: "the profile commands are not run at app start".** Log: `postinit` at 11:31:43, no
+  `reading profile: APP_START`, and no timed read until 11:54 although a status read came at 11:48 (outside the 10 min
+  gap). Cause: the "busy" rule blocked a read when a TBR step was due within **5 min**; the TBR plan has a step every
+  few minutes, so the read almost never found a free moment, and a skip was not logged.
+  - Margin now **1 min** (`PROFILE_READ_TBR_MARGIN_MS`): E + F take a few seconds, a TBR step after them waits a few
+    seconds in the queue. A bolus in flight still blocks.
+  - One helper `readPumpProfileIfAllowed(reason)` for all reads (app start, timed / basal differs, unknown status line,
+    Profiles screen); it logs every read and every skip with the reason ("bolus in flight", "TBR step SUSPEND at
+    11:52:00", "requested 120 s ago"). The timed read logs skips only while no read succeeded yet.
+  - medtronic 241/241.
+- **One confirmation (user, 2026-11-15):** the notification and the dialog asked the same thing twice. Kept only the
+  notification: "Update AAPS" takes the pump profile at once (after comparing again with the profile active now);
+  "Not now" as before. Removed the dialog (`EventShowDialog`), `pumpProfileAsked`, the setting `AcceptPumpProfile`
+  (key, preference entry, strings) and `medlink_pump_profile_changed_message`. medtronic 241/241.
 - **Safety answer (from the code): there IS an over-delivery path, so B6 stays P1.**
   - TBR above 100 %: the microbolus amounts come from the **AAPS** profile basal: `scheduleTempBasalBolus` →
     `extractTempProfiles(profile, ...)` → `calculateTempBasalDosage` → `calcTotalAmountAbs(abs, AAPS basal value, hours)`.

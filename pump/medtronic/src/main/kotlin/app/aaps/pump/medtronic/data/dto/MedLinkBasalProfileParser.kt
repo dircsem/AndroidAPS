@@ -44,13 +44,7 @@ class MedLinkBasalProfileParser(private val aapsLogger: AAPSLogger) {
                         val basalTimestamp: Array<String?> =
                             basalTimeMatcher.group().split(":".toRegex())
                                 .dropLastWhile { it.isEmpty() }.toTypedArray()
-                        baseProfile.addEntry(
-                            MedLinkBasalProfileEntry(
-                                basalAmount,
-                                basalTimestamp[0]!!.toInt(),
-                                basalTimestamp[1]!!.toInt()
-                            )
-                        )
+                        // B6: once (profile and baseProfile are the same object: it was added twice)
                         profile.addEntry(
                             MedLinkBasalProfileEntry(
                                 basalAmount,

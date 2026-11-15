@@ -100,8 +100,6 @@
     <string name="medlink_bolus_phase_sending_try">Отправка команды болюса (попытка %1$d из %2$d)…</string>
     <string name="medlink_bolus_phase_confirmed">Команда болюса подтверждена, ожидание запуска помпой…</string>
     <string name="medlink_bolus_phase_waiting_other">Помпа вводит другой болюс, ожидание его завершения…</string>
-    <string name="medlink_profile_differs_from_pump">Базальный профиль в помпе отличается от профиля AAPS:\n%1$s\nMedLink не может изменить профиль в помпе: измените его и в помпе.</string>
-    <string name="medlink_profile_diff_line">%1$s–%2$s: помпа %3$.2f ЕД/ч, AAPS %4$.2f ЕД/ч</string>
     <string name="medlink_min_basal_after_bolus_percent" formatted="false">Минимальный базал после болюса (%)</string>
     <string name="medlink_min_basal_after_bolus_percent_summary" formatted="false">После ручного болюса, когда глюкоза на цели или выше и растёт, временные базалы ниже этого % базала помпы поднимаются до него (включая 0%). 0 = выключено.</string>
     <string name="medlink_min_basal_after_bolus_minutes">Минимальный базал после болюса: длительность (мин)</string>

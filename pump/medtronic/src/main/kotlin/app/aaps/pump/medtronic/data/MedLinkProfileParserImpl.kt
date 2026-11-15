@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.plugin.MedLinkProfileParser
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.objects.extensions.pureProfileFromJson
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.pump.medtronic.data.dto.BasalProfile
 import app.aaps.pump.medtronic.data.dto.BasalProfileEntry
 import info.nightscout.interfaces.db.WizardSettings
@@ -32,7 +33,17 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
 
     private val hourPattern = Pattern.compile("\\d{2}:\\d{2}")
     private val carbRatioPattern = Pattern.compile(":\\s*(\\d+(?:\\.\\d+)?)\\s*gr/u")
+
+    /** B6: "rate 1:  39mg/dl from 00:00", "rate 1: 100mg/dl ...", "rate 1: 2.2mmol/l ..." (spaces and decimals vary). */
+    private val isfPattern = Pattern.compile(":\\s*(\\d+(?:\\.\\d+)?)\\s*(mg/dl|mmol/l)")
+
+    /** B6: "rate 1:100-100 from 00:00", "rate 3: 80- 90 ...", "rate 1: 4.4-7.8 ..."; also the non-breaking hyphen (U+2011). */
+    private val targetPattern = Pattern.compile(":\\s*(\\d+(?:\\.\\d+)?)\\s*[-\u2011]\\s*(\\d+(?:\\.\\d+)?)")
     private var units: String? = null
+
+    /** B6: the profile as parsed from the last answer (keeps half hour times, which an AAPS profile cannot hold). */
+    @Volatile var lastProfileJson: JSONObject? = null
+        private set
     @Throws(JSONException::class) override fun parseProfile(answer: Supplier<Stream<String>>, basalProfile: BasalProfile?): ProfileSealed? {
         val profileData = answer.get().map { obj: String -> obj.lowercase(Locale.getDefault()) }.iterator()
         while (profileData.hasNext() && !profileData.next().contains("bolus wizard settings")) {
@@ -50,7 +61,7 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
         buffer = parseBGTargets(profileData, buffer)
         buffer.append(",")
         addData(buffer, "units", true)
-        addData(buffer, units, false)
+        addData(buffer, units ?: GlucoseUnit.MGDL.asText, false)
         if (basalProfile != null) {
             buffer = parseBasal(basalProfile!!.getEntries(), buffer)
         }
@@ -75,8 +86,12 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
 //23:37:49.258 Rate 4: 70‑120 from 15:00
 //23:37:49.294 Rate 5: 70‑140 from 21:00
 //23:37:49.295 Ready
-        return pureProfileFromJson(json, dateUtil,
-                                                          units!!.uppercase(Locale.getDefault()))?.let {
+        lastProfileJson = json
+        // GlucoseUnit.fromText knows only "mg/dl" and "mmol" (anything else would be read as mg/dl)
+        val pure = pureProfileFromJson(json, dateUtil, units ?: GlucoseUnit.MGDL.asText)
+        // B6: never silent: AAPS profiles take whole hours only, a pump time like 12:30 makes the whole profile invalid
+        if (pure == null) aapsLogger.warn(LTag.PUMPBTCOMM, "pump profile is not a valid AAPS profile (times not on the hour?): only compared, AAPS cannot take it")
+        return pure?.let {
             ProfileSealed.Pure(
                 it,activePlugin)
         }
@@ -102,22 +117,18 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
             var ratioText = profileData.next()
             var toAppend = ""
             while (!ratioText.contains("ready")) {
-                targetHigh.append(toAppend)
-                targetLow.append(toAppend)
-                val grIndex = ratioText.indexOf("-")
-                val separatorIndex = ratioText.indexOf(":") + 1
-                val fromIndex = ratioText.indexOf("from")
-                aapsLogger.info(LTag.PUMPBTCOMM, "$ratioText $separatorIndex $grIndex")
-                val lowerRate = Integer.valueOf(ratioText.substring(separatorIndex, grIndex).trim { it <= ' ' })
-                val higherRate = Integer.valueOf(ratioText.substring(grIndex + 1, fromIndex).trim { it <= ' ' })
+                aapsLogger.info(LTag.PUMPBTCOMM, ratioText)
+                val values = targetPattern.matcher(ratioText)
                 val matcher = hourPattern.matcher(ratioText)
-                if (matcher.find()) {
+                if (values.find() && matcher.find()) {
                     val hour = matcher.group(0)
-                    addTimeValue(targetHigh, hour, higherRate)
-                    addTimeValue(targetLow, hour, lowerRate)
+                    targetHigh.append(toAppend)
+                    targetLow.append(toAppend)
+                    addTimeValue(targetHigh, hour, values.group(2).toDouble())
+                    addTimeValue(targetLow, hour, values.group(1).toDouble())
                     toAppend = ","
-                } else {
-                    aapsLogger.info(LTag.PUMPBTCOMM, "bg target matcher doesn't found hour")
+                } else if (ratioText.contains("rate")) {
+                    aapsLogger.warn(LTag.PUMPBTCOMM, "bg target not read, skipped: $ratioText")
                 }
                 ratioText = profileData.next()
             }
@@ -136,18 +147,17 @@ class MedLinkProfileParserImpl<T> @Inject constructor(
             buffer.append("[")
             var toAppend = ""
             while (!ratioText.contains("bg targets")) {
-                buffer.append(toAppend)
-                val separatorIndex = ratioText.indexOf(":") + 1
-                units = ratioText.substring(separatorIndex + 4, ratioText.indexOf("from")).trim { it <= ' ' }
-                val insulinSensitivity = Integer.valueOf(ratioText.substring(separatorIndex, separatorIndex + 4).trim { it <= ' ' })
+                // B6: a pattern, not a fixed slice: "rate 1: 39mg/dl" (one space) made Integer.valueOf(" 39m") throw and
+                // the whole profile read was lost; mmol/l values have decimals
+                val values = isfPattern.matcher(ratioText)
                 val matcher = hourPattern.matcher(ratioText)
-                if (matcher.find()) {
-                    val hour = matcher.group(0)
-                    addTimeValue(buffer, hour, insulinSensitivity)
+                if (values.find() && matcher.find()) {
+                    units = if (values.group(2).startsWith("mmol")) GlucoseUnit.MMOL.asText else GlucoseUnit.MGDL.asText
+                    buffer.append(toAppend)
+                    addTimeValue(buffer, matcher.group(0), values.group(1).toDouble())
                     toAppend = ","
-                    //                result.add(new InsulinSensitivity(insulinSensitivity, hour));
-                } else {
-                    aapsLogger.info(LTag.PUMPBTCOMM, "insulinsensitivity matcher doesn't found hour")
+                } else if (ratioText.contains("rate")) {
+                    aapsLogger.warn(LTag.PUMPBTCOMM, "insulin sensitivity not read, skipped: $ratioText")
                 }
                 ratioText = profileData.next()
             }

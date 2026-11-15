@@ -893,9 +893,12 @@ Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFull
   lanterna piscando (`MedLinkTorchBlinker`, no máx. 2 min, sempre apagada no `finally`). Volta a conexão → tudo para e
   "Pump connection restored". Sem alarme com a bomba desconectada de propósito (`RM.Mode.DISCONNECTED_PUMP`). Settings
   novas: alarme, nº de falhas, som, lanterna. Não conta ainda "sem resposta ao OK+CONN".
-- **B6, perfil da bomba → AAPS:** `AcceptPumpProfile` ligada por padrão. Comparação só depois de cada leitura do
-  perfil, com o perfil **ativo** e todos os valores; diferente → notificação nova `MEDLINK_PUMP_PROFILE_DIFFERS` com
-  Update AAPS / Not now (+ diálogo com a setting ligada); igual ou aceito → some. A mensagem antiga usava
+- **B6, perfil da bomba → AAPS:** comparação só depois de cada leitura do perfil, com o perfil **ativo** e todos os
+  valores (basal, IC, ISF, alvos), a cada 30 min, com os valores da bomba como lidos (horários 12:30 incluídos);
+  diferente → **uma** pergunta (usuário, 2026-11-15): notificação `MEDLINK_PUMP_PROFILE_DIFFERS` com Update AAPS (aplica
+  na hora, sem segundo diálogo) / Not now; igual ou aceito → some. Setting "Accept profile changes from the pump" e o
+  diálogo removidos. Perfil da bomba com horários fora da hora cheia (AAPS só aceita horas cheias): notificação com as
+  diferenças e os horários, pede para mudar na bomba, só Not now. Leitura que falha ou é pulada fica no log com o motivo. A mensagem antiga usava
   `FAILED_UPDATE_PROFILE`, que a fila apaga depois de cada troca de perfil. Leitura: início, a cada 6 h, basal do `S`
   diferente, linha desconhecida (`MedLinkProfileReadRule`); nunca durante bolus ou operação de TBR próxima, nunca 2x em
   10 min. Removidos `MedLinkProfileDiff` (só basal) e suas strings. Leitura também ao abrir a tela Profiles (estrela da barra de baixo): `ProfileManagementViewModel.init` (upstream, **manter no merge**) → `MedLinkPumpPluginBase.onProfilesScreenOpened()`.

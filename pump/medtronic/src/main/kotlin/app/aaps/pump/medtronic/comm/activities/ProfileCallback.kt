@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.medtronic.MedLinkMedtronicPumpPlugin
+import app.aaps.pump.medtronic.data.MedLinkProfileParserImpl
 import app.aaps.pump.medtronic.data.dto.BasalProfile
 import app.aaps.pump.medtronic.defs.BasalProfileStatus
 import app.aaps.pump.common.hw.medlink.defs.MedLinkMedtronicDeviceType
@@ -38,11 +39,11 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
                     medLinkMedtronicPumpPlugin.rh.gs(app.aaps.pump.medtronic.R.string.medtronic_cmd_basal_profile_could_not_be_set)
                 )
             }
-             if (profile != null){
-                 medLinkMedtronicPumpPlugin.initProfile(profile)
-                 // keep the full pump profile and, if the setting is on, ask to take it over when it differs
-                 medLinkMedtronicPumpPlugin.onPumpProfileRead(profile)
-             }
+             // B6: the profile is now read again later (every 6 h, Profiles screen, ...). initProfile sends the stored
+             // TBRs to the pump again: start-up work, so only for the first good read of this app run.
+             if (profile != null && medLinkMedtronicPumpPlugin.lastPumpProfile == null) medLinkMedtronicPumpPlugin.initProfile(profile)
+             // B6: compare with the pump values as parsed (also when AAPS cannot hold the profile: times not on the hour)
+             (parser as? MedLinkProfileParserImpl<*>)?.lastProfileJson?.let { medLinkMedtronicPumpPlugin.onPumpProfileRead(it, profile) }
         } catch (e: JSONException) {
             e.printStackTrace()
             result = MedLinkStandardReturn(answer, null, MedLinkStandardReturn.ParsingError.BasalParsingError)

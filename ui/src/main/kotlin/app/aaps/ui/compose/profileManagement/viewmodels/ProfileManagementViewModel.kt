@@ -140,6 +140,8 @@ class ProfileManagementViewModel @Inject constructor(
     init {
         observeActiveProfileForAutoNavigation()
         observeNewProfileSelection()
+        // MedLink (B6): read the pump profile, so the user sees the question about the current pump profile. Keep this when merging upstream.
+        (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.onProfilesScreenOpened()
     }
 
     /**

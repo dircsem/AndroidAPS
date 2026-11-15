@@ -175,8 +175,6 @@
     <string name="medlink_bolus_phase_sending_try">Sending the bolus command (try %1$d of %2$d)…</string>
     <string name="medlink_bolus_phase_confirmed">Bolus command confirmed, waiting for the pump to start…</string>
     <string name="medlink_bolus_phase_waiting_other">The pump is delivering another bolus, waiting for it to end…</string>
-    <string name="medlink_profile_differs_from_pump">The basal profile on the pump is different from the AAPS profile:\n%1$s\nMedLink cannot change the profile on the pump: change it on the pump too.</string>
-    <string name="medlink_profile_diff_line">%1$s–%2$s: pump %3$.2f U/h, AAPS %4$.2f U/h</string>
     <string name="medlink_min_basal_after_bolus_enabled">Use minimum basal after bolus</string>
     <string name="medlink_min_basal_after_bolus_enabled_summary">After a manual bolus, while BG is rising, do not let the loop set a temp basal below a minimum. Turn on to see the options.</string>
     <string name="medlink_min_basal_after_bolus_percent" formatted="false">Minimum basal after bolus (%)</string>
@@ -212,11 +210,11 @@
     <string name="medlink_key_interval_between_bt_connections_summary">This is the amount of time, in seconds, that AAPS will wait between two sequential Bluetooth connections. Recommended values are between 5 and 30s.</string>
     <string name="medlink_tbr_bolus_skipped" comment="%1$.1f=TBR bolus in units, %2$d=seconds since the last TBR or manual bolus, %3$d=SMB interval in minutes. Example: TBR bolus of 0.2 U not sent: the last TBR or manual bolus was 95 s ago, less than the SMB interval (3 min).">TBR bolus of %1$.1f U not sent: the last TBR or manual bolus was %2$d s ago, less than the SMB interval (%3$d min).</string>
     <string name="medlink_bluetooth_permission_denied">MedLink can\'t connect without the Bluetooth (Nearby devices) permission. Press OK to open the app settings and allow it.</string>
-    <string name="medlink_accept_pump_profile">Accept profile changes from the pump</string>
-    <string name="medlink_accept_pump_profile_summary">When the profile on the pump (basal, carb ratios, ISF, BG targets) is different from the AAPS profile, show the differences and ask to save it as a new local profile and switch to it.</string>
-    <string name="medlink_use_pump_profile" comment="Button: review the profile read from the pump and switch to it">Use pump profile</string>
     <string name="medlink_pump_profile_changed_title">Profile on the pump changed</string>
-    <string name="medlink_pump_profile_changed_message" comment="%1$s=list of differences, one per line">The profile on the pump is different from the AAPS profile:\n\n%1$s\n\nAccept: save the pump profile as a new local profile and switch to it. DIA and insulin stay as they are.\nCancel: keep the AAPS profile and do not ask again until the pump profile changes.</string>
+    <string name="medlink_pump_profile_differs_update" comment="Notification. %1$s=list of differences, one per line">The profile on the pump is different from the AAPS profile:\n%1$s\nUpdate AAPS with the pump profile?</string>
+    <string name="medlink_pump_profile_not_on_hour" comment="Notification. %1$s=list of differences, one per line. %2$s=pump times not on the hour, example: 12:30, 19:30">The profile on the pump is different from the AAPS profile:\n%1$s\nThe pump profile has times that are not on the hour (%2$s). AAPS profiles use whole hours, so AAPS cannot take this profile. Move these times on the pump to whole hours.</string>
+    <string name="medlink_update_aaps" comment="Button: take the pump profile into AAPS">Update AAPS</string>
+    <string name="medlink_not_now" comment="Button: keep the AAPS profile, do not ask again for this pump profile">Not now</string>
     <string name="medlink_pump_profile_diff_basal" comment="%1$s=start time, %2$s=end time (example: 04:00, 06:30), %3$.3f=pump value, %4$.3f=AAPS value">Basal %1$s–%2$s: pump %3$.3f, AAPS %4$.3f U/h</string>
     <string name="medlink_pump_profile_diff_ic" comment="%1$s=start time, %2$s=end time, %3$.1f=pump value, %4$.1f=AAPS value">Carb ratio %1$s–%2$s: pump %3$.1f, AAPS %4$.1f g/U</string>
     <string name="medlink_pump_profile_diff_isf" comment="%1$s=start time, %2$s=end time, %3$.0f=pump value, %4$.0f=AAPS value">ISF %1$s–%2$s: pump %3$.0f, AAPS %4$.0f mg/dl</string>

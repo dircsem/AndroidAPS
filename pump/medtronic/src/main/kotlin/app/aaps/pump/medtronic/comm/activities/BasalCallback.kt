@@ -31,13 +31,9 @@ class BasalCallback(private val aapsLogger: AAPSLogger, val medLinkMedtronicPump
 
         //TODO check this;
         return if (profile != null) {
-            val result = medLinkMedtronicPumpPlugin.comparePumpBasalProfile(profile)
-            if (!result.success) {
-                (errorMessage as ArrayList<MedLinkStandardReturn.ParsingError>).add(
-                    MedLinkStandardReturn.ParsingError.BasalComparisonError)
-                aapsLogger.warn(LTag.PUMPCOMM, "Error reading profile in max retries.")
-                aapsLogger.warn(LTag.PUMPCOMM, "" + profile)
-            }
+            // B6: no comparePumpBasalProfile here: it ran before the raw data existed and compared with a profile that is
+            // never set, so it always failed ("Error reading profile in max retries"). The pump profile is compared with the
+            // active AAPS profile after the full read (onPumpProfileRead).
             val errors = checkProfile(profile)
             medLinkMedtronicPumpPlugin.sendPumpUpdateEvent()
             profile.generateRawDataFromEntries()
