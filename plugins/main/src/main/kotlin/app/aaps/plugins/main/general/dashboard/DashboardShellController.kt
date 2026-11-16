@@ -1497,6 +1497,8 @@ internal class DashboardShellController(
                 }
             }
 
+            override fun openRunningMode() = openLoopDialog()
+
             override fun openLoopDashboard() =
                 uiInteraction.openComposeMainAtRoute(host.context, "glass_loop_dashboard")
 

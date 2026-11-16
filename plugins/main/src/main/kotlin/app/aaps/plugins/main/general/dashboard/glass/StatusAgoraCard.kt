@@ -54,6 +54,7 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -75,6 +76,7 @@ internal fun StatusAgoraCard(
     state: GlassUiState,
     isDark: Boolean,
     onOpenLoop: () -> Unit,
+    onOpenRunningMode: () -> Unit,
     onOpenLoopDashboard: () -> Unit,
     onOpenTarget: () -> Unit,
     onOpenInsulin: () -> Unit,
@@ -140,8 +142,13 @@ internal fun StatusAgoraCard(
                     modifier = Modifier.weight(TIR_COLUMN_WEIGHT).offset(y = TIR_RING_LIFT),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // T22: the whole ring is the touch target (big enough for shaky hands). The tap only opens the
+                    // running mode screen; the BOLUS protection asks first. No long press here.
                     Box(
-                        modifier = Modifier.size(TIR_RING_SIZE),
+                        modifier = Modifier
+                            .size(TIR_RING_SIZE)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button, onClickLabel = stringResource(CoreUiR.string.running_mode)) { onOpenRunningMode() },
                         contentAlignment = Alignment.Center
                     ) {
                         TirRing(
@@ -161,8 +168,7 @@ internal fun StatusAgoraCard(
                                 color = if (glucoseStale) neutralColor else Color(state.glucoseColor),
                                 textDecoration = if (glucoseStale) TextDecoration.LineThrough else null,
                                 letterSpacing = (-1.2).sp,
-                                lineHeight = 34.sp,
-                                modifier = Modifier.clickable { onOpenLoop() }
+                                lineHeight = 34.sp
                             )
                             Text(
                                 text = state.unit,

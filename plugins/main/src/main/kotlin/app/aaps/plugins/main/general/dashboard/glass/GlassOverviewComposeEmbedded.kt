@@ -142,6 +142,7 @@ internal fun GlassOverviewComposeEmbedded(
                     state = state,
                     isDark = isDark,
                     onOpenLoop = commands::openLoop,
+                    onOpenRunningMode = commands::openRunningMode,
                     onOpenLoopDashboard = commands::openLoopDashboard,
                     onOpenTarget = commands::openTarget,
                     onOpenInsulin = commands::openInsulin,

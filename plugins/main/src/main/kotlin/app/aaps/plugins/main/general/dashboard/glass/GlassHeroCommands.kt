@@ -4,6 +4,9 @@ import androidx.compose.runtime.compositionLocalOf
 
 interface GlassHeroCommands {
     fun openLoop()
+
+    /** T22: tap on the BG circle. Opens the running mode screen (suspend loop / pump), behind the BOLUS protection. */
+    fun openRunningMode()
     fun openLoopDashboard()
     fun openTarget()
     fun openInsulin()
@@ -19,6 +22,7 @@ interface GlassHeroCommands {
 
 object NoopGlassHeroCommands : GlassHeroCommands {
     override fun openLoop() {}
+    override fun openRunningMode() {}
     override fun openLoopDashboard() {}
     override fun openTarget() {}
     override fun openInsulin() {}

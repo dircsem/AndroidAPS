@@ -1,4 +1,4 @@
-Status: OPEN
+Status: STARTED (2026-11-15, developer)
 
 # Development tasks
 
@@ -41,6 +41,16 @@ Field test:
 2. Suspend the loop for 1 h there: the loop status shows suspended. Resume it.
 3. Long press the loop pill: the loop detail screen still opens.
 Related: T17 (Glass layout; do not move the circle's tap area there).
+
+### Developer notes (2026-11-15) — done, needs field test
+- `GlassHeroCommands.openRunningMode()` → `DashboardShellController.openLoopDialog()` (BOLUS protection, then
+  `uiInteraction.openRunningModeScreen`). `openLoop()` is not changed: the loop pill long press still opens the loop
+  detail screen.
+- `StatusAgoraCard`: the whole ring `Box` (clipped to a circle) is clickable, `Role.Button`, click label "Running
+  mode" (existing `core:ui` string, already translated). The click was removed from the BG number. No long press.
+- The tap only opens the screen. The MedLink paths for "disconnect pump" (0 % TBR → suspend plan) and "suspend
+  pump" (T0 user suspend) are not changed.
+- Build: `:plugins:main:compileFullDebugKotlin` OK.
 
 ## T23 — One status read per loop cycle; no S right after STOP / START
 Priority: P2 (pump battery)
