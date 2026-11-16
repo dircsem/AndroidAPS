@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
+     strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="medlink_profile_active_in_aaps">Perfil %1$s %2$d %% está ativo no AAPS</string>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
+     strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="medlink_bolus_stopped_partial">Болюс остановлен: введено %1$s из %2$s</string>
+    <string name="medlink_bolus_stopped_unknown">Болюс остановлен: введённое количество неизвестно. Проверьте историю помпы.</string>
+    <string name="medlink_command_with_code">%1$s - %2$s</string>
+    <string name="medlink_next_tbr_bolus">Болюс %1$s %2$s</string>
+    <string name="medlink_next_suspend">Остановка %1$s</string>
+    <string name="medlink_next_reactivate">Запуск помпы %1$s</string>
+    <string name="medlink_tbr_display_minutes">TBR на главном экране: минуты</string>
+    <string name="medlink_tbr_display_minutes_summary">Скорость TBR на главном экране — это базал, введённый за столько минут, по базе данных AAPS (временные базалы, остановки и микроболюсы TBR). По умолчанию 30 мин.</string>
+    <string name="medlink_pump_profile_changed_title">Профиль в помпе изменён</string>
+    <string name="medlink_pump_profile_differs_update">Профиль в помпе отличается от профиля AAPS:\n%1$s\nОбновить AAPS профилем из помпы?</string>
+    <string name="medlink_pump_profile_not_on_hour">Профиль в помпе отличается от профиля AAPS:\n%1$s\nВ профиле помпы есть время не на целый час (%2$s). Профили AAPS используют только целые часы, поэтому AAPS не может взять этот профиль. Измените это время в помпе на целые часы.</string>
+    <string name="medlink_update_aaps">Обновить AAPS</string>
+    <string name="medlink_not_now">Не сейчас</string>
+    <string name="medlink_pump_profile_diff_basal">Базал %1$s–%2$s: помпа %3$.3f, AAPS %4$.3f ед/ч</string>
+    <string name="medlink_pump_profile_diff_ic">IC %1$s–%2$s: помпа %3$.1f, AAPS %4$.1f г/ед</string>
+    <string name="medlink_pump_profile_diff_isf">ISF %1$s–%2$s: помпа %3$.0f, AAPS %4$.0f мг/дл</string>
+    <string name="medlink_pump_profile_diff_target_low">Нижняя цель %1$s–%2$s: помпа %3$.0f, AAPS %4$.0f мг/дл</string>
+    <string name="medlink_pump_profile_diff_target_high">Верхняя цель %1$s–%2$s: помпа %3$.0f, AAPS %4$.0f мг/дл</string>
+    <string name="medlink_pump_profile_name">Помпа MedLink %1$s</string>
+    <string name="medlink_pump_profile_switch_failed">Не удалось переключиться на профиль помпы %1$s.</string>
+    <string name="medlink_connection_alarm">Тревога, если помпа не отвечает</string>
+    <string name="medlink_connection_alarm_summary">Тревога, если MedLink несколько раз подряд не может связаться с помпой. Подача инсулина могла остановиться: проверьте помпу.</string>
+    <string name="medlink_connection_alarm_failures">Неудачные соединения до тревоги</string>
+    <string name="medlink_connection_alarm_failures_summary">Сколько неудачных соединений с помпой подряд включают тревогу. По умолчанию 4.</string>
+    <string name="medlink_connection_alarm_sound">Звук тревоги</string>
+    <string name="medlink_connection_alarm_sound_summary">Звук тревоги AAPS. Выключено: только уведомление и фонарик.</string>
+    <string name="medlink_connection_alarm_torch">Фонарик</string>
+    <string name="medlink_connection_alarm_torch_summary">Мигает фонариком телефона при тревоге (не более 2 минут). Телефоны без фонарика это пропускают.</string>
+    <string name="medlink_pump_unreachable_title">Помпа не отвечает</string>
+    <string name="medlink_pump_unreachable_message">MedLink не смог связаться с помпой %1$d раз подряд (с %2$s). Подача инсулина могла остановиться. Проверьте помпу: батарея, расстояние, сообщение на экране помпы.</string>
+    <string name="medlink_silence_15_min">Тихо 15 мин</string>
+    <string name="medlink_pump_connection_restored">Связь с помпой восстановлена</string>
+    <string name="medlink_zero_tbr_question">Помпа не отвечала с %1$s до %2$s, и её батарея старая. AAPS записал базал 0 %% на это время. %3$s Оставить базал 0 %%?</string>
+    <string name="medlink_zero_tbr_hint_stopped">Резервуар не уменьшился (%1$s до, %2$s сейчас): помпа, вероятно, стояла.</string>
+    <string name="medlink_zero_tbr_hint_ran">Резервуар уменьшился (%1$s до, %2$s сейчас) примерно на плановый базал (%3$s): помпа, вероятно, работала.</string>
+    <string name="medlink_zero_tbr_hint_unknown">По резервуару не ясно, работала ли помпа (до: %1$s, сейчас: %2$s, плановый базал: %3$s).</string>
+    <string name="medlink_value_unknown">неизвестно</string>
+    <string name="medlink_zero_tbr_keep">Да, оставить</string>
+    <string name="medlink_zero_tbr_remove">Нет, удалить</string>
+    <string name="medlink_zero_tbr_remove_failed">Не удалось удалить базал 0 %. Удалите его в записях терапии или ответьте ещё раз.</string>
+    <string name="medlink_zero_tbr_waiting" formatted="false">Ожидание вашего ответа о базале 0 %</string>
+</resources>

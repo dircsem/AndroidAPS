@@ -16,4 +16,9 @@
     <string name="dashboard_glass_command_now_line">Сейчас: %1$s</string>
     <string name="dashboard_glass_command_next_line">Далее: %1$s</string>
     <string name="dashboard_glass_batteries_label" formatted="false">Помпа ML%</string>
+    <string name="dashboard_compact_label_delivered">Баз %1$dм</string>
+    <string name="dashboard_glass_basal_t_label">Скорость базала</string>
+    <string name="dashboard_glass_last_carbs_short">Посл. углев.</string>
+    <string name="dashboard_glass_treatment_short">Терапия</string>
+    <string name="dashboard_glass_two_values">%1$s · %2$s</string>
 </resources>

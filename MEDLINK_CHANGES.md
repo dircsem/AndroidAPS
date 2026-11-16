@@ -906,6 +906,9 @@ Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFull
   calculados com o basal do **perfil do AAPS**, mas a bomba roda o **próprio** basal: com o basal da bomba maior,
   entrega mais que a TBR pedida.
 - **T14, Glass:** reservatório colorido pelo pior entre idade da insulina e nível do reservatório.
+- **Traduções pt-BR, pl, ru (usuário, 2026-11-15: sempre as três):** todas as strings novas desta série (B5–B9, T14–T21,
+  B6, comando atual) traduzidas, em arquivos do fork fora do Crowdin: `values-xx/strings_medlink.xml` (pump/medtronic,
+  pump/rileylink, core/ui, implementation) e `plugins/main/.../strings_glass.xml`. Placeholders conferidos (201).
 - **T17, Glass com a menor altura:** `GlassPillLayout.kt` (testado) decide os lugares: até 3 pills por coluna ao lado do
   anel (esquerda primeiro), depois linhas de 3, na ordem fixa (bomba, CGM / loop, outros, Tools). Agora / Próx. numa
   linha só: Próx. à esquerda, Agora à direita. Títulos dos pills com no máximo 11 caracteres (en, pt-BR, ru, pl).

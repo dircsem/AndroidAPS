@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
+     strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="pump_basal_rate_3_decimals">%1$.3f U/h</string>
+    <string name="basal_rate_with_percent">%1$s (%2$d%%)</string>
+    <string name="medlink_delivered_basal_label">Ostatnie %1$d min</string>
+</resources>

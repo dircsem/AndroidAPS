@@ -16,4 +16,9 @@
     <string name="dashboard_glass_command_now_line">Teraz: %1$s</string>
     <string name="dashboard_glass_command_next_line">Dalej: %1$s</string>
     <string name="dashboard_glass_batteries_label" formatted="false">Pompa ML%</string>
+    <string name="dashboard_compact_label_delivered">Baza %1$dm</string>
+    <string name="dashboard_glass_basal_t_label">Dawka bazy</string>
+    <string name="dashboard_glass_last_carbs_short">Ost. węgl.</string>
+    <string name="dashboard_glass_treatment_short">Terapie</string>
+    <string name="dashboard_glass_two_values">%1$s · %2$s</string>
 </resources>

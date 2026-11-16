@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
+     strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="medlink_bolus_stopped_partial">Bólus parado: %1$s de %2$s entregues</string>
+    <string name="medlink_bolus_stopped_unknown">Bólus parado: a quantidade entregue não é conhecida. Verifique o histórico da bomba.</string>
+    <string name="medlink_command_with_code">%1$s - %2$s</string>
+    <string name="medlink_next_tbr_bolus">Bólus %1$s %2$s</string>
+    <string name="medlink_next_suspend">Suspender %1$s</string>
+    <string name="medlink_next_reactivate">Ligar bomba %1$s</string>
+    <string name="medlink_tbr_display_minutes">TBR na tela principal: minutos</string>
+    <string name="medlink_tbr_display_minutes_summary">A taxa de TBR na tela principal é a basal entregue nestes minutos, tirada do banco de dados do AAPS (basais temporárias, suspensões e microbólus de TBR). Padrão 30 min.</string>
+    <string name="medlink_pump_profile_changed_title">Perfil da bomba mudou</string>
+    <string name="medlink_pump_profile_differs_update">O perfil da bomba é diferente do perfil do AAPS:\n%1$s\nAtualizar o AAPS com o perfil da bomba?</string>
+    <string name="medlink_pump_profile_not_on_hour">O perfil da bomba é diferente do perfil do AAPS:\n%1$s\nO perfil da bomba tem horários fora da hora cheia (%2$s). Os perfis do AAPS usam horas cheias, então o AAPS não pode usar este perfil. Mude estes horários na bomba para horas cheias.</string>
+    <string name="medlink_update_aaps">Atualizar AAPS</string>
+    <string name="medlink_not_now">Agora não</string>
+    <string name="medlink_pump_profile_diff_basal">Basal %1$s–%2$s: bomba %3$.3f, AAPS %4$.3f U/h</string>
+    <string name="medlink_pump_profile_diff_ic">IC %1$s–%2$s: bomba %3$.1f, AAPS %4$.1f g/U</string>
+    <string name="medlink_pump_profile_diff_isf">FSI %1$s–%2$s: bomba %3$.0f, AAPS %4$.0f mg/dl</string>
+    <string name="medlink_pump_profile_diff_target_low">Meta baixa %1$s–%2$s: bomba %3$.0f, AAPS %4$.0f mg/dl</string>
+    <string name="medlink_pump_profile_diff_target_high">Meta alta %1$s–%2$s: bomba %3$.0f, AAPS %4$.0f mg/dl</string>
+    <string name="medlink_pump_profile_name">Bomba MedLink %1$s</string>
+    <string name="medlink_pump_profile_switch_failed">Não foi possível trocar para o perfil da bomba %1$s.</string>
+    <string name="medlink_connection_alarm">Alarme quando a bomba não responde</string>
+    <string name="medlink_connection_alarm_summary">Alarme quando o MedLink não consegue falar com a bomba várias vezes seguidas. A insulina pode ter parado: verifique a bomba.</string>
+    <string name="medlink_connection_alarm_failures">Falhas de conexão antes do alarme</string>
+    <string name="medlink_connection_alarm_failures_summary">Quantas falhas seguidas de conexão com a bomba disparam o alarme. Padrão 4.</string>
+    <string name="medlink_connection_alarm_sound">Som do alarme</string>
+    <string name="medlink_connection_alarm_sound_summary">Toca o som de alarme do AAPS. Desligado: só a notificação e a lanterna.</string>
+    <string name="medlink_connection_alarm_torch">Lanterna</string>
+    <string name="medlink_connection_alarm_torch_summary">Pisca a lanterna do celular com o alarme (no máximo 2 minutos). Celulares sem lanterna pulam isto.</string>
+    <string name="medlink_pump_unreachable_title">Bomba não responde</string>
+    <string name="medlink_pump_unreachable_message">O MedLink não conseguiu falar com a bomba %1$d vezes seguidas (desde %2$s). A insulina pode ter parado. Verifique a bomba: bateria, distância, uma mensagem na tela da bomba.</string>
+    <string name="medlink_silence_15_min">Silenciar 15 min</string>
+    <string name="medlink_pump_connection_restored">Conexão com a bomba restaurada</string>
+    <string name="medlink_zero_tbr_question">A bomba não respondeu de %1$s a %2$s e a bateria dela é velha. O AAPS gravou uma basal de 0 %% para este tempo. %3$s Manter a basal de 0 %%?</string>
+    <string name="medlink_zero_tbr_hint_stopped">O reservatório não baixou (%1$s antes, %2$s agora): a bomba provavelmente parou.</string>
+    <string name="medlink_zero_tbr_hint_ran">O reservatório baixou (%1$s antes, %2$s agora) mais ou menos a basal programada (%3$s): a bomba provavelmente funcionou.</string>
+    <string name="medlink_zero_tbr_hint_unknown">O reservatório não mostra com clareza se a bomba funcionou (antes: %1$s, agora: %2$s, basal programada: %3$s).</string>
+    <string name="medlink_value_unknown">desconhecido</string>
+    <string name="medlink_zero_tbr_keep">Sim, manter</string>
+    <string name="medlink_zero_tbr_remove">Não, remover</string>
+    <string name="medlink_zero_tbr_remove_failed">Não foi possível remover a basal de 0 %. Remova nos tratamentos ou responda de novo.</string>
+    <string name="medlink_zero_tbr_waiting" formatted="false">Aguardando sua resposta sobre a basal de 0 %</string>
+</resources>
