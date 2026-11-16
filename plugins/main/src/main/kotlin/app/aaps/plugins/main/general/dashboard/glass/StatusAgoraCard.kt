@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import app.aaps.core.ui.compose.icons.IcCarbs
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -248,7 +249,7 @@ internal fun StatusAgoraCard(
                     Spacer(modifier = Modifier.height(AapsSpacing.medium))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AapsSpacing.medium)) {
                         Text(
-                            text = next?.let { stringResource(R.string.dashboard_glass_command_next_line, it) } ?: "",
+                            text = next?.let { boldLabel(stringResource(R.string.dashboard_glass_command_next_line, it), it) } ?: AnnotatedString(""),
                             style = MaterialTheme.typography.bodySmall,
                             color = neutralColor,
                             maxLines = 1,
@@ -256,7 +257,7 @@ internal fun StatusAgoraCard(
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = now?.let { stringResource(R.string.dashboard_glass_command_now_line, it) } ?: "",
+                            text = now?.let { boldLabel(stringResource(R.string.dashboard_glass_command_now_line, it), it) } ?: AnnotatedString(""),
                             style = MaterialTheme.typography.bodySmall,
                             color = neutralColor,
                             maxLines = 1,
@@ -461,6 +462,22 @@ private val GLASS_PILL_WIDTH = 100.dp
 
 /** Weight of the middle column (the glucose ring) against the two side columns (1 each). */
 private const val TIR_COLUMN_WEIGHT = 1.3f
+
+/**
+ * "Agora: M - Read bolus status" with the label bold and the value normal (user, 2026-11-15). The label comes from the
+ * translated template, so everything outside [value] is the label (any language, any order).
+ */
+private fun boldLabel(text: String, value: String): AnnotatedString = buildAnnotatedString {
+    append(text)
+    val bold = SpanStyle(fontWeight = FontWeight.Bold)
+    val start = text.indexOf(value)
+    if (start < 0) {
+        addStyle(bold, 0, text.length)
+    } else {
+        if (start > 0) addStyle(bold, 0, start)
+        if (start + value.length < text.length) addStyle(bold, start + value.length, text.length)
+    }
+}
 
 /** Yellow of an active temporary target. */
 private val TEMP_TARGET_COLOR = Color(0xFFF4D700)

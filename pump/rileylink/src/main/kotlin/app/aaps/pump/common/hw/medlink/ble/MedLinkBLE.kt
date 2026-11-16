@@ -382,6 +382,14 @@ class MedLinkBLE //extends RileyLinkBLE
     /** The MedLink command now running (only commands with a description), null when idle. For the main screen. */
     @Volatile var shownCommand: MedLinkCommandType? = null
         private set
+
+    /** What [shownCommand] does, as shown: for a bolus its kind and dose, for example "SMB 0.30 U"; null when idle. */
+    @Volatile var shownCommandDescription: String? = null
+        private set
+
+    /** True when [shownCommandDescription] is a bolus with its dose: it is shown alone, without the command code. */
+    @Volatile var shownCommandIsBolus: Boolean = false
+        private set
     private var previousLine = ""
 
     //    private long latestReceivedCommand = 0l;
@@ -3041,16 +3049,29 @@ class MedLinkBLE //extends RileyLinkBLE
      * Main screen pump activity dialog: "Connected" and, on the next line, the MedLink command now running
      * (code and description). Internal steps (no description) are not shown.
      */
-    private fun showCommandStatus(command: MedLinkCommandType) {
+    /** Short name of a bolus kind next to its dose: "TBR" for a temp basal bolus (shorter than its command description). */
+    private fun doseLabel(type: MedLinkCommandType): Int =
+        if (type == MedLinkCommandType.TBRBolus) R.string.medlink_cmd_tbr_short else type.descriptionRes
+
+    private fun showCommandStatus(executor: CommandExecutor<*>) {
+        val command = shownCommandOf(executor)
         if (command.descriptionRes == 0) return
-        val text = resourceHelper.gs(
-            R.string.medlink_status_command,
-            resourceHelper.gs(CoreR.string.connected),
-            command.code,
-            resourceHelper.gs(command.descriptionRes)
-        )
+        // a bolus shows only the kind and the dose of each part, no command code (user, 2026-11-15): "SMB 0.30 U",
+        // "TBR 0.10 U", a merged one "SMB 0.30 U + TBR 0.10 U", a manual one "Bolus 1.00 U"
+        val parts = if (isBolus(executor.firstCommand())) bolusParts(executor).filter { it.type().descriptionRes != 0 } else emptyList()
+        val isBolusDose = parts.isNotEmpty()
+        val description =
+            if (isBolusDose) parts
+                .map { resourceHelper.gs(R.string.medlink_cmd_with_dose, resourceHelper.gs(doseLabel(it.type())), it.detailedBolusInfo.insulin) }
+                .reduce { a, b -> resourceHelper.gs(R.string.medlink_cmd_two_doses, a, b) }
+            else resourceHelper.gs(command.descriptionRes)
+        val text =
+            if (isBolusDose) resourceHelper.gs(R.string.medlink_status_command_no_code, resourceHelper.gs(CoreR.string.connected), description)
+            else resourceHelper.gs(R.string.medlink_status_command, resourceHelper.gs(CoreR.string.connected), command.code, description)
         commandStatusShown = true
         shownCommand = command
+        shownCommandDescription = description
+        shownCommandIsBolus = isBolusDose
         rxBus?.send(EventPumpStatusChanged(text))
     }
 
@@ -3059,12 +3080,25 @@ class MedLinkBLE //extends RileyLinkBLE
         if (!commandStatusShown) return
         commandStatusShown = false
         shownCommand = null
+        shownCommandDescription = null
+        shownCommandIsBolus = false
         rxBus?.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED))
+    }
+
+    /**
+     * The command to show as "running now": for start / stop ("A" then START / STOP) and for a bolus ("X" then BOLUS) the
+     * second command is the real action (user, 2026-11-15); else the first one.
+     */
+    private fun shownCommandOf(executor: CommandExecutor<*>): MedLinkCommandType {
+        val first = executor.firstCommand()
+        val second = executor.secondCommand()
+        val twoStep = first == MedLinkCommandType.StopStartPump || isBolus(first)
+        return if (twoStep && second != MedLinkCommandType.NoCommand) second else first
     }
 
     private fun beforePost(executor: CommandExecutor<*>) {
         val now = System.currentTimeMillis()
-        showCommandStatus(executor.firstCommand())
+        showCommandStatus(executor)
         if (executor.firstCommand() == MedLinkCommandType.StopStartPump) lastStartStopSent = now
         if (!isBolusExecutor(executor)) return
         if (executor !== trackedBolusExecutor) {

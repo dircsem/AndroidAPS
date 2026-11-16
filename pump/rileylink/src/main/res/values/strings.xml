@@ -155,6 +155,11 @@
     <string name="medlink_cmd_get_state">Read pump status</string>
     <string name="medlink_cmd_stop_start_pump">Stop or start pump</string>
     <string name="medlink_cmd_bolus">Bolus</string>
+    <string name="medlink_cmd_bolus_amount">Bolus dose</string>
+    <string name="medlink_status_command_no_code" comment="Pump activity dialog, two lines, for a bolus. %1$s=connection status, example: Connected. %2$s=bolus kind and dose, example: SMB 0.30 U">%1$s\n%2$s</string>
+    <string name="medlink_cmd_tbr_short" comment="Very short name of a temp basal bolus, shown before its dose: TBR 0.10 U">TBR</string>
+    <string name="medlink_cmd_two_doses" comment="Two boluses merged into one pump bolus. %1$s and %2$s=bolus kind with dose. Example: SMB 0.30 U + Temp basal bolus 0.10 U">%1$s + %2$s</string>
+    <string name="medlink_cmd_with_dose" comment="Command now running: a bolus with its dose. %1$s=bolus kind, example: SMB. %2$.2f=dose in units. Example: SMB 0.30 U">%1$s %2$.2f U</string>
     <string name="medlink_cmd_start_pump">Start pump</string>
     <string name="medlink_cmd_stop_pump">Stop pump</string>
     <string name="medlink_cmd_isig_history">Read sensor ISIG history</string>

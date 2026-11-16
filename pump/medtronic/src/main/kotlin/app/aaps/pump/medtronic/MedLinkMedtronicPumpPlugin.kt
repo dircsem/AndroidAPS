@@ -5153,9 +5153,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     override fun tbrDisplayMinutes(): Int = preferences.get(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes)
 
     override fun currentCommandText(): String? {
-        val command = medLinkMedtronicService?.medLinkBLE?.shownCommand ?: return null
-        if (command.descriptionRes == 0) return null
-        return rh.gs(R.string.medlink_command_with_code, command.code, rh.gs(command.descriptionRes))
+        val ble = medLinkMedtronicService?.medLinkBLE ?: return null
+        val command = ble.shownCommand ?: return null
+        val description = ble.shownCommandDescription ?: return null
+        // a bolus: only its kind and dose ("SMB 0.30 U"), no command code (user, 2026-11-15)
+        return if (ble.shownCommandIsBolus) description else rh.gs(R.string.medlink_command_with_code, command.code, description)
     }
 
     /** First not sent operation of the TBR plan; without a plan, the next scheduled read (status, history...). */

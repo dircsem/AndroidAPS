@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
+     strings.xml does not remove them. Edit here directly. -->
+<resources>
+    <string name="medlink_cmd_bolus_amount">Dawka bolusa</string>
+    <string name="medlink_cmd_with_dose">%1$s %2$.2f U</string>
+    <string name="medlink_cmd_two_doses">%1$s + %2$s</string>
+    <string name="medlink_status_command_no_code">%1$s\n%2$s</string>
+    <string name="medlink_cmd_tbr_short">TBR</string>
+</resources>

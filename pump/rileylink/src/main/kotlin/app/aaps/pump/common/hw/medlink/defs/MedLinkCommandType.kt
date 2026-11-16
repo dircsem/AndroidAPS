@@ -28,7 +28,7 @@ enum class MedLinkCommandType constructor(
     GetState("S", listCommand = true, descriptionRes = R.string.medlink_cmd_get_state),  //
     StopStartPump("A", descriptionRes = R.string.medlink_cmd_stop_start_pump),
     Bolus("X", true, descriptionRes = R.string.medlink_cmd_bolus),
-    BolusAmount("BOLUS", true),
+    BolusAmount("BOLUS", true, descriptionRes = R.string.medlink_cmd_bolus_amount),
     StartPump("START",true, actionCommand = true, descriptionRes = R.string.medlink_cmd_start_pump),
     StopPump("STOP",true, actionCommand = true, descriptionRes = R.string.medlink_cmd_stop_pump),
     IsigHistory("I", listCommand = true, descriptionRes = R.string.medlink_cmd_isig_history),
