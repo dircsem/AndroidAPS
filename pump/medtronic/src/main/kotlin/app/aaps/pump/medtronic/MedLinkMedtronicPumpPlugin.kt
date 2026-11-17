@@ -486,6 +486,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }, MedLinkStopOrigin.USER)
     }
 
+    /** T23: phone time of the last STOP / START that the pump confirmed (its answer also gives the pump state). */
+    @Volatile private var lastStartStopAnswerAt = 0L
+
     private fun stopPump(callback: Callback, origin: MedLinkStopOrigin = MedLinkStopOrigin.AUTOMATIC) {
         aapsLogger.info(LTag.PUMP, "MedtronicPumpPlugin::stopPump - $origin")
         aapsLogger.info(LTag.PUMP, "batteryDelta $batteryDelta")
@@ -511,6 +514,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val startStopFunction = function.andThen { f: MedLinkStandardReturn<PumpDriverState> ->
                 result = when {
                     f.functionResult === PumpDriverState.Suspended -> {
+                        lastStartStopAnswerAt = dateUtil.now()
                         // B12: only an automatic stop may be undone by the app (MedLinkResumeRule); kept over a restart
                         preferences.put(MedtronicLongNonKey.MedLinkAutoStopAt, if (origin == MedLinkStopOrigin.AUTOMATIC) dateUtil.now() else 0L)
                         pumpEnactResultProvider.get().success(true).enacted(true)
@@ -610,6 +614,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     .andThen { f: MedLinkStandardReturn<PumpDriverState> ->
                         result = when {
                             f.functionResult === PumpDriverState.Initialized -> {
+                                lastStartStopAnswerAt = dateUtil.now()
                                 temporaryBasal
                                 finishAction("TBR")
                                 pumpEnactResultProvider.get().success(true).enacted(true)
@@ -1200,8 +1205,21 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 //                scheduleNextRefresh(refreshType.getKey());
                 when (key) {
                     MedLinkMedtronicStatusRefreshType.PumpHistory -> {
-                        aapsLogger.debug(LTag.PUMPBTCOMM, "refreshing")
-                        readPumpData(true)
+                        // T23: no S when the last one (or a STOP / START answer) is fresh; never older than 10 min
+                        val now = dateUtil.now()
+                        val lastStatusAt = medLinkPumpStatus.lastConnection
+                        val wait = MedLinkStatusReadRule.statusReadWaitMs(now, lastStatusAt, lastStartStopAnswerAt)
+                        if (wait > 0L) {
+                            aapsLogger.info(
+                                LTag.PUMPBTCOMM,
+                                "status read skipped: last S ${(now - lastStatusAt) / 1000}s ago, " +
+                                    "last STOP/START ${if (lastStartStopAnswerAt > 0L) "${(now - lastStartStopAnswerAt) / 1000}s ago" else "none"}, next in ${wait / 1000}s"
+                            )
+                            scheduleNextRefresh(MedLinkMedtronicStatusRefreshType.PumpHistory, now + wait - lastStatusAt)
+                        } else {
+                            aapsLogger.debug(LTag.PUMPBTCOMM, "refreshing")
+                            readPumpData(true)
+                        }
                     }
 
                     MedLinkMedtronicStatusRefreshType.PumpTime -> {

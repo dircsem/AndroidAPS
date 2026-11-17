@@ -1,6 +1,7 @@
 package app.aaps.pump.medtronic.data
 
 import app.aaps.pump.medtronic.data.MedLinkStatusReadRule.Step
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -65,5 +66,40 @@ class MedLinkStatusReadRuleTest {
     @Test
     fun `time or time zone changed - read`() {
         assertTrue(read(emptyList(), timeChanged = true))
+    }
+
+    // T23: planned status read
+
+    private fun waitMs(statusAgo: Long, startStopAgo: Long? = null) =
+        MedLinkStatusReadRule.statusReadWaitMs(now, now - statusAgo, startStopAgo?.let { now - it } ?: 0L)
+
+    @Test
+    fun `T23 last status 1 min old - wait 3 min`() {
+        assertEquals(3 * min, waitMs(1 * min))
+    }
+
+    @Test
+    fun `T23 last status 4, 6 or 11 min old - read now`() {
+        assertEquals(0L, waitMs(4 * min))
+        assertEquals(0L, waitMs(6 * min))
+        assertEquals(0L, waitMs(11 * min))
+    }
+
+    @Test
+    fun `T23 no status yet - read now`() {
+        assertEquals(0L, MedLinkStatusReadRule.statusReadWaitMs(now, 0L, now - 1 * min))
+    }
+
+    @Test
+    fun `T23 right after a STOP or START - no new connection only for S`() {
+        assertEquals(3 * min, waitMs(6 * min, startStopAgo = 1 * min))
+        assertEquals(0L, waitMs(6 * min, startStopAgo = 5 * min))
+    }
+
+    @Test
+    fun `T23 a STOP or START never makes the status older than 10 min`() {
+        // status 9 min old, START 1 min ago: wait only 1 min (10 min limit), not 3
+        assertEquals(1 * min, waitMs(9 * min, startStopAgo = 1 * min))
+        assertEquals(0L, waitMs(11 * min, startStopAgo = 0L))
     }
 }

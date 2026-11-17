@@ -79,6 +79,28 @@ Field test: 1 h with a TBR plan. Count connections (`writing <OK+CONN>`) and `wr
 connections and 12–15 S per hour (was 17 and 30). The loop never says the pump data is too old.
 Related: B10, B11 (do them first; they explain part of the extra reads).
 
+### Developer notes (2026-11-15) — done in part, needs field test
+- The background `S` reads all come from `readPumpData` → `readPumpHistoryLogic` (`GetState`). The planned one is
+  the `PumpHistory` refresh (about 5 min after the last good `S`).
+- New rule `MedLinkStatusReadRule.statusReadWaitMs(now, lastStatusAt, lastStartStopAt)`: no planned `S` while the
+  last `S` is less than 4 min old, or a STOP / START answer came less than 4 min ago. The wait never goes past
+  10 min after the last good `S`.
+- `refreshAnyStatusThatNeedsToBeRefreshed` (`PumpHistory` branch) uses it. When it skips, it logs
+  "status read skipped: last S …s ago, last STOP/START …s ago, next in …s" and moves the `PumpHistory` time to the end
+  of the wait (so the B11 check does not say "due" every 5 s).
+- `lastStartStopAnswerAt` is set when the pump confirms a STOP (Suspended) or a START (Initialized).
+- Not changed: the 10-min safety reads (`lastTryToConnect`, the 590 s check in `onStartScheduledPumpActions`),
+  "clicked refresh", the start read, the bolus path (`M` baseline, T7). Plan steps run as before (B11).
+- Not done: "read `S` in the same connection as a due plan step". The step and a due `S` already go to the BLE queue
+  in the same refresh; joining them on purpose needs the BLE queue work of T25 / T26. User (2026-11-16): leave it
+  for now, analyse it again after T25 / T26.
+- Tests: 5 new cases in `MedLinkStatusReadRuleTest` (status 1 / 4 / 6 / 11 min old, no status yet, right after
+  STOP / START, the 10 min limit).
+- Field test: 1 h with a TBR plan. Count `writing <S>` and "status read skipped". The loop never says the pump data
+  is old.
+- **Field result 2026-11-17** (`logs/invalid_command.log`, build 07.23): 3 `S` in 13 min (about 14 / h, before 30 / h),
+  "status read skipped" after a recent `S` and after STOP / START. Done.
+
 ## T24 — Keep the TBR plan when the new TBR gives the same insulin as the running one
 Priority: P2 (pump battery: fewer STOP / START)
 Seen: log analysis, 2026-11-14. The loop sent a new low TBR every 5 min (0.10, 0.32, 0.39 U/h … on a 1.2 U/h basal),
