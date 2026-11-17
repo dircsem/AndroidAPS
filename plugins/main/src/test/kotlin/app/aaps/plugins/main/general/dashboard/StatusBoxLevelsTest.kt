@@ -62,4 +62,22 @@ class StatusBoxLevelsTest {
         val box = levelOrAgeBox(age = "-", ageStatus = StatusLevel.UNSPECIFIED, level = "90%", levelStatus = StatusLevel.NORMAL)
         assertThat(box.level).isEqualTo(StatusLevel.NORMAL)
     }
+
+    // T14: sensor badge (circle-top) and sensor pill (Glass): the worse of the sensor age and the sensor battery
+
+    @Test
+    fun `sensor - old sensor with a good battery is colored by the age`() {
+        assertThat(worseStatusLevel(StatusLevel.WARNING, StatusLevel.NORMAL)).isEqualTo(StatusLevel.WARNING)
+    }
+
+    @Test
+    fun `sensor - low sensor battery is colored even when the sensor is new`() {
+        assertThat(worseStatusLevel(StatusLevel.NORMAL, StatusLevel.CRITICAL)).isEqualTo(StatusLevel.CRITICAL)
+    }
+
+    @Test
+    fun `sensor - no battery level (most CGMs) - the age alone decides`() {
+        assertThat(worseStatusLevel(StatusLevel.CRITICAL, StatusLevel.UNSPECIFIED)).isEqualTo(StatusLevel.CRITICAL)
+        assertThat(worseStatusLevel(StatusLevel.NORMAL, StatusLevel.UNSPECIFIED)).isEqualTo(StatusLevel.NORMAL)
+    }
 }

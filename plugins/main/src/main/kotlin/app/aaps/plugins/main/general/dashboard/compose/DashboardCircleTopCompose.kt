@@ -279,6 +279,8 @@ fun DashboardCircleTopCompose(
                                 sensorAge = sensor,
                                 smoothingLabel = smoothingLabel,
                                 compact = simpleOneScreen,
+                                // T14: same rule as the pump battery: the worse of the age and the sensor battery level
+                                level = worseStatusLevel(statusLights?.sensorStatus?.ageStatus, statusLights?.sensorStatus?.levelStatus),
                             )
                         }
                         Spacer(modifier = Modifier.weight(1f))
@@ -670,6 +672,14 @@ private fun PumpCompactBadgeRow(state: StatusCardState, statusLights: StatusUiSt
     }
 }
 
+/** Background of a status badge: warning / critical as the AAPS status lights, else [normal] (T14: pump boxes and sensor). */
+@Composable
+private fun statusBadgeBackground(level: StatusLevel?, normal: Color): Color = when (level) {
+    StatusLevel.WARNING  -> AapsTheme.generalColors.statusWarning.copy(alpha = 0.45f)
+    StatusLevel.CRITICAL -> AapsTheme.generalColors.statusCritical.copy(alpha = 0.45f)
+    else                 -> normal
+}
+
 private const val PUMP_BADGE_COLUMNS = 2
 private val PUMP_BADGE_SPACING = 6.dp
 
@@ -688,11 +698,7 @@ private fun HeroPumpBadge(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
-    val background = when (level) {
-        StatusLevel.WARNING  -> AapsTheme.generalColors.statusWarning.copy(alpha = 0.45f)
-        StatusLevel.CRITICAL -> AapsTheme.generalColors.statusCritical.copy(alpha = 0.45f)
-        else                 -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
-    }
+    val background = statusBadgeBackground(level, MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f))
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = background,
@@ -790,6 +796,7 @@ internal fun HeroCgmCompactBadge(
     sensorAge: String,
     smoothingLabel: String,
     compact: Boolean = false,
+    level: StatusLevel? = null,
 ) {
     val cgmShort = if (sensorAge.isNotEmpty()) {
         stringResource(R.string.dashboard_hero_sensor_badge_short, sensorAge)
@@ -862,7 +869,7 @@ internal fun HeroCgmCompactBadge(
     }
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
+        color = statusBadgeBackground(level, MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f)),
         border = smoothingBorder,
         modifier = Modifier
             .heightIn(max = if (compact) 28.dp else 30.dp)

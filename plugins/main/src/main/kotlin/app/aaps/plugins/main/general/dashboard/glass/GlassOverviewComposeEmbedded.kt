@@ -503,7 +503,8 @@ internal fun buildGlassUiState(
         medLinkBattery = lights?.medLinkBatteryStatus?.let { if (it.levelPercent >= 0f) ((1f - it.levelPercent) * 100).roundToInt().toString() else "-" },
         medLinkBatteryStatus = lights?.medLinkBatteryStatus?.levelStatus ?: StatusLevel.UNSPECIFIED,
         sensorAge = lights?.sensorStatus?.age ?: "--",
-        sensorAgeStatus = lights?.sensorStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
+        // T14: the worse of the sensor age and the sensor battery level, as the pump battery
+        sensorAgeStatus = worseStatusLevel(lights?.sensorStatus?.ageStatus, lights?.sensorStatus?.levelStatus) ?: StatusLevel.UNSPECIFIED,
         loopStatusText = status.loopStatusText,
         loopIsRunning = status.loopIsRunning,
         // lastSensorValueText holds the total IOB WITHOUT the "IOB: " prefix baked into status.iobText

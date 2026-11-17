@@ -60,6 +60,17 @@ Audit (code only; thresholds and light / dark not checked on a phone):
   lower `OverviewCageWarning` / `OverviewSageWarning` below the current age and check the pill turns yellow.
 - Not done: the sensor badge on circle-top has no color; the XML hybrid view has no colors at all. Should they get
   colors (new items), or is text enough there?
+- **User (2026-11-16): colors, the same standard as the battery and the cannula age.** Done:
+  - circle-top sensor badge (`HeroCgmCompactBadge`): background warning / critical like the pump badges (shared
+    `statusBadgeBackground`), level = `worseStatusLevel(sensor age status, sensor battery level status)` — the same rule
+    as the pump battery (`OverviewSage*`, `OverviewSbat*`). The smoothing quality border stays.
+  - Glass sensor pill: the same worse-of-two rule (before: age only).
+  - XML hybrid view (`CircleTopDashboardView` in `DashboardFragment`): **not changed** — `DashboardFragment` is only
+    registered in Dagger and never opened (no code shows it). Coloring it would need the status lights view model
+    in an unused screen. Tell me if you still see it somewhere.
+  - Tests: `StatusBoxLevelsTest` + 3 sensor cases (11/11). Build `:plugins:main` OK.
+  - Field test: lower `OverviewSageWarning` below the sensor age: the circle-top sensor badge and the Glass sensor pill
+    turn yellow; with a CGM that gives a sensor battery, a low battery also colors them.
 
 ## T15 — Glass skin: clear titles for all pills (pt-BR, en, ru, pl)
 Priority: P3
