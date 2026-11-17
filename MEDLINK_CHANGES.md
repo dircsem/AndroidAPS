@@ -919,3 +919,12 @@ Antes (2026-11-09, 4m): rileylink 488/488, medtronic 143/143, `:app:assembleFull
   salvo nas preferências (sobrevive a reinício).
 - Testes: rileylink 532/532, medtronic 226/226 (`MedLinkProfileReadRuleTest`, `MedLinkZeroTbrRuleTest` novos, `MedLinkProfileDiffTest` removido),
   `StatusBoxLevelsTest` 8/8, `CommandQueueImplementationTest` 40/40. `:app:compileFullDebugKotlin` OK.
+- **B12, bomba suspensa 02:30 -> 06:00 (noite 2026-11-16):** crash às 02:31:50 (`NoSuchElementException`:
+  `isEmpty()` e depois `first` no plano da TBR, thread do loop × thread do plano). Corrigido: `firstOrNull()` em todos
+  os lugares, `takeDueStep` sincronizado (passo nunca executado duas vezes), `!!` da TBR na resposta STOP/START.
+  `initProfile` removido (reenviava todas as TBRs guardadas depois de reiniciar: 21 STOPs, TBR 0 % a cada 12 min).
+  `MedLinkResumeRule` (testada): bomba suspensa por STOP automático (`MedLinkAutoStopAt`, salvo) sem REACTIVATE
+  pendente -> START depois de 5 min; 15 min, ou REACTIVATE 10 min atrasado -> START + alarme "Pump still suspended"
+  (B15). Suspensão do usuário nunca é desfeita; nada enquanto o T21 espera a resposta. REACTIVATE sempre via
+  `startPump()`. Motivo da última saída do app no log (`ApplicationExitInfo`); remote git sem usuário/token no log e no
+  banco. Testes: medtronic 283/283, rileylink 536/536, `:app:assembleFullDebug` OK.

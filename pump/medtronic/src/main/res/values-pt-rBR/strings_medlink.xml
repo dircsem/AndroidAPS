@@ -32,6 +32,8 @@
     <string name="medlink_connection_alarm_torch_summary">Pisca a lanterna do celular com o alarme (no máximo 2 minutos). Celulares sem lanterna pulam isto.</string>
     <string name="medlink_pump_unreachable_title">Bomba não responde</string>
     <string name="medlink_pump_unreachable_message">O MedLink não conseguiu falar com a bomba %1$d vezes seguidas (desde %2$s). A insulina pode ter parado. Verifique a bomba: bateria, distância, uma mensagem na tela da bomba.</string>
+    <string name="medlink_pump_still_suspended_title">Bomba ainda suspensa</string>
+    <string name="medlink_pump_still_suspended_message">O app parou a bomba às %1$s para uma basal temporária, e a bomba ainda está suspensa. O app tenta ligá-la agora. Verifique a bomba e retome-a à mão se ela não estiver funcionando.</string>
     <string name="medlink_silence_15_min">Silenciar 15 min</string>
     <string name="medlink_pump_connection_restored">Conexão com a bomba restaurada</string>
     <string name="medlink_zero_tbr_question">A bomba não respondeu de %1$s a %2$s e a bateria dela é velha. O AAPS gravou uma basal de 0 %% para este tempo. %3$s Manter a basal de 0 %%?</string>

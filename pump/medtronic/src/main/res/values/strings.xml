@@ -232,6 +232,8 @@
     <string name="medlink_connection_alarm_torch_summary">Blink the phone flashlight with the alarm (for at most 2 minutes). Phones without a flashlight skip it.</string>
     <string name="medlink_pump_unreachable_title">Pump not reached</string>
     <string name="medlink_pump_unreachable_message" comment="%1$d=failed connections in a row, example: 4. %2$s=time of the first failure, example: 14:05">The MedLink could not reach the pump %1$d times in a row (since %2$s). Insulin may have stopped. Check the pump: battery, distance, a message on the pump screen.</string>
+    <string name="medlink_pump_still_suspended_title">Pump still suspended</string>
+    <string name="medlink_pump_still_suspended_message" comment="%1$s=time of the last automatic stop, example: 02:30">The app stopped the pump at %1$s for a temp basal, and the pump is still suspended. The app tries to start it now. Check the pump and resume it by hand if it does not run.</string>
     <string name="medlink_silence_15_min">Silence 15 min</string>
     <string name="medlink_pump_connection_restored">Pump connection restored</string>
     <string name="medlink_zero_tbr_question" comment="%1$s=start time, example: 14:05. %2$s=end time, example: 15:30. %3$s=one sentence about the reservoir (see medlink_zero_tbr_hint_*)">The pump was not reached from %1$s to %2$s and its battery is old. AAPS stored a 0 %% basal for this time. %3$s Keep the 0 %% basal?</string>

@@ -39,9 +39,8 @@ class ProfileCallback(private val ctx: Context, private val medLinkMedtronicPump
                     medLinkMedtronicPumpPlugin.rh.gs(app.aaps.pump.medtronic.R.string.medtronic_cmd_basal_profile_could_not_be_set)
                 )
             }
-             // B6: the profile is now read again later (every 6 h, Profiles screen, ...). initProfile sends the stored
-             // TBRs to the pump again: start-up work, so only for the first good read of this app run.
-             if (profile != null && medLinkMedtronicPumpPlugin.lastPumpProfile == null) medLinkMedtronicPumpPlugin.initProfile(profile)
+             // B12: no replay of the stored TBRs here any more (was `initProfile`). After an app restart it sent every
+             // stored TBR to the pump again (21 STOPs, an old 0 % TBR every 12 min). The loop sets a new TBR instead.
              // B6: compare with the pump values as parsed (also when AAPS cannot hold the profile: times not on the hour)
              (parser as? MedLinkProfileParserImpl<*>)?.lastProfileJson?.let { medLinkMedtronicPumpPlugin.onPumpProfileRead(it, profile) }
         } catch (e: JSONException) {

@@ -29,4 +29,10 @@ enum class MedtronicLongNonKey(
     MedLinkZeroTbrEnd("medlink_zero_tbr_end", 0L, exportable = false),
     /** Reservoir at the start of the outage, in 0.001 U; -1 = unknown. */
     MedLinkZeroTbrReservoirBefore("medlink_zero_tbr_reservoir_before", -1L, exportable = false),
+
+    /**
+     * MedLink B12: when the pump confirmed the last automatic STOP (TBR plan). 0 = the last stop was by the user, or
+     * the pump runs again. Kept over an app restart: then the app knows that it must start the pump itself.
+     */
+    MedLinkAutoStopAt("medlink_auto_stop_at", 0L, exportable = false),
 }

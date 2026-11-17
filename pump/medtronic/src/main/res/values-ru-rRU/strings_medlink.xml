@@ -32,6 +32,8 @@
     <string name="medlink_connection_alarm_torch_summary">Мигает фонариком телефона при тревоге (не более 2 минут). Телефоны без фонарика это пропускают.</string>
     <string name="medlink_pump_unreachable_title">Помпа не отвечает</string>
     <string name="medlink_pump_unreachable_message">MedLink не смог связаться с помпой %1$d раз подряд (с %2$s). Подача инсулина могла остановиться. Проверьте помпу: батарея, расстояние, сообщение на экране помпы.</string>
+    <string name="medlink_pump_still_suspended_title">Помпа всё ещё остановлена</string>
+    <string name="medlink_pump_still_suspended_message">Приложение остановило помпу в %1$s для временного базала, и помпа всё ещё остановлена. Приложение сейчас пытается её запустить. Проверьте помпу и запустите её вручную, если она не работает.</string>
     <string name="medlink_silence_15_min">Тихо 15 мин</string>
     <string name="medlink_pump_connection_restored">Связь с помпой восстановлена</string>
     <string name="medlink_zero_tbr_question">Помпа не отвечала с %1$s до %2$s, и её батарея старая. AAPS записал базал 0 %% на это время. %3$s Оставить базал 0 %%?</string>

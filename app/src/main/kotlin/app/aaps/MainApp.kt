@@ -3,6 +3,7 @@ package app.aaps
 import android.app.Application
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.AlertDialog
 import android.bluetooth.BluetoothDevice
 import android.content.Context
@@ -300,13 +301,33 @@ class MainApp : Application(), HasAndroidInjector, Configuration.Provider {
         }
     }
 
+    /**
+     * Logs why the last app process ended (crash, killed by Android, low memory, ...). A crash on the main thread
+     * leaves no line in the AAPS log (MedLink B12: the app ended at 02:31:50 with nothing in the log).
+     */
+    private fun logLastExitReason() {
+        try {
+            val activityManager = getSystemService(ActivityManager::class.java) ?: return
+            val last = activityManager.getHistoricalProcessExitReasons(packageName, 0, 1).firstOrNull() ?: return
+            aapsLogger.warn(
+                LTag.CORE,
+                "Last app exit: pid=${last.pid} at ${dateUtil.dateAndTimeAndSecondsString(last.timestamp)} " +
+                    "reason=${last.reason} status=${last.status} importance=${last.importance} " +
+                    "pss=${last.pss} kB rss=${last.rss} kB description=${last.description}"
+            )
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "Last app exit reason not read", e)
+        }
+    }
+
     private suspend fun doInit() {
         aapsLogger.debug("doInit")
         RxDogTag.install()
         setRxErrorHandler()
         LocaleHelper.update(this@MainApp)
 
-        var gitRemote: String? = config.REMOTE
+        // never log or store a user name / token that is part of the git remote URL (https://user:token@host/...)
+        var gitRemote: String? = config.REMOTE.replace(Regex("//[^/@]*@"), "//")
         var commitHash: String? = BuildConfig.HEAD
         if (gitRemote?.contains("NoGitSystemAvailable") == true) {
             gitRemote = null
@@ -315,8 +336,9 @@ class MainApp : Application(), HasAndroidInjector, Configuration.Provider {
         registerActivityLifecycleCallbacks(activityMonitor)
         aapsLogger.debug("Version: " + config.VERSION_NAME)
         aapsLogger.debug("BuildVersion: " + config.BUILD_VERSION)
-        aapsLogger.debug("Remote: " + config.REMOTE)
+        aapsLogger.debug("Remote: $gitRemote")
         aapsLogger.debug("Phone: " + Build.MANUFACTURER + " " + Build.MODEL)
+        logLastExitReason()
         registerLocalBroadcastReceiver()
         setupRemoteConfig()
 

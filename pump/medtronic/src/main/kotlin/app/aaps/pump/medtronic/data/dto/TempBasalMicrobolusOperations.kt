@@ -90,9 +90,35 @@ class TempBasalMicrobolusOperations {
         return false
     }
 
+    /**
+     * B12: the first step of the plan, or null. Read once: other threads remove steps (`poll`, [complete]) or
+     * change the plan at any time, so `isEmpty()` and then `first` can throw NoSuchElementException.
+     * This crashed the app in the field on 2026-11-16 at 02:31 (loop thread, `isSuspended` -> `temporaryBasal`).
+     */
+    fun firstOrNull(): TempBasalMicroBolusPair? = operations.peekFirst()
+
+    /**
+     * B12: the step runner. Removes the first step when its command was already sent, then returns the next step
+     * when it is due (time before [dueBefore]) and marks it as sent. Null when no step is due.
+     * One synchronized call, so two refresh threads can never take the same step, and an empty plan never throws.
+     */
+    @Synchronized
+    fun takeDueStep(dueBefore: LocalDateTime): TempBasalMicroBolusPair? {
+        val head = firstOrNull() ?: return null
+        if (head.isCommandIssued) complete(head) // by identity: two steps can be equal by value
+        val next = firstOrNull() ?: return null
+        if (next.isCommandIssued || !next.releaseTime.isBefore(dueBefore)) return null
+        next.isCommandIssued = true
+        return next
+    }
+
+    /** B12: when the plan was last cleared (0 = never in this app run). A new plan clears the old one first. */
+    @Volatile var clearedAt = 0L
+        private set
+
     @Synchronized
     fun clearOperations() {
-
+        clearedAt = System.currentTimeMillis()
         operations.clear()
     }
 
@@ -101,14 +127,9 @@ class TempBasalMicrobolusOperations {
     }
 
     fun shouldBeSuspended(): Boolean {
-        return shouldBeSuspended || operations.stream().findFirst().let {
-            if (it.isPresent) {
-                val oper = it.get()
-                oper.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE || absoluteRate == 0.0
-            } else {
-                false
-            }
-        }
+        if (shouldBeSuspended) return true
+        val oper = firstOrNull() ?: return false
+        return oper.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE || absoluteRate == 0.0
     }
     /**
      * Release time of the first op when it is a REACTIVATE, epoch 0 for another op, null with no ops.

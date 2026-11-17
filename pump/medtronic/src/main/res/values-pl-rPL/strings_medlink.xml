@@ -32,6 +32,8 @@
     <string name="medlink_connection_alarm_torch_summary">Miga latarką telefonu podczas alarmu (najwyżej 2 minuty). Telefony bez latarki to pomijają.</string>
     <string name="medlink_pump_unreachable_title">Pompa nie odpowiada</string>
     <string name="medlink_pump_unreachable_message">MedLink nie mógł połączyć się z pompą %1$d razy z rzędu (od %2$s). Insulina mogła zostać zatrzymana. Sprawdź pompę: bateria, odległość, komunikat na ekranie pompy.</string>
+    <string name="medlink_pump_still_suspended_title">Pompa nadal wstrzymana</string>
+    <string name="medlink_pump_still_suspended_message">Aplikacja zatrzymała pompę o %1$s dla tymczasowej dawki bazowej, a pompa jest nadal wstrzymana. Aplikacja próbuje ją teraz uruchomić. Sprawdź pompę i wznów ją ręcznie, jeśli nie działa.</string>
     <string name="medlink_silence_15_min">Wycisz 15 min</string>
     <string name="medlink_pump_connection_restored">Połączenie z pompą przywrócone</string>
     <string name="medlink_zero_tbr_question">Pompa nie odpowiadała od %1$s do %2$s, a jej bateria jest stara. AAPS zapisał bazę 0 %% na ten czas. %3$s Zachować bazę 0 %%?</string>

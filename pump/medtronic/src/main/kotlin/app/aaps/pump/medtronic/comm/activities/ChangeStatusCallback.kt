@@ -60,7 +60,7 @@ class ChangeStatusCallback(
                          PumpDriverState.Initialized
                     } else if (f.contains("suspend")) {
                         val tempBasal = medLinkMedtronicPumpPlugin.temporaryBasal
-                        if (tempBasal!!.durationInMinutes > 0) {
+                        if ((tempBasal?.durationInMinutes ?: 0) > 0) { // B12: null-safe, the plan can be empty here
                             medLinkMedtronicPumpPlugin.setPumpRunningState(
                                 PumpRunningState.TempBasalSuspended)
                             aapsLogger.info(LTag.PUMPBTCOMM, "pump temp basal suspend")

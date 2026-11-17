@@ -8,6 +8,7 @@ import app.aaps.pump.common.hw.medlink.connection.MedLinkConnectionAlarmRule
 import kotlinx.coroutines.delay
 import kotlin.coroutines.cancellation.CancellationException
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.pump.medtronic.data.MedLinkResumeRule
 import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
@@ -509,6 +510,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             val startStopFunction = function.andThen { f: MedLinkStandardReturn<PumpDriverState> ->
                 result = when {
                     f.functionResult === PumpDriverState.Suspended -> {
+                        // B12: only an automatic stop may be undone by the app (MedLinkResumeRule); kept over a restart
+                        preferences.put(MedtronicLongNonKey.MedLinkAutoStopAt, if (origin == MedLinkStopOrigin.AUTOMATIC) dateUtil.now() else 0L)
                         pumpEnactResultProvider.get().success(true).enacted(true)
                     }
 
@@ -760,7 +763,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     //TODO implement
     override fun isSuspended(): Boolean {
-        return medLinkPumpStatus.pumpRunningState === PumpRunningState.Suspended && temporaryBasal?.desiredPct != null && temporaryBasal?.desiredPct!! <= 100
+        // B12: read temporaryBasal once (it can change between two reads)
+        val desiredPct = temporaryBasal?.desiredPct ?: return false
+        return medLinkPumpStatus.pumpRunningState === PumpRunningState.Suspended && desiredPct <= 100
     }
 
 
@@ -1126,99 +1131,74 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         // execute
         val refreshTypesNeededToReschedule: MutableSet<MedLinkMedtronicStatusRefreshType?> =
             HashSet()
-        if (!tempBasalMicrobolusOperations.operations.isEmpty() && tempBasalMicrobolusOperations.operations.first.isCommandIssued) {
-            tempBasalMicrobolusOperations.operations.poll()
-        }
-        if (!tempBasalMicrobolusOperations.operations.isEmpty() &&
-            tempBasalMicrobolusOperations.operations.first.releaseTime.isBefore(
-                LocalDateTime.now().plus(Seconds.seconds(30))
-            ) &&
-            !tempBasalMicrobolusOperations.operations.first.isCommandIssued
-        ) {
-            val oper = tempBasalMicrobolusOperations.operations.peek()
-            oper.let {
-                aapsLogger.info(
-                    LTag.PUMP, "Next Command " +
-                            it.releaseTime.toDateTime()
-                )
-
-                aapsLogger.info(LTag.PUMP, it.toString())
-            }
-            if (!oper?.isCommandIssued!!) {
-
-                oper.isCommandIssued = true
-                when (oper.operationType) {
-                    TempBasalMicroBolusPair.OperationType.SUSPEND -> {
-                        tempBasalMicrobolusOperations.setShouldBeSuspended(true)
-                        if (!currentPumpStatus.isSuspended() && currentPumpStatus != PumpRunningState.Unknow) {
-                            stopPump(object : Callback() {
-                                override fun run() {
-                                    aapsLogger.info(LTag.PUMP,"stopping pump")
-                                    if (medLinkPumpStatus.pumpRunningState ===
-                                        PumpRunningState.TempBasalSuspended
-                                    ) {
-                                        tempBasalMicrobolusOperations.complete(oper)
-                                    }
+        // B12: one synchronized call (was isEmpty() + first + poll(): crash on an empty plan, a step taken twice)
+        val oper = tempBasalMicrobolusOperations.takeDueStep(LocalDateTime.now().plus(Seconds.seconds(30)))
+        if (oper != null) {
+            aapsLogger.info(LTag.PUMP, "Next Command " + oper.releaseTime.toDateTime())
+            aapsLogger.info(LTag.PUMP, oper.toString())
+            when (oper.operationType) {
+                TempBasalMicroBolusPair.OperationType.SUSPEND -> {
+                    tempBasalMicrobolusOperations.setShouldBeSuspended(true)
+                    if (!currentPumpStatus.isSuspended() && currentPumpStatus != PumpRunningState.Unknow) {
+                        stopPump(object : Callback() {
+                            override fun run() {
+                                aapsLogger.info(LTag.PUMP,"stopping pump")
+                                if (medLinkPumpStatus.pumpRunningState ===
+                                    PumpRunningState.TempBasalSuspended
+                                ) {
+                                    tempBasalMicrobolusOperations.complete(oper)
                                 }
-                            })
-                        } else {
-                            tempBasalMicrobolusOperations.complete(oper)
-                        }
-                    }
-
-                    TempBasalMicroBolusPair.OperationType.REACTIVATE -> {
-                        tempBasalMicrobolusOperations.setShouldBeSuspended(false)
-                        if (PumpRunningState.Running != medLinkPumpStatus.pumpRunningState) {
-                            startPump(object : Callback() {
-                                override fun run() {
-                                    // the old `&& !oper.isCommandIssued` was always false (set above): never completed here
-                                    if (medLinkPumpStatus.pumpRunningState ===
-                                        PumpRunningState.Running
-                                    ) {
-                                        tempBasalMicrobolusOperations.complete(oper)
-                                    }
-                                }
-                            }, true)
-                        } else {
-                            tempBasalMicrobolusOperations.complete(oper)
-                        }
-
-                    }
-
-                    TempBasalMicroBolusPair.OperationType.BOLUS -> if (tbrBolusTooSoon(oper)) {
-                        // not sent and not tried again: the next TBR bolus of the plan follows its own time
-                        tempBasalMicrobolusOperations.complete(oper)
+                            }
+                        })
                     } else {
-                        if (PumpRunningState.TempBasalSuspended == medLinkPumpStatus.pumpRunningState) {
-                            reactivatePump(oper) { o: Any? -> o }
-                        }
-                        val detailedBolusInfo = DetailedBolusInfo()
-                        detailedBolusInfo.lastKnownBolusTime =
-                            if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time else if (pumpSyncStorage.pumpSyncStorageBolus.isNotEmpty()) {
-                                val bolusList = pumpSyncStorage.pumpSyncStorageBolus
-                                bolusList.sortBy { it.date }
-                                bolusList[0].date
-                            } else {
-                                System.currentTimeMillis()
-                            }
-                        detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
-                        detailedBolusInfo.insulin = oper.dose
-                        detailedBolusInfo.bolusType = BS.Type.TBR
-                        detailedBolusInfo.bolusTimestamp = System.currentTimeMillis()
-                        aapsLogger.debug(LTag.APS, "applyAPSRequest: bolus()")
-                        val callback = { o: PumpEnactResult? ->
-                            aapsLogger.info(LTag.PUMPBTCOMM, "temp basal bolus $o")
-                            if (o?.success == true) {
-                                tempBasalMicrobolusOperations.complete(oper)
-                            } else {
-                                oper.isCommandIssued = false
-                            }
-                            Unit
-                        }
-                        deliverTreatment(detailedBolusInfo, callback)
+                        tempBasalMicrobolusOperations.complete(oper)
                     }
+                }
 
+                TempBasalMicroBolusPair.OperationType.REACTIVATE -> {
+                    tempBasalMicrobolusOperations.setShouldBeSuspended(false)
+                    // B12: always through startPump(). It skips the START only when the pump answered Running
+                    // after the last start/stop (T13). The app state alone can be old: the REACTIVATE was skipped.
+                    startPump(object : Callback() {
+                        override fun run() {
+                            if (medLinkPumpStatus.pumpRunningState === PumpRunningState.Running) {
+                                tempBasalMicrobolusOperations.complete(oper)
+                            }
+                        }
+                    }, true)
+                }
 
+                TempBasalMicroBolusPair.OperationType.BOLUS -> if (tbrBolusTooSoon(oper)) {
+                    // not sent and not tried again: the next TBR bolus of the plan follows its own time
+                    tempBasalMicrobolusOperations.complete(oper)
+                } else {
+                    if (PumpRunningState.TempBasalSuspended == medLinkPumpStatus.pumpRunningState) {
+                        reactivatePump(oper) { o: Any? -> o }
+                    }
+                    val detailedBolusInfo = DetailedBolusInfo()
+                    detailedBolusInfo.lastKnownBolusTime =
+                        if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time else if (pumpSyncStorage.pumpSyncStorageBolus.isNotEmpty()) {
+                            val bolusList = pumpSyncStorage.pumpSyncStorageBolus
+                            bolusList.sortBy { it.date }
+                            bolusList[0].date
+                        } else {
+                            System.currentTimeMillis()
+                        }
+                    detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+                    detailedBolusInfo.insulin = oper.dose
+                    detailedBolusInfo.bolusType = BS.Type.TBR
+                    detailedBolusInfo.bolusTimestamp = System.currentTimeMillis()
+                    aapsLogger.debug(LTag.APS, "applyAPSRequest: bolus()")
+                    val callback = { o: PumpEnactResult? ->
+                        aapsLogger.info(LTag.PUMPBTCOMM, "temp basal bolus $o")
+                        if (o?.success == true) {
+                            tempBasalMicrobolusOperations.complete(oper)
+                        } else {
+                            oper.isCommandIssued = false
+                        }
+                        Unit
+                    }
+                    deliverTreatment(detailedBolusInfo, callback)
                 }
             }
         }
@@ -1309,7 +1289,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                             .comment(rh.gs(app.aaps.core.ui.R.string.careportal_tempbasalstart))
                     )
                     if (!isConnect) {
-                        if (temporaryBasal?.duration!! > 0) {
+                        if ((temporaryBasal?.duration ?: 0L) > 0L) { // B12: null-safe, the plan can be empty here
                             lastStatus = PumpRunningState.TempBasalSuspended
                         } else {
                             lastStatus = PumpRunningState.Suspended
@@ -1331,7 +1311,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                             .comment(rh.gs(app.aaps.core.ui.R.string.temp_basal_delivery_error))
                     )
                     if (!isConnect) {
-                        if (temporaryBasal?.duration!! > 0) {
+                        if ((temporaryBasal?.duration ?: 0L) > 0L) { // B12: null-safe, the plan can be empty here
                             lastStatus = PumpRunningState.TempBasalSuspended
                         } else {
                             lastStatus = PumpRunningState.Suspended
@@ -2595,20 +2575,22 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             tempBasalMicrobolusOperations.absoluteRate = absoluteBasalValue
             tempBasalMicrobolusOperations.durationInMinutes = durationInMinutes
             tempBasalMicrobolusOperations.let {
-                if (it.operations.isNotEmpty() &&
-                    it.operations.first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
-                    currentPumpStatus.isSuspended() && it.operations.first.releaseTime.isBefore(
+                // B12: one read of the first step (another thread can take it)
+                val first = it.firstOrNull()
+                if (first != null &&
+                    first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
+                    currentPumpStatus.isSuspended() && first.releaseTime.isBefore(
                         LocalDateTime.now()
                     )
                 ) {
-                    operations.removeFirst()
+                    it.complete(first)
                     stopPump(object : Callback() {
                         override fun run() {
                             aapsLogger.info(LTag.PUMP,"stopping pump")
                         }
                     })
-                } else if (it.operations.isNotEmpty() &&
-                    it.operations.first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
+                } else if (first != null &&
+                    first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
                     currentPumpStatus.isSuspended() && (percent > 0 || startActive)
                 ) {
                     aapsLogger.info(LTag.EVENTS, "temp basal starting pump")
@@ -3301,10 +3283,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             )
             finishAction("TBR")
         }
-        if ((tempBasalMicrobolusOperations.operations.size) > 0) {
-            val first = tempBasalMicrobolusOperations.operations.first
-            if ((first?.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE && !first.isCommandIssued) ||
-                (first?.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && first.isCommandIssued) ||
+        // B12: one read of the first step (another thread can take it)
+        val first = tempBasalMicrobolusOperations.firstOrNull()
+        if (first != null) {
+            if ((first.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE && !first.isCommandIssued) ||
+                (first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && first.isCommandIssued) ||
                 currentPumpStatus.isSuspended()
             ) {
                 startPump(callback, true)
@@ -3760,11 +3743,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }
         val commands: MutableList<CommandStructure<PumpDriverState, BleCommand>> = ArrayList()
         val callback: Function1<PumpEnactResult, *> = { o: Any? -> null }
-        val oper = if (tempBasalMicrobolusOperations.operations.isNotEmpty()) {
-            tempBasalMicrobolusOperations.operations.first
-        } else {
-            null
-        }
+        val oper = tempBasalMicrobolusOperations.firstOrNull() // B12: one read, null-safe
 
         if (medLinkPumpStatus.pumpRunningState.isSuspended() || currentPumpStatus.isSuspended() || !tempBasalMicrobolusOperations.shouldBeSuspended()) {
             commands.addAll(
@@ -3788,22 +3767,17 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     private val currentPumpStatus: PumpRunningState
-        get() = if (!tempBasalMicrobolusOperations.operations.isEmpty()
-        ) {
-            val firstOperation = tempBasalMicrobolusOperations.operations.first
+        get() {
+            // B12: one read of the first step and of the TBR (was isEmpty() + first + temporaryBasal!!: crash when
+            // another thread took the last step in between)
+            val firstOperation = tempBasalMicrobolusOperations.firstOrNull() ?: return PumpRunningState.Running
             if (firstOperation.operationType == TempBasalMicroBolusPair.OperationType.BOLUS ||
                 (firstOperation.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && !this.medLinkPumpStatus.pumpRunningState.isSuspended())
             ) {
-                PumpRunningState.Running
-            } else if (temporaryBasal?.rate!! >= 100.0) {
-                PumpRunningState.Running
-            } else if (temporaryBasal?.rate!! < 100.0) {
-                PumpRunningState.TempBasalSuspended
-            } else {
-                PumpRunningState.Suspended
+                return PumpRunningState.Running
             }
-        } else {
-            PumpRunningState.Running
+            val rate = temporaryBasal?.rate ?: return PumpRunningState.Running
+            return if (rate >= 100.0) PumpRunningState.Running else PumpRunningState.TempBasalSuspended
         }
 
     private fun processDeliveredBolus(answer: BolusAnswer) {
@@ -4914,24 +4888,63 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private fun handlePumpStatus() {
         // a plan with microboluses is a TBR above the basal: never a reason to suspend
         val zeroTbrPlan = tempBasalMicrobolusOperations.operations.none { it.operationType == TempBasalMicroBolusPair.OperationType.BOLUS }
-        if (zeroTbrPlan && temporaryBasal?.rate == 0.0 && temporaryBasal?.duration!! > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow)) {
+        val tbr = temporaryBasal // B12: read once, the plan can change between two reads
+        if (zeroTbrPlan && tbr?.rate == 0.0 && tbr.duration > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow)) {
             stopPump(object : Callback() {
                 override fun run() {
                     aapsLogger.info(LTag.PUMP, "Stopping unstopped pump")
                 }
             })
         }
-        if (temporaryBasal != null) {
-            aapsLogger.info(LTag.PUMP, temporaryBasal!!.toStringFull(dateUtil, rh))
+        if (tbr != null) aapsLogger.info(LTag.PUMP, tbr.toStringFull(dateUtil, rh))
+        resumePumpIfLeftSuspended()
+    }
 
+    /** B12 / B15: last "pump still suspended" alarm, so a status read every 5 min does not repeat it every time. */
+    @Volatile private var lastStillSuspendedAlarmAt = 0L
+
+    /**
+     * B12 / B15 ([MedLinkResumeRule]): the app starts the pump again when its own automatic STOP has nobody left to
+     * end it (plan lost in an app restart, or the plan REACTIVATE far too late), and alarms when the pump should run
+     * already. A suspend by the user is never undone.
+     */
+    private fun resumePumpIfLeftSuspended() {
+        if (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running) {
+            clearAutoStop()
+            return
         }
-        if (medLinkPumpStatus.currentBasal == 0.0 && temporaryBasal == null) {
-            aapsLogger.info(LTag.PUMP, "starting pump")
-//            startPump(object : Callback() {
-//                override fun run() {
-//                    aapsLogger.info(LTag.PUMP, "Starting stopped pump")
-//                }
-//            })
+        val now = dateUtil.now()
+        val autoStopAt = preferences.get(MedtronicLongNonKey.MedLinkAutoStopAt)
+        val plan = tempBasalMicrobolusOperations
+        val nextReactivate = plan.operations.firstOrNull { it.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE }
+        val action = MedLinkResumeRule.decide(
+            now = now,
+            pumpSuspended = medLinkPumpStatus.pumpRunningState == PumpRunningState.Suspended ||
+                medLinkPumpStatus.pumpRunningState == PumpRunningState.TempBasalSuspended,
+            autoStopAt = autoStopAt,
+            planHasSteps = plan.firstOrNull() != null,
+            nextReactivateAt = nextReactivate?.releaseTime?.toDate()?.time ?: 0L,
+            planClearedAt = plan.clearedAt,
+            zeroTbrLimitActive = zeroTbrLimitActive()
+        )
+        if (action == MedLinkResumeRule.Action.NONE) return
+        aapsLogger.warn(
+            LTag.PUMP,
+            "B12: pump suspended since the automatic stop at ${dateUtil.timeString(autoStopAt)}, " +
+                "plan ${if (nextReactivate != null) "REACTIVATE at ${nextReactivate.releaseTime.toString("HH:mm:ss")}" else "has no REACTIVATE"}: $action"
+        )
+        startPump(object : Callback() {
+            override fun run() {
+                aapsLogger.info(LTag.PUMP, "B12: start of a pump left suspended: ${result?.success}")
+            }
+        }, true)
+        if (action == MedLinkResumeRule.Action.ALARM && now - lastStillSuspendedAlarmAt >= MedLinkResumeRule.ALARM_MARGIN_MS) {
+            lastStillSuspendedAlarmAt = now
+            uiInteraction.runAlarm(
+                rh.gs(R.string.medlink_pump_still_suspended_message, dateUtil.timeString(autoStopAt)),
+                rh.gs(R.string.medlink_pump_still_suspended_title),
+                app.aaps.core.ui.R.raw.alarm
+            )
         }
     }
 
@@ -5058,11 +5071,19 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     override fun setPumpRunningState(value: PumpRunningState) {
         this.medLinkPumpStatus.pumpRunningState = value
         medLinkPumpStatus.recordRunningState()
+        if (value == PumpRunningState.Running) clearAutoStop()
+    }
+
+    /** B12: the pump runs again: no automatic stop left to undo. */
+    private fun clearAutoStop() {
+        if (preferences.get(MedtronicLongNonKey.MedLinkAutoStopAt) != 0L) preferences.put(MedtronicLongNonKey.MedLinkAutoStopAt, 0L)
     }
 
     override val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
         get() {
-            if (!tempBasalMicrobolusOperations.operations.isEmpty()) {
+            // B12: one read of the first step; `isEmpty()` then `first` crashed the app when a step was removed between them
+            val first = tempBasalMicrobolusOperations.firstOrNull()
+            if (first != null) {
 
                 val rate = if (tempBasalMicrobolusOperations.absoluteRate == 0.0) {
                     0.0
@@ -5070,18 +5091,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     medLinkBaseBasalRate
                 }
 
-                // tempBasal.date(tempBasalMicrobolusOperations.operations.first.releaseTime.toDate().time)
-                // tempBasal.duration(
-                //     tempBasalMicrobolusOperations.durationInMinutes
-                // )
-                // tempBasal.desiredRate = tempBasalMicrobolusOperations.absoluteRate
-                // if (tempBasalMicrobolusOperations.absoluteRate == 0.0) {
-                //     tempBasal.absolute(0.0)
-                // } else {
-                //     tempBasal.absolute(baseBasalRate)
-                // }
                 return PumpSync.PumpState.TemporaryBasal(
-                    timestamp = tempBasalMicrobolusOperations.operations.first.releaseTime.toDate().time,
+                    timestamp = first.releaseTime.toDate().time,
                     duration = tempBasalMicrobolusOperations.durationInMinutes * 60 * 1000L,
                     isAbsolute = false,
                     rate = rate,
@@ -5288,17 +5299,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 
     override fun setBatteryLevel(batteryLevel: Int) {
         medLinkPumpStatus.medLinkBatteryRemaining = batteryLevel
-    }
-
-    fun initProfile(profile: Profile) {
-        aapsLogger.info(LTag.PUMP, "initializing")
-        aapsLogger.info(LTag.PUMP, "initializing")
-        aapsLogger.info(LTag.PUMP, "initializing")
-
-        aapsLogger.info(LTag.PUMP, profile.toString())
-        pumpSyncStorage.getTBRs().map { f ->
-            setTempBasalAbsolute(f.rate, f.durationInSeconds / 60, profile, true) { r: PumpEnactResult -> aapsLogger.info(LTag.PUMP, "initProfile TBR result ${r.success}") }
-        }
     }
 
     private fun removeStopCommands() {
