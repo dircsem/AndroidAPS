@@ -6,6 +6,7 @@ import app.aaps.pump.common.hw.medlink.activities.MedLinkStandardReturn
 import app.aaps.pump.common.hw.medlink.ble.CommandExecutor
 import app.aaps.pump.common.hw.medlink.ble.ContinuousCommandExecutor
 import app.aaps.pump.common.hw.medlink.ble.MedLinkBLE
+import app.aaps.pump.common.hw.medlink.ble.MedLinkFreshWake
 import app.aaps.pump.common.hw.medlink.defs.MedLinkCommandType
 import app.aaps.pump.common.hw.medlink.defs.MedLinkServiceState
 import app.aaps.pump.common.hw.medlink.service.MedLinkServiceData
@@ -153,6 +154,8 @@ open class BleCommand(protected val aapsLogger: AAPSLogger, protected val medLin
             bleComm.setConnected(true)
             aapsLogger.info(LTag.PUMPBTCOMM, "ready command")
             aapsLogger.info(LTag.PUMPBTCOMM, pumpResponse.toString())
+            // B10: after a fresh MedLink + pump wake-up the first command must wait a little
+            if (MedLinkFreshWake.isFreshWake(pumpResponse.toString() + answer)) bleComm.onFreshWakeReady()
             medLinkServiceData?.medLinkServiceState =MedLinkServiceState.PumpConnectorReady
             //            medLinkServiceData
 //            medtronicUtil.dismissNotification(MedtronicNotificationType.PumpUnreachable, rxBus);

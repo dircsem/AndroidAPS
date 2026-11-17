@@ -724,8 +724,10 @@ class MedLinkBLE //extends RileyLinkBLE
                             aapsLogger.info(
                                 LTag.PUMPBTCOMM,
                                 String.format(
-                                    "writing <%s> to characteristic <%s>",
+                                    "writing <%s> [%s] to characteristic <%s>",
                                     String(payload, StandardCharsets.UTF_8),
+                                    // B10: the bytes really sent (the write callback shows the shared value, see there)
+                                    ByteUtil.shortHexString(payload),
                                     chara.uuid
                                 )
                             )
@@ -1844,10 +1846,25 @@ class MedLinkBLE //extends RileyLinkBLE
         scheduleNextCommand(time - System.currentTimeMillis())
     }
 
+    /** B10: when the last FRESH wake-up "ready" came (0 = none); the first command after it waits. */
+    @Volatile private var freshWakeReadyAt = 0L
+
+    /** B10: the MedLink and the pump just woke up: hold the queue for [MedLinkFreshWake.SETTLE_MS]. */
+    fun onFreshWakeReady() {
+        freshWakeReadyAt = System.currentTimeMillis()
+        aapsLogger.info(LTag.PUMPBTCOMM, "fresh MedLink wake-up: the first command waits ${MedLinkFreshWake.SETTLE_MS} ms")
+    }
+
     private val nextCommand: CommandExecutor<*>?
         get() {
             if (!hasCommandsToExecute()) return null
             val now = System.currentTimeMillis()
+            val hold = MedLinkFreshWake.holdMs(now, freshWakeReadyAt)
+            if (hold > 0L) {
+                scheduleNextCommand(hold)
+                return null
+            }
+            freshWakeReadyAt = 0L
             val nextComm = orderedQueues.asSequence().flatMap { it.asSequence() }.firstOrNull { mayRun(it, now) } ?: return null
             when (nextComm.postDecision(currentCommand)) {
                 CommandExecutor.PostDecision.POST            -> Unit
@@ -2268,7 +2285,9 @@ class MedLinkBLE //extends RileyLinkBLE
                     aapsLogger.debug(
                         LTag.PUMPBTCOMM,
                         ThreadUtil.sig() + "onCharacteristicWrite " + getGattStatusMessage(status) + " "
-                                + uuidString + " " + ByteUtil.shortHexString(characteristic.value)
+                                // B10: NOT always the bytes sent: the MedLink sends and receives on the same characteristic,
+                                // so an answer that came in meanwhile overwrites this shared value ("0D 0A")
+                                + uuidString + " last characteristic value " + ByteUtil.shortHexString(characteristic.value)
                     )
                 }
                 if (mCurrentOperation != null) {
