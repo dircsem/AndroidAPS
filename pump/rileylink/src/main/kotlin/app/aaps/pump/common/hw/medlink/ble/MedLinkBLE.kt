@@ -1502,6 +1502,24 @@ class MedLinkBLE //extends RileyLinkBLE
     private val orderedQueues: List<ConcurrentLinkedDeque<CommandExecutor<*>>>
         get() = listOf(priorityExecutionCommandQueue, bolusExecutionQueue, executionCommandQueue, lowPriorityExecutionCommandQueue)
 
+    /**
+     * B17: a new TBR plan needs the pump running now. Drops the automatic STOPs of the old plan that still wait in
+     * the queues (also one held during a bolus). The STOP being sent now is not touched: the plan sends a START after
+     * it. A STOP by the user is never dropped. No Bluetooth connection is needed for this.
+     * @return how many STOPs were dropped
+     */
+    fun dropQueuedAutomaticStops(reason: String): Int {
+        var dropped = 0
+        val current = currentCommand
+        (orderedQueues + listOf(onHoldCommandQueue)).forEach { queue ->
+            queue.filter { it !== current && stopOrigin(it) == MedLinkStopOrigin.AUTOMATIC }
+                .forEach { if (queue.remove(it)) dropped++ }
+        }
+        needToCheckOnHold = onHoldCommandQueue.isNotEmpty()
+        if (dropped > 0) aapsLogger.info(LTag.PUMPBTCOMM, "dropped $dropped queued automatic STOP ($reason)")
+        return dropped
+    }
+
     private fun stopOrigin(executor: CommandExecutor<*>): MedLinkStopOrigin? =
         if (executor.firstCommand() == MedLinkCommandType.StopStartPump && executor.secondCommand() == MedLinkCommandType.StopPump)
             executor.commandList.firstNotNullOfOrNull { it.commandHandler.orElse(null) as? BleStopCommand }?.origin ?: MedLinkStopOrigin.AUTOMATIC

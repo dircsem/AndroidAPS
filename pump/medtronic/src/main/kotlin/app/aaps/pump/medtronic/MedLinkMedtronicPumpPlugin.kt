@@ -2358,17 +2358,30 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         val result = buildPumpEnactResult()
         result.success = true
         result.comment = rh.gs(app.aaps.core.ui.R.string.cancel_temp)
-        if (currentPumpStatus.isSuspended() || medLinkPumpStatus.pumpRunningState.isSuspended()) {
-            aapsLogger.info(LTag.EVENTS, "starting pump")
-            startPump(object : Callback() {
-                override fun run() {
-                    aapsLogger.info(LTag.EVENTS, "temp basal cleared")
-                }
-            }, true)
+        // B17: also when the old plan had suspensions: its STOP can still be on its way (app state still Running)
+        val oldPlanSuspends = tempBasalMicrobolusOperations.operations.any { it.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND }
+        if (currentPumpStatus.isSuspended() || medLinkPumpStatus.pumpRunningState.isSuspended() || oldPlanSuspends) {
+            runPumpForNewPlan("temp basal cleared")
         }
         tempBasalMicrobolusOperations.clearOperations()
         //        createTemporaryBasalData(0, 0);
         return result
+    }
+
+    /**
+     * B17 (field log 2026-11-17 08:20): a new plan needs the pump running now, but a STOP of the old plan was still
+     * on its way and stopped the pump 2 min longer than asked. Drops the old automatic STOPs still waiting in the
+     * MedLink queue and sends START with high priority, so it runs right after a STOP being sent now.
+     * startPump() skips the START when the pump answered Running after the last start / stop (T13).
+     */
+    private fun runPumpForNewPlan(reason: String) {
+        aapsLogger.info(LTag.PUMP, "B17: the new plan needs the pump running ($reason)")
+        medLinkMedtronicService?.medLinkBLE?.dropQueuedAutomaticStops(reason)
+        startPump(object : Callback() {
+            override fun run() {
+                aapsLogger.info(LTag.PUMP, "B17: start for the new plan ($reason): ${result?.success}")
+            }
+        }, true)
     }
 
     private fun buildSuspensionScheduler(
@@ -2593,13 +2606,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     })
                 } else if (first != null &&
                     first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
-                    currentPumpStatus.isSuspended() && (percent > 0 || startActive)
+                    (startActive || (percent > 0 && currentPumpStatus.isSuspended()))
                 ) {
-                    aapsLogger.info(LTag.EVENTS, "temp basal starting pump")
-
-                     startPump(object : Callback() {
-                         override fun run() {}
-                     })
+                    // B17: a plan that starts active needs the pump running now, also when the app state still says
+                    // Running while a STOP of the old plan is on its way (startPump skips a pump confirmed running)
+                    runPumpForNewPlan(if (startActive) "plan starts active" else "plan percent above 0")
                 }
                 it
             }
