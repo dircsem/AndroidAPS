@@ -27,7 +27,9 @@ open class BleCommandReader(
             }
         }
 
-        if ((lastCharacteristic + answer).contains("medtronic")) {
+        // B16: only a NEW banner. The banner stays the previous chunk when the next answer comes; seeing it again set
+        // "not connected" and a second OK+CONN was written inside a STOP / START ("invalid command", field 2026-11-17).
+        if (!lastCharacteristic.contains("medtronic") && (lastCharacteristic + answer).contains("medtronic")) {
             bleComm.setIsConnected(false)
             if ((lastCharacteristic + answer).contains("veo")) {
                 //TODO need to get better model information
