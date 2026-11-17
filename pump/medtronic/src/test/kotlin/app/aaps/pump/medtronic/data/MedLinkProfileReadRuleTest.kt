@@ -71,6 +71,14 @@ class MedLinkProfileReadRuleTest {
     }
 
     @Test
+    fun `a changed interval works at the next status read (T19)`() {
+        val lastGood = now - 2 * hour
+        assertFalse(read(Reason.TIMED, lastRequestAt = lastGood, lastSuccessAt = lastGood, intervalMs = 6 * hour))
+        // the user sets 1 h: the next status read uses it at once
+        assertTrue(read(Reason.TIMED, lastRequestAt = lastGood, lastSuccessAt = lastGood, intervalMs = hour))
+    }
+
+    @Test
     fun `interval 0 - no timed read, the other reasons still read`() {
         assertFalse(read(Reason.TIMED, lastRequestAt = now - 24 * hour, lastSuccessAt = now - 24 * hour, intervalMs = 0L))
         assertTrue(read(Reason.BASAL_DIFFERS, lastRequestAt = now - 24 * hour, lastSuccessAt = now - 24 * hour, intervalMs = 0L))

@@ -13,7 +13,7 @@ object MedLinkProfileReadRule {
         /** App start (`postInit`). It is also called again after a MedLink wake-up: then it reads only if no read succeeded yet. */
         APP_START,
 
-        /** Every [INTERVAL_MS] (T19 will make it a setting; 0 = no timed read). */
+        /** Every N hours (MedLink setting "Pump profile read", T19; default [INTERVAL_MS]; 0 = no timed read). */
         TIMED,
 
         /** The basal in the status `S` is not the one of the last read profile. */

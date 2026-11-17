@@ -39,4 +39,7 @@ enum class MedLinkMedtronicIntPreferenceKey(
     /** T20: failed pump connections in a row before the alarm. */
     ConnectionAlarmFailures("medlink_connection_alarm_failures", 4, min = 1, max = 10, dependency = MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm, titleResId = R.string.medlink_connection_alarm_failures, summaryResId = R.string.medlink_connection_alarm_failures_summary),
 
+    /** T19: hours between two timed pump profile reads (E + F); 0 = no timed read (still at app start, Profiles screen, basal differs). */
+    ProfileReadIntervalHours("medlink_profile_read_interval_hours", 6, min = 0, max = 24, titleResId = R.string.medlink_profile_read_interval, summaryResId = R.string.medlink_profile_read_interval_summary),
+
 }

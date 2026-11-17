@@ -330,8 +330,15 @@ Tests needed: the timer with 0, 1 and 6 h, and a change of the value while runni
 Field test: set 1 h, and check the log: one profile read about every hour, never during a bolus.
 Related: B6 (do B6 first).
 
-### Developer notes (2026-11-14) — NOT started
-- Waits for B6 (the timed read is part of B6).
+### Developer notes (2026-11-15) — done, needs field test
+- New MedLink setting `MedLinkMedtronicIntPreferenceKey.ProfileReadIntervalHours` ("Pump profile read (hours)"),
+  default 6, 0–24, 0 = no timed read (still at app start, Profiles screen, basal differs). In the MedLink preferences.
+- `readPumpProfileIfAllowed` reads the setting at every call and gives it to `MedLinkProfileReadRule` → a change works
+  at the next status read, no restart.
+- Texts en + pt-BR, pl, ru (user, 2026-11-15: always all four). The translations are in a new
+  `pump/medtronic/src/main/res/values-xx/strings_medlink.xml`: `strings.xml` of this module is a Crowdin file.
+- Tests: `MedLinkProfileReadRuleTest` 11/11 (0, 1 and 6 h were already there; new: a changed value works at the next
+  status read). medtronic 242/242. Committed (field test still needed).
 
 ## T20 — Alarm with sound and flashing light after 4 failed pump connections
 Priority: P1 (insulin may stop with no alarm)

@@ -1845,7 +1845,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     /**
      * Called after the profile commands (E + F) were parsed (B6). Keeps the pump values and compares them with the
      * active AAPS profile: always pump -> AAPS, never AAPS -> pump (the Veo cannot be written). The reads come at app
-     * start, every [MedLinkProfileReadRule.INTERVAL_MS], on the Profiles screen and when the basal in `S` differs.
+     * start, every N hours (setting `ProfileReadIntervalHours`, T19), on the Profiles screen and when the basal in `S` differs.
      *
      * @param json the profile as parsed from the pump answer (keeps half hour times)
      * @param pumpProfile the same as an AAPS profile; null when AAPS cannot hold it (times not on the hour)
@@ -4972,7 +4972,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private fun readPumpProfileIfAllowed(reason: MedLinkProfileReadRule.Reason) {
         val now = System.currentTimeMillis()
         val busy = profileReadBusyReason(now)
-        if (MedLinkProfileReadRule.shouldRead(now, lastProfileRead, lastPumpProfileReadAt, reason, busy != null)) {
+        // T19: the interval setting is read at every call, so a change works at the next status read
+        val intervalMs = preferences.get(MedLinkMedtronicIntPreferenceKey.ProfileReadIntervalHours) * HOUR_MS
+        if (MedLinkProfileReadRule.shouldRead(now, lastProfileRead, lastPumpProfileReadAt, reason, busy != null, intervalMs)) {
             aapsLogger.info(LTag.PUMPBTCOMM, "reading profile: $reason")
             readPumpProfile()
             return
@@ -5360,6 +5362,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,
             MedLinkMedtronicDoublePreferenceKey.MinBasalAfterBolusDelta,
+            MedLinkMedtronicIntPreferenceKey.ProfileReadIntervalHours,
             MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm,
             MedLinkMedtronicIntPreferenceKey.ConnectionAlarmFailures,
             MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarmSound,

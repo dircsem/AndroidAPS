@@ -245,4 +245,6 @@
     <string name="medlink_zero_tbr_remove" comment="Button: the pump ran, remove the 0 % basal">No, remove it</string>
     <string name="medlink_zero_tbr_remove_failed">The 0 % basal could not be removed. Remove it in the treatments, or answer again.</string>
     <string name="medlink_zero_tbr_waiting" formatted="false" comment="Loop status reason: no SMB and no TBR above 100 % until the user answers">Waiting for your answer about the 0 % basal</string>
+    <string name="medlink_profile_read_interval">Pump profile read (hours)</string>
+    <string name="medlink_profile_read_interval_summary">How often the pump profile (basal, carb ratios, ISF, targets) is read to compare it with AAPS. Each read keeps the MedLink busy for a few seconds. 0 = no timed read (it is still read at app start, on the Profiles screen and when the basal differs). Default 6.</string>
 </resources>

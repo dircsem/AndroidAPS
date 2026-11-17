@@ -2,6 +2,8 @@
 <!-- MedLink fork strings. Not part of the AAPS Crowdin project: kept in this file so a Crowdin download of
      strings.xml does not remove them. Edit here directly. -->
 <resources>
+    <string name="medlink_profile_read_interval">Чтение профиля помпы (часы)</string>
+    <string name="medlink_profile_read_interval_summary">Как часто читается профиль помпы (базал, углеводные коэффициенты, ISF, цели) для сравнения с AAPS. Каждое чтение занимает MedLink на несколько секунд. 0 = без периодического чтения (профиль всё равно читается при запуске приложения, на экране «Профили» и когда базал отличается). По умолчанию 6.</string>
     <string name="medlink_bolus_stopped_partial">Болюс остановлен: введено %1$s из %2$s</string>
     <string name="medlink_bolus_stopped_unknown">Болюс остановлен: введённое количество неизвестно. Проверьте историю помпы.</string>
     <string name="medlink_command_with_code">%1$s - %2$s</string>
