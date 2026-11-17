@@ -160,6 +160,7 @@ import app.aaps.pump.medtronic.comm.history.pump.PumpHistoryEntry
 import app.aaps.pump.medtronic.data.EnliteInterval
 import app.aaps.pump.medtronic.data.MedLinkMedtronicHistoryData
 import app.aaps.pump.medtronic.data.MedLinkProfileReadRule
+import app.aaps.pump.medtronic.data.MedLinkStatusReadRule
 import app.aaps.pump.medtronic.data.MedLinkPumpProfileDiff
 import app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule
 import app.aaps.pump.medtronic.data.NextStartStop
@@ -815,31 +816,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     //    public void stopConnecting() {
     //    }
 
+    /** B11: a status read only when a refresh type or a TBR plan step is due (see [MedLinkStatusReadRule]). */
     private fun doWeHaveAnyStatusNeededRefreshing(statusRefresh: Map<MedLinkMedtronicStatusRefreshType?, Long?>?): Boolean {
-        for ((_, value) in statusRefresh!!) {
-            //            aapsLogger.info(
-            //                    LTag.PUMP, "Next Command " + round(
-            //                    (value!! - System.currentTimeMillis()).toFloat()
-            //            )
-            //            )
-            //            aapsLogger.info(LTag.PUMP, key!!.name)
-            if (value!! -
-                System.currentTimeMillis() <= 0
-            ) {
-                return true
-            }
+        val steps = tempBasalMicrobolusOperations.operations.map {
+            MedLinkStatusReadRule.Step(it.releaseTime.toDate().time, it.isCommandIssued)
         }
-        for (oper in tempBasalMicrobolusOperations.operations) {
-            aapsLogger.debug(
-                LTag.PUMP, "Next Command " +
-                        oper.releaseTime.toDateTime()
-            )
-            aapsLogger.debug(LTag.PUMP, oper.toString())
-            if (oper.releaseTime.isAfter(LocalDateTime.now().minus(Seconds.seconds(30)))) {
-                return true
-            }
-        }
-        return hasTimeDateOrTimeZoneChanged
+        return MedLinkStatusReadRule.needsRead(
+            dateUtil.now(), statusRefresh?.values.orEmpty(), steps, hasTimeDateOrTimeZoneChanged
+        )
     }
 
     private val lastPumpEntryTime: Long

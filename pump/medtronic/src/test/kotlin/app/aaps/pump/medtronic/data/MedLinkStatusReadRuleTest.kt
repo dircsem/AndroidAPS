@@ -1,0 +1,69 @@
+package app.aaps.pump.medtronic.data
+
+import app.aaps.pump.medtronic.data.MedLinkStatusReadRule.Step
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+class MedLinkStatusReadRuleTest {
+
+    private val sec = 1_000L
+    private val min = 60 * sec
+    private val now = 1_800_000_000_000L
+    private val later = listOf(now + 5 * min)
+
+    private fun read(steps: List<Step>, refresh: List<Long?> = later, timeChanged: Boolean = false) =
+        MedLinkStatusReadRule.needsRead(now, refresh, steps, timeChanged)
+
+    @Test
+    fun `plan steps 10 min ahead - no read`() {
+        assertFalse(read(listOf(Step(now + 10 * min, false), Step(now + 20 * min, false))))
+    }
+
+    @Test
+    fun `no plan and no refresh due - no read`() {
+        assertFalse(read(emptyList()))
+    }
+
+    @Test
+    fun `a step due now - read`() {
+        assertTrue(read(listOf(Step(now, false), Step(now + 10 * min, false))))
+    }
+
+    @Test
+    fun `a step due in less than 30 s - read, the runner starts it now`() {
+        assertTrue(read(listOf(Step(now + 29 * sec, false))))
+        assertFalse(read(listOf(Step(now + 31 * sec, false))))
+    }
+
+    @Test
+    fun `a step that is late and not sent - read`() {
+        assertTrue(read(listOf(Step(now - 2 * min, false))))
+    }
+
+    @Test
+    fun `a step already sent - no read`() {
+        assertFalse(read(listOf(Step(now - 1 * min, true), Step(now + 10 * min, false))))
+    }
+
+    @Test
+    fun `a sent step first, the next one due - read`() {
+        assertTrue(read(listOf(Step(now - 5 * min, true), Step(now, false))))
+    }
+
+    @Test
+    fun `a refresh type that is overdue - read`() {
+        assertTrue(read(emptyList(), refresh = listOf(now + 5 * min, now - 1 * sec)))
+        assertTrue(read(emptyList(), refresh = listOf(now)))
+    }
+
+    @Test
+    fun `a refresh time that is not set - no read`() {
+        assertFalse(read(emptyList(), refresh = listOf(null, now + 1 * min)))
+    }
+
+    @Test
+    fun `time or time zone changed - read`() {
+        assertTrue(read(emptyList(), timeChanged = true))
+    }
+}
