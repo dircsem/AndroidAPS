@@ -112,6 +112,21 @@ class TempBasalMicrobolusOperations {
         return next
     }
 
+    /**
+     * Like [takeDueStep], but only a BOLUS step: a TBR bolus due soon is sent now, with an SMB being sent, so the two
+     * become one pump bolus (field log 2026-11-18 10:50). A SUSPEND / REACTIVATE is never taken early.
+     */
+    @Synchronized
+    fun takeDueBolusStep(dueBefore: LocalDateTime): TempBasalMicroBolusPair? {
+        val head = firstOrNull() ?: return null
+        if (head.isCommandIssued) complete(head)
+        val next = firstOrNull() ?: return null
+        if (next.operationType != TempBasalMicroBolusPair.OperationType.BOLUS) return null
+        if (next.isCommandIssued || !next.releaseTime.isBefore(dueBefore)) return null
+        next.isCommandIssued = true
+        return next
+    }
+
     /** B12: when the plan was last cleared (0 = never in this app run). A new plan clears the old one first. */
     @Volatile var clearedAt = 0L
         private set

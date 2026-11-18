@@ -88,4 +88,28 @@ class TempBasalMicrobolusOperationsStepTest {
         assertTrue(ops.clearedAt > 0L)
         assertNull(ops.firstOrNull())
     }
+
+    /** A TBR bolus due soon is sent with an SMB (one pump bolus, field log 2026-11-18 10:50). */
+    @Test
+    fun `bolus step due soon - taken early, once`() {
+        val bolus = op(OperationType.BOLUS, 1)
+        val ops = plan(bolus, op(OperationType.BOLUS, 6))
+        assertSame(bolus, ops.takeDueBolusStep(t0.plusSeconds(61)))
+        assertTrue(bolus.isCommandIssued)
+        assertNull(ops.takeDueBolusStep(t0.plusSeconds(61)))
+    }
+
+    @Test
+    fun `bolus step not due soon - not taken`() {
+        val ops = plan(op(OperationType.BOLUS, 2))
+        assertNull(ops.takeDueBolusStep(t0.plusSeconds(61)))
+    }
+
+    @Test
+    fun `next step is a suspend or a start - never taken early with an SMB`() {
+        val suspend = op(OperationType.SUSPEND, 0)
+        val ops = plan(suspend, op(OperationType.BOLUS, 0))
+        assertNull(ops.takeDueBolusStep(t0.plusSeconds(61)))
+        assertEquals(false, suspend.isCommandIssued)
+    }
 }

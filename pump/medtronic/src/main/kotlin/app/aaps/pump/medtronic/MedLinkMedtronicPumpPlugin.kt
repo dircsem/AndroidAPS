@@ -10,6 +10,8 @@ import kotlin.coroutines.cancellation.CancellationException
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.pump.medtronic.data.MedLinkResumeRule
 import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
+import app.aaps.pump.common.hw.medlink.bolus.MedLinkLoopBolusMerge
+import app.aaps.pump.medtronic.data.MedLinkSentBolusKinds
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -366,6 +368,53 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         return true
     }
 
+    /** Runs a TBR bolus step of the plan (skipped when too soon after the last TBR or manual bolus). */
+    private fun runTbrBolusStep(oper: TempBasalMicroBolusPair) {
+        if (tbrBolusTooSoon(oper)) {
+            // not sent and not tried again: the next TBR bolus of the plan follows its own time
+            tempBasalMicrobolusOperations.complete(oper)
+        } else {
+            if (PumpRunningState.TempBasalSuspended == medLinkPumpStatus.pumpRunningState) {
+                reactivatePump(oper) { o: Any? -> o }
+            }
+            val detailedBolusInfo = DetailedBolusInfo()
+            detailedBolusInfo.lastKnownBolusTime =
+                if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time else if (pumpSyncStorage.pumpSyncStorageBolus.isNotEmpty()) {
+                    val bolusList = pumpSyncStorage.pumpSyncStorageBolus
+                    bolusList.sortBy { it.date }
+                    bolusList[0].date
+                } else {
+                    System.currentTimeMillis()
+                }
+            detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+            detailedBolusInfo.insulin = oper.dose
+            detailedBolusInfo.bolusType = BS.Type.TBR
+            detailedBolusInfo.bolusTimestamp = System.currentTimeMillis()
+            aapsLogger.debug(LTag.APS, "applyAPSRequest: bolus()")
+            val callback = { o: PumpEnactResult? ->
+                aapsLogger.info(LTag.PUMPBTCOMM, "temp basal bolus $o")
+                if (o?.success == true) {
+                    tempBasalMicrobolusOperations.complete(oper)
+                } else {
+                    oper.isCommandIssued = false
+                }
+                Unit
+            }
+            deliverTreatment(detailedBolusInfo, callback)
+        }
+    }
+
+    /**
+     * A TBR bolus step due in the next [TBR_JOIN_SMB_MS] is sent now, right after an SMB was queued: the BLE queue joins
+     * it into the SMB (one pump bolus, one connection, recorded as one SMB and one TBR part). Field log 2026-11-18 10:50:
+     * the TBR bolus was due 24 s after the SMB was written and had to wait. The TBR insulin comes at most 60 s early.
+     */
+    private fun joinDueTbrBolusStep() {
+        val oper = tempBasalMicrobolusOperations.takeDueBolusStep(LocalDateTime.now().plusMillis(TBR_JOIN_SMB_MS.toInt())) ?: return
+        aapsLogger.info(LTag.PUMP, "TBR bolus ${oper.dose}U due ${oper.releaseTime.toString("HH:mm:ss")}: sent now with the SMB")
+        runTbrBolusStep(oper)
+    }
+
     /**
      * A TBR bolus is not sent when the last TBR bolus or the last manual bolus was less than the SMB interval ago.
      * SMBs do not count: TBR boluses and SMBs are both automatic, they have their own interval each.
@@ -455,6 +504,23 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var lastBolusHistoryRead = 0L
     private var pumpTimeDelta = 0L
     private var lastDetailedBolusInfo: DetailedBolusInfo? = null
+
+    /** The boluses this app sent (type, amount, time): the pump history gives every bolus as NORMAL. */
+    private var sentBoluses: List<MedLinkSentBolusKinds.Sent> = emptyList()
+
+    private fun rememberSentBolus(type: BS.Type, amount: Double) = synchronized(this) {
+        val now = System.currentTimeMillis()
+        sentBoluses = MedLinkSentBolusKinds.prune(sentBoluses, now) + MedLinkSentBolusKinds.Sent(type, amount, now)
+    }
+
+    private fun joinedSentBolusFor(amount: Double, historyTime: Long): List<MedLinkSentBolusKinds.Sent>? = synchronized(this) {
+        MedLinkSentBolusKinds.matchJoined(amount, historyTime, sentBoluses)
+    }
+
+    private fun sentBolusFor(amount: Double, historyTime: Long): MedLinkSentBolusKinds.Sent? = synchronized(this) {
+        sentBoluses = MedLinkSentBolusKinds.prune(sentBoluses, System.currentTimeMillis())
+        MedLinkSentBolusKinds.match(amount, historyTime, sentBoluses)
+    }
     private var late1Min = false
 
 
@@ -1157,38 +1223,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     }, true)
                 }
 
-                TempBasalMicroBolusPair.OperationType.BOLUS -> if (tbrBolusTooSoon(oper)) {
-                    // not sent and not tried again: the next TBR bolus of the plan follows its own time
-                    tempBasalMicrobolusOperations.complete(oper)
-                } else {
-                    if (PumpRunningState.TempBasalSuspended == medLinkPumpStatus.pumpRunningState) {
-                        reactivatePump(oper) { o: Any? -> o }
-                    }
-                    val detailedBolusInfo = DetailedBolusInfo()
-                    detailedBolusInfo.lastKnownBolusTime =
-                        if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time else if (pumpSyncStorage.pumpSyncStorageBolus.isNotEmpty()) {
-                            val bolusList = pumpSyncStorage.pumpSyncStorageBolus
-                            bolusList.sortBy { it.date }
-                            bolusList[0].date
-                        } else {
-                            System.currentTimeMillis()
-                        }
-                    detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
-                    detailedBolusInfo.insulin = oper.dose
-                    detailedBolusInfo.bolusType = BS.Type.TBR
-                    detailedBolusInfo.bolusTimestamp = System.currentTimeMillis()
-                    aapsLogger.debug(LTag.APS, "applyAPSRequest: bolus()")
-                    val callback = { o: PumpEnactResult? ->
-                        aapsLogger.info(LTag.PUMPBTCOMM, "temp basal bolus $o")
-                        if (o?.success == true) {
-                            tempBasalMicrobolusOperations.complete(oper)
-                        } else {
-                            oper.isCommandIssued = false
-                        }
-                        Unit
-                    }
-                    deliverTreatment(detailedBolusInfo, callback)
-                }
+                TempBasalMicroBolusPair.OperationType.BOLUS -> runTbrBolusStep(oper)
             }
         }
 
@@ -3926,6 +3961,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         if (bolus.bolusType == BS.Type.SMB) {
             lastSMBBolus = System.currentTimeMillis()
         }
+        // the history read gives this bolus as NORMAL: keep its type for it
+        rememberSentBolus(bolus.bolusType, bolus.insulin)
         setRefreshButtonEnabled(false)
         if (detailedBolusInfo.insulin > medLinkPumpStatus.reservoirRemainingUnits) {
             func.invoke(
@@ -4087,6 +4124,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             } else {
                 medLinkMedtronicService?.medtronicUIComm?.executeCommandCP(msg)
             }
+            // a TBR bolus due soon joins this SMB (one pump bolus)
+            if (bolus.bolusType == BS.Type.SMB) joinDueTbrBolusStep()
             setRefreshButtonEnabled(true)
 
             //            int count = 0;
@@ -4612,11 +4651,23 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             if (minBolusTimestamp < (bInfo.bolusTimestamp ?: bInfo.timestamp)) {
                 minBolusTimestamp = bInfo.bolusTimestamp ?: bInfo.timestamp
             }
-            if (lastDetailedBolusInfo != null && bInfo.insulin == lastDetailedBolusInfo!!.insulin) {
-                if (bInfo.bolusType == BS.Type.NORMAL && lastDetailedBolusInfo?.bolusType != BS.Type.NORMAL) {
-                    bInfo.bolusType = lastDetailedBolusInfo!!.bolusType
+            // the pump history gives every bolus as NORMAL: a bolus this app sent keeps its type (SMB / TBR);
+            // a joined bolus (SMB + TBR in one pump bolus) is stored as its parts, the same as the bolus tracker does
+            var joinedParts: List<MedLinkSentBolusKinds.Sent>? = null
+            if (bInfo.bolusType == BS.Type.NORMAL) {
+                val historyTime = bInfo.bolusTimestamp ?: bInfo.timestamp
+                val sent = sentBolusFor(bInfo.insulin, historyTime)
+                if (sent != null) {
+                    if (sent.type != BS.Type.NORMAL) {
+                        aapsLogger.info(LTag.PUMP, "history bolus ${bInfo.insulin}U: type ${sent.type} (sent by the app at ${dateUtil.timeString(sent.sentAt)})")
+                        bInfo.bolusType = sent.type
+                    }
+                } else {
+                    joinedParts = joinedSentBolusFor(bInfo.insulin, historyTime)
+                    joinedParts?.let { parts ->
+                        aapsLogger.info(LTag.PUMP, "history bolus ${bInfo.insulin}U: joined bolus, stored as ${parts.joinToString { "${it.type} ${it.amount}U" }}")
+                    }
                 }
-                lastDetailedBolusInfo = null
             }
             var mod = (bInfo.bolusTimestamp ?: bInfo.timestamp).mod(60000)
             if (lastProcessedBolusTimestamp == 0L && state.bolus != null && state.bolus?.timestamp == bInfo.bolusTimestamp) {
@@ -4652,10 +4703,20 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 lastProcessedBolusTimestamp =
                     bInfo.bolusTimestamp?.minus(mod) ?: bInfo.timestamp.minus(mod)
                 if (lastProcessedBolusTimestamp < System.currentTimeMillis() + 120000) {
-                    pumpSyncStorage.addMedLinkBolusWithTempId(
-                        bInfo, true, this
-
-                    )
+                    val parts = joinedParts
+                    if (parts == null) {
+                        pumpSyncStorage.addMedLinkBolusWithTempId(bInfo, true, this)
+                    } else {
+                        // part i at pump time + i s: the same records (and temporary ids) as the bolus tracker
+                        parts.forEachIndexed { i, part ->
+                            val partInfo = bolusFromJson(bolusToJson(bInfo))
+                            partInfo.insulin = part.amount
+                            partInfo.bolusType = part.type
+                            partInfo.bolusTimestamp = bInfo.bolusTimestamp?.let { MedLinkLoopBolusMerge.partTime(it, i) }
+                            partInfo.timestamp = MedLinkLoopBolusMerge.partTime(bInfo.timestamp, i)
+                            pumpSyncStorage.addMedLinkBolusWithTempId(partInfo, true, this)
+                        }
+                    }
                 }
             }
         }
@@ -5246,6 +5307,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         /** T21: the 0 % record is stored with this length and ended at the reconnect. */
         private const val ZERO_TBR_MAX_DURATION_MS = 24 * HOUR_MS
         private const val SCHEDULED_BASAL_STEP_MS = 5 * 60_000L
+
+        /** A TBR bolus step due within this time is sent with an SMB (joined into one pump bolus). */
+        private const val TBR_JOIN_SMB_MS = 60_000L
 
         /** B6: no pump profile read when a TBR step is due within this time (E + F take a few seconds). */
         private const val PROFILE_READ_TBR_MARGIN_MS = 60_000L
