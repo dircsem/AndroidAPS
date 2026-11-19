@@ -47,4 +47,7 @@
     <string name="medlink_zero_tbr_remove">Nie, usuń</string>
     <string name="medlink_zero_tbr_remove_failed">Nie udało się usunąć bazy 0 %. Usuń ją w terapiach albo odpowiedz ponownie.</string>
     <string name="medlink_zero_tbr_waiting" formatted="false">Czekam na odpowiedź w sprawie bazy 0 %</string>
+    <string name="medlink_tbr_bolus_interval">Odstęp bolusa TBR (min)</string>
+    <string name="medlink_tbr_bolus_interval_summary">Minimalny czas między dwoma bolusami TBR. Plan TBR rozdziela bolusy o ten czas, a bolus TBR nie jest wysyłany, gdy ostatni bolus TBR lub ręczny był mniej niż ten czas temu. SMB używają odstępu SMB pętli.</string>
+    <string name="medlink_tbr_bolus_skipped">Bolus TBR %1$.1f U nie został wysłany: ostatni bolus TBR lub ręczny był %2$d s temu, mniej niż odstęp bolusa TBR (%3$d min).</string>
 </resources>

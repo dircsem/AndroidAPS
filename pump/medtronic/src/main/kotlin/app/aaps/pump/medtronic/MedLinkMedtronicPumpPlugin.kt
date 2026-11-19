@@ -368,6 +368,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         return true
     }
 
+    /**
+     * A TBR bolus is not sent when the last TBR bolus or the last manual bolus was less than the MedLink TBR bolus
+     * interval ago (not the SMB interval: an SMB interval of 6 min with TBR boluses every 5 min skipped every second
+     * one). SMBs do not count: TBR boluses and SMBs are both automatic, they have their own interval each.
+     * The user gets an info message, no alarm.
+     */
     /** Runs a TBR bolus step of the plan (skipped when too soon after the last TBR or manual bolus). */
     private fun runTbrBolusStep(oper: TempBasalMicroBolusPair) {
         if (tbrBolusTooSoon(oper)) {
@@ -415,13 +421,13 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         runTbrBolusStep(oper)
     }
 
-    /**
-     * A TBR bolus is not sent when the last TBR bolus or the last manual bolus was less than the SMB interval ago.
-     * SMBs do not count: TBR boluses and SMBs are both automatic, they have their own interval each.
-     * The user gets an info message, no alarm.
-     */
+    /** Minutes between two TBR boluses (MedLink setting, 2 to 15); also the "too soon" check of [tbrBolusTooSoon]. */
+    private fun tbrBolusIntervalMinutes(): Int =
+        preferences.get(MedLinkMedtronicIntPreferenceKey.TbrBolusInterval)
+            .coerceIn(MedLinkMedtronicIntPreferenceKey.TbrBolusInterval.min, MedLinkMedtronicIntPreferenceKey.TbrBolusInterval.max)
+
     private fun tbrBolusTooSoon(oper: TempBasalMicroBolusPair): Boolean {
-        val interval = preferences.get(IntKey.ApsMaxSmbFrequency)
+        val interval = tbrBolusIntervalMinutes()
         val lastTbrBolusAt = runBlocking { persistenceLayer.getNewestBolusOfType(BS.Type.TBR) }?.timestamp ?: 0L
         val lastManualBolusAt = runBlocking { persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL) }?.timestamp ?: 0L
         val lastBolusAt = maxOf(lastTbrBolusAt, lastManualBolusAt)
@@ -429,7 +435,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         val now = System.currentTimeMillis()
         if (!SmbIntervalGate.tooSoon(lastBolusAt, interval, now)) return false
         val agoSeconds = (now - lastBolusAt) / 1000
-        aapsLogger.info(LTag.PUMP, "TBR bolus ${oper.dose} U not sent: last TBR or manual bolus ${agoSeconds}s ago, SMB interval $interval min")
+        aapsLogger.info(LTag.PUMP, "TBR bolus ${oper.dose} U not sent: last TBR or manual bolus ${agoSeconds}s ago, TBR bolus interval $interval min")
         notificationManager.post(
             NotificationId.MEDLINK_TBR_BOLUS_SKIPPED,
             rh.gs(R.string.medlink_tbr_bolus_skipped, oper.dose, agoSeconds, interval)
@@ -2769,12 +2775,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         result.absoluteRate = absoluteRate
         var operationTime = currentTime
         var minDosage = 0.0
+        // TBR boluses are spaced by the MedLink TBR bolus interval (the same value the "too soon" check uses)
+        val interval = tbrBolusIntervalMinutes()
         for (period in insulinPeriod) {
             val periodDose = period.insulinRate // + accumulatedNextPeriodDose;
             val roundedPeriodDose =
                 BigDecimal(periodDose).setScale(1, RoundingMode.HALF_DOWN).toDouble()
             val time = (period.endTimeInSeconds - period.sartTimeInSeconds) / 60
-            val periodAvailableOperations: Int = time / Constants.INTERVAL_BETWEEN_OPERATIONS
+            val periodAvailableOperations: Int = time / interval
             aapsLogger.info(LTag.PUMPBTCOMM, "" + time)
             aapsLogger.info(LTag.PUMPBTCOMM, "" + periodAvailableOperations)
             val minBolusDose = pumpType.bolusSize()
@@ -2805,14 +2813,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                         val refresh =
                             medLinkStatusRefreshMap[MedLinkMedtronicStatusRefreshType.PumpHistory]
                         if (refresh!! > currentTime.plusMinutes(5).toDateTime().millis) {
-                            operationTime.plusMinutes(Constants.INTERVAL_BETWEEN_OPERATIONS)
+                            operationTime.plusMinutes(interval)
                         } else {
                             val instant = Instant.ofEpochMilli(refresh)
                             instant.toDateTime().withZone(DateTimeZone.getDefault())
                                 .toLocalDateTime()
                         }
                     } else {
-                        operationTime.plusMinutes(Constants.INTERVAL_BETWEEN_OPERATIONS)
+                        operationTime.plusMinutes(interval)
                     }
                 }
             }
@@ -5393,6 +5401,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedLinkMedtronicIntPreferenceKey.CommandAttempts,
             MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend,
             MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes,
+            MedLinkMedtronicIntPreferenceKey.TbrBolusInterval,
             MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusMinutes,

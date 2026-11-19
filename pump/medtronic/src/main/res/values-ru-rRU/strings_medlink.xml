@@ -47,4 +47,7 @@
     <string name="medlink_zero_tbr_remove">Нет, удалить</string>
     <string name="medlink_zero_tbr_remove_failed">Не удалось удалить базал 0 %. Удалите его в записях терапии или ответьте ещё раз.</string>
     <string name="medlink_zero_tbr_waiting" formatted="false">Ожидание вашего ответа о базале 0 %</string>
+    <string name="medlink_tbr_bolus_interval">Интервал болюса TBR (мин)</string>
+    <string name="medlink_tbr_bolus_interval_summary">Минимальное время между двумя болюсами TBR. План TBR разносит болюсы на это время, и болюс TBR не отправляется, если последний болюс TBR или ручной болюс был меньше этого времени назад. SMB используют интервал SMB цикла.</string>
+    <string name="medlink_tbr_bolus_skipped">Болюс TBR %1$.1f ЕД не отправлен: последний болюс TBR или ручной болюс был %2$d с назад, меньше интервала болюса TBR (%3$d мин).</string>
 </resources>

@@ -47,4 +47,7 @@
     <string name="medlink_zero_tbr_remove">Não, remover</string>
     <string name="medlink_zero_tbr_remove_failed">Não foi possível remover a basal de 0 %. Remova nos tratamentos ou responda de novo.</string>
     <string name="medlink_zero_tbr_waiting" formatted="false">Aguardando sua resposta sobre a basal de 0 %</string>
+    <string name="medlink_tbr_bolus_interval">Intervalo do bolus TBR (min)</string>
+    <string name="medlink_tbr_bolus_interval_summary">Tempo mínimo entre dois bolus TBR. O plano da TBR separa os bolus por este tempo, e um bolus TBR não é enviado quando o último bolus TBR ou manual foi há menos que este tempo. Os SMB usam o intervalo de SMB do loop.</string>
+    <string name="medlink_tbr_bolus_skipped">Bolus TBR de %1$.1f U não enviado: o último bolus TBR ou manual foi há %2$d s, menos que o intervalo do bolus TBR (%3$d min).</string>
 </resources>

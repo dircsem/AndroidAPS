@@ -36,6 +36,12 @@ enum class MedLinkMedtronicIntPreferenceKey(
     CommandAttempts("medlink_command_attempts", 5, min = 1, max = 10, titleResId = R.string.medlink_command_attempts, summaryResId = R.string.medlink_command_attempts_summary),
     /** Minutes used for the TBR rate on the main screen: basal delivered in this time, from the database (microboluses and suspensions included). */
     TbrDisplayMinutes("medlink_tbr_display_minutes", 30, min = 5, max = 120, titleResId = R.string.medlink_tbr_display_minutes, summaryResId = R.string.medlink_tbr_display_minutes_summary),
+    /**
+     * Minutes between two TBR boluses: the TBR plan spaces its boluses by it, and a TBR bolus is not sent when the last
+     * TBR or manual bolus was less than this ago. SMBs keep the SMB interval of the loop. 5 = the old fixed value;
+     * 2 is the lowest (user, 2026-11-19): the total insulin stays the same, the boluses only come more often.
+     */
+    TbrBolusInterval("medlink_tbr_bolus_interval", 5, min = 2, max = 15, titleResId = R.string.medlink_tbr_bolus_interval, summaryResId = R.string.medlink_tbr_bolus_interval_summary),
     /** T20: failed pump connections in a row before the alarm. */
     ConnectionAlarmFailures("medlink_connection_alarm_failures", 4, min = 1, max = 10, dependency = MedLinkMedtronicBooleanPreferenceKey.ConnectionAlarm, titleResId = R.string.medlink_connection_alarm_failures, summaryResId = R.string.medlink_connection_alarm_failures_summary),
 
