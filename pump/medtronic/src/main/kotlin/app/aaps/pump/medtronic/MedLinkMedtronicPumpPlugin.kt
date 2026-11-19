@@ -12,6 +12,7 @@ import app.aaps.pump.medtronic.data.MedLinkResumeRule
 import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkLoopBolusMerge
 import app.aaps.pump.medtronic.data.MedLinkSentBolusKinds
+import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -163,9 +164,9 @@ import app.aaps.pump.medtronic.data.EnliteInterval
 import app.aaps.pump.medtronic.data.MedLinkMedtronicHistoryData
 import app.aaps.pump.medtronic.data.MedLinkProfileReadRule
 import app.aaps.pump.medtronic.data.MedLinkStatusReadRule
+import app.aaps.pump.medtronic.data.MedLinkTbrKeepRule
 import app.aaps.pump.medtronic.data.MedLinkPumpProfileDiff
 import app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule
-import app.aaps.pump.medtronic.data.NextStartStop
 import app.aaps.pump.medtronic.data.dto.BasalProfile
 import app.aaps.pump.medtronic.data.dto.BasalProfileEntry
 import app.aaps.pump.medtronic.data.dto.ClockDTO
@@ -188,7 +189,7 @@ import app.aaps.pump.medtronic.keys.MedLinkMedtronicBooleanPreferenceKey
 import app.aaps.pump.medtronic.keys.MedLinkMedtronicIntPreferenceKey
 import app.aaps.pump.medtronic.keys.MedLinkMedtronicDoublePreferenceKey
 import app.aaps.pump.medtronic.data.MedLinkPostBolusMinBasal
-import app.aaps.pump.medtronic.data.MedLinkSuspendStartRule
+import app.aaps.pump.medtronic.data.MedLinkSuspensionPlan
 import app.aaps.pump.medtronic.data.MedLinkTbrPlanCarry
 import app.aaps.pump.medtronic.keys.MedtronicLongNonKey
 import app.aaps.pump.medtronic.keys.MedtronicStringPreferenceKey
@@ -227,7 +228,6 @@ import java.util.stream.Stream.of
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
-import kotlin.math.roundToInt
 
 /**
  * Created by dirceu on 10.07.2020.
@@ -484,12 +484,13 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private var isInitialized = false
     private val lastPumpHistoryEntry: PumpHistoryEntry? = null
     private val busyTimestamps: MutableList<Long> = ArrayList()
+    /** Duration of the last suspension plan (TBR below the basal); used by createTemporaryBasalData when it gets 0. */
+    private var durationInMinutes: Int? = null
     var tempBasalMicrobolusOperations: TempBasalMicrobolusOperations =
         TempBasalMicrobolusOperations()
     // Never set: always null (old code still reads it). B6 removed its dead check from the profile read path.
     private val profile: Profile? = null
     private var percent: Int? = null
-    private var durationInMinutes: Int? = null
     private var result: PumpEnactResult? = null
     private var bolusDeliveryType = BolusDeliveryType.Idle
     private var customActions: List<CustomAction>? = null
@@ -2212,6 +2213,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
                 aapsLogger.info(LTag.EVENTS, "" + pumpDescription.bolusStep)
                 clearTempBasal()
+            } else if (keepTbrPlanIfSame(MedLinkTbrKeepRule.percentOf(absoluteRate, profile.getBasal()), durationInMinutes, profile, callback)) {
+                buildPumpEnactResult().enacted(true).success(true).comment(rh.gs(R.string.medtronic_cmd_desc_set_tbr))
             } else if (absoluteRate < medLinkBaseBasalRate) {
                 aapsLogger.info(LTag.EVENTS, "suspending")
                 aapsLogger.info(LTag.EVENTS, "" + medLinkBaseBasalRate)
@@ -2408,153 +2411,27 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }, true)
     }
 
+    /**
+     * B14: the steps (SUSPEND / REACTIVATE) of a TBR below the basal, from [MedLinkSuspensionPlan]. The plugin only
+     * turns them into plan operations and logs the plan.
+     * @param now when the plan starts (now, or the old end of a plan that is extended, T24)
+     */
     private fun buildSuspensionScheduler(
-        totalSuspendedMinutes: Int,  //                                                                                  Integer suspensions,
+        totalSuspendedMinutes: Int,
         durationInMinutes: Int,
         callback: Function1<*, *>,
         now: Long = System.currentTimeMillis(),
     ): LinkedBlockingDeque<TempBasalMicroBolusPair> {
-        var mod = 0
-        var mergeOperations = 0
-        var operationInterval = 0
-        var possibleSuspensions: Int
-        var operationDuration = 0
-        val durationDouble = durationInMinutes - totalSuspendedMinutes
-        if (durationDouble == 0) {
-            operationDuration = totalSuspendedMinutes
-            possibleSuspensions = 1
-        } else {
-            possibleSuspensions = (durationDouble / Constants.INTERVAL_BETWEEN_OPERATIONS)
-            val neededSuspensions = (totalSuspendedMinutes.toDouble() /
-                    Constants.INTERVAL_BETWEEN_OPERATIONS).roundToInt()
-            if (neededSuspensions < possibleSuspensions) {
-                possibleSuspensions = neededSuspensions
-            }
-            if (possibleSuspensions > 0) {
-                operationInterval = durationDouble / possibleSuspensions
-                mod = operationInterval % Constants.INTERVAL_BETWEEN_OPERATIONS
-                if (mod / Constants.INTERVAL_BETWEEN_OPERATIONS > 0.5) {
-                    operationInterval += Constants.INTERVAL_BETWEEN_OPERATIONS - mod
-                } else {
-                    operationInterval -= mod
-                }
-                operationDuration = (totalSuspendedMinutes.toDouble() / possibleSuspensions).toInt()
-                if (operationDuration < Constants.INTERVAL_BETWEEN_OPERATIONS) {
-                    operationDuration = Constants.INTERVAL_BETWEEN_OPERATIONS
-                }
-                mod = operationDuration % Constants.INTERVAL_BETWEEN_OPERATIONS
-                if (mod / Constants.INTERVAL_BETWEEN_OPERATIONS > 0.5) {
-                    operationDuration += Constants.INTERVAL_BETWEEN_OPERATIONS - mod
-                } else {
-                    operationDuration -= mod
-                }
-                if (totalSuspendedMinutes > operationDuration * possibleSuspensions) {
-                    val diff = totalSuspendedMinutes - operationDuration * possibleSuspensions
-                    mergeOperations = diff / Constants.INTERVAL_BETWEEN_OPERATIONS
-                }
-                if ((operationDuration + operationInterval) * possibleSuspensions > java.lang.Double.valueOf(
-                        durationInMinutes.toDouble()
-                    )
-                ) {
-                    while (operationInterval >= 2 * Constants.INTERVAL_BETWEEN_OPERATIONS &&
-                        (operationDuration + operationInterval) * possibleSuspensions >
-                        java.lang.Double.valueOf(durationInMinutes.toDouble())
-                    ) {
-                        operationInterval -= Constants.INTERVAL_BETWEEN_OPERATIONS
-                    }
-                    while (mergeOperations * operationDuration + (operationDuration + operationInterval) *
-                        (possibleSuspensions - mergeOperations) > durationInMinutes && possibleSuspensions > 1
-                    ) {
-                        mergeOperations++
-                    }
-                    possibleSuspensions -= mergeOperations
-                }
-            }
-            //        operationDuration = Double.valueOf(totalSuspendedMinutes) / Double.valueOf(suspensions);
-            //        if (operationDuration < Constants.INTERVAL_BETWEEN_OPERATIONS) {
-            //            operationDuration = (double) Constants.INTERVAL_BETWEEN_OPERATIONS;
-            //        }
-            //        mod = operationDuration % Constants.INTERVAL_BETWEEN_OPERATIONS;
-            //        if ((mod / Constants.INTERVAL_BETWEEN_OPERATIONS) > 0.5) {
-            //            operationDuration += Constants.INTERVAL_BETWEEN_OPERATIONS - mod;
-            //        } else {
-            //            operationDuration -= mod;
-            //        }
-        }
-        // 4x: the start follows the clock (cycles of one suspension + one active interval): during the active part of the
-        // cycle the plan runs the minutes left of it before its first suspension
-        val activeMinutesLeft = MedLinkSuspendStartRule.activeMinutesLeft(now, operationDuration, operationInterval)
+        val plan = MedLinkSuspensionPlan.build(totalSuspendedMinutes, durationInMinutes, LocalDateTime(now))
         aapsLogger.info(
             LTag.PUMP,
-            "MedLink temp basal plan: suspend $operationDuration min / active $operationInterval min, " +
-                if (activeMinutesLeft > 0) "starts active for $activeMinutesLeft min" else "starts suspended"
+            "MedLink temp basal plan: suspend ${plan.suspendMinutes} min / active ${plan.activeMinutes} min, " +
+                (if (plan.activeMinutesLeft > 0) "starts active for ${plan.activeMinutesLeft} min" else "starts suspended") +
+                " ($totalSuspendedMinutes of $durationInMinutes min suspended, ${plan.steps.size / 2} suspensions)"
         )
-        val nextStartStop = NextStartStop(activeMinutesLeft)
-        var startStopDateTime = nextStartStop.getNextStartStop(operationDuration, operationInterval)
-        var totalSuspended = 0
-        val operations = LinkedBlockingDeque<TempBasalMicroBolusPair>()
-        var oper = 0
-        while (oper < possibleSuspensions) {
-            operations.add(
-                TempBasalMicroBolusPair(
-                    totalSuspendedMinutes, 0.0,
-                    0.0, startStopDateTime.startOperationTime,
-                    TempBasalMicroBolusPair.OperationType.SUSPEND, callback
-                )
-            )
-            operations.add(
-                TempBasalMicroBolusPair(
-                    totalSuspendedMinutes, 0.0,
-                    0.0, startStopDateTime.endOperationTime,
-                    TempBasalMicroBolusPair.OperationType.REACTIVATE, callback
-                )
-            )
-            if (mergeOperations > 0) {
-                startStopDateTime = nextStartStop.getNextStartStop(
-                    operationDuration * 2,
-                    operationInterval
-                )
-                mergeOperations--
-                totalSuspended += operationDuration * 2
-            } else {
-                startStopDateTime = nextStartStop.getNextStartStop(
-                    operationDuration,
-                    operationInterval
-                )
-                totalSuspended += operationDuration
-            }
-            oper += 1
+        return plan.steps.mapTo(LinkedBlockingDeque()) {
+            TempBasalMicroBolusPair(totalSuspendedMinutes, 0.0, 0.0, it.at, it.type, callback)
         }
-        return mergeExtraOperations(operations, mod, possibleSuspensions)
-    }
-
-    private fun mergeExtraOperations(
-        operations: LinkedBlockingDeque<TempBasalMicroBolusPair>, mod: Int, suspensions: Int,
-    ): LinkedBlockingDeque<TempBasalMicroBolusPair> {
-        var deltaMod = mod * suspensions
-        var previousReleaseTime: LocalDateTime? = null
-        val toRemove: MutableList<Int> = ArrayList()
-        val newOperations = LinkedBlockingDeque<TempBasalMicroBolusPair>()
-        for ((index, operation) in operations.withIndex()) {
-            if (deltaMod > Constants.INTERVAL_BETWEEN_OPERATIONS &&
-                operation.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE
-            ) {
-                operation.delayInMinutes(Constants.INTERVAL_BETWEEN_OPERATIONS)
-                previousReleaseTime = operation.releaseTime
-                deltaMod -= Constants.INTERVAL_BETWEEN_OPERATIONS
-            }
-            if (previousReleaseTime != null && operation.operationType ==
-                TempBasalMicroBolusPair.OperationType.SUSPEND && operation.releaseTime.compareTo(
-                    previousReleaseTime
-                ) >= 0
-            ) {
-                toRemove.add(index)
-                toRemove.add(index + 1)
-            } else {
-                newOperations.add(operation)
-            }
-        }
-        return newOperations
     }
 
     private fun scheduleSuspension(
@@ -2567,37 +2444,18 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         previousFirst: TempBasalMicroBolusPair?,
     ): PumpEnactResult? {
         this.durationInMinutes = durationInMinutes
-        var totalSuspendedMinutes = 0
-        var calcPercent: Double
-        if (pumpTempBasalType == PumpTempBasalType.Absolute) {
-            if (absoluteBasalValue != 0.0) {
-                calcPercent = 1 - absoluteBasalValue / profile.getBasal()
-                totalSuspendedMinutes = calculateTotalSuspended(calcPercent)
-            } else if (percent == 0) {
-                totalSuspendedMinutes = durationInMinutes
-            }
-        } else {
-            calcPercent = 1 - percent / 100.0
-            totalSuspendedMinutes = calculateTotalSuspended(calcPercent)
+        // B14: the minutes to suspend come from MedLinkSuspensionPlan (part of the basal the pump must give)
+        val deliveredFraction = when {
+            pumpTempBasalType != PumpTempBasalType.Absolute -> percent / 100.0
+            absoluteBasalValue != 0.0                     -> absoluteBasalValue / profile.getBasal()
+            percent == 0                                  -> 0.0
+            else                                          -> 1.0
         }
+        val totalSuspendedMinutes = MedLinkSuspensionPlan.suspendedMinutes(durationInMinutes, deliveredFraction)
         this.percent = percent
-        if (totalSuspendedMinutes < Constants.INTERVAL_BETWEEN_OPERATIONS) {
+        if (totalSuspendedMinutes < MedLinkSuspensionPlan.MIN_SEGMENT_MINUTES) {
             return result
         } else {
-            //            int suspensions;
-            //            if (totalSuspendedMinutes < durationInMinutes / 2) {
-            //                suspensions = new BigDecimal(totalSuspendedMinutes)
-            //                        .divide(new BigDecimal(Constants.INTERVAL_BETWEEN_OPERATIONS), RoundingMode.HALF_UP)
-            //                        .setScale(0, RoundingMode.HALF_UP).intValue();
-            //            } else {
-            ////                int delta = durationInMinutes - ;
-            //                suspensions = totalSuspendedMinutes / Constants.INTERVAL_BETWEEN_OPERATIONS;
-            //                if (suspensions == 0) {
-            //                    suspensions++;
-            //                }
-            //            }
-
-            //TODO need to reavaluate some cases, used floor here to avoid two possible up rounds
             val operations = applyPlanCarry(
                 buildSuspensionScheduler(totalSuspendedMinutes, durationInMinutes, callback),
                 previousFirst, durationInMinutes
@@ -2613,6 +2471,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             )
             tempBasalMicrobolusOperations.absoluteRate = absoluteBasalValue
             tempBasalMicrobolusOperations.durationInMinutes = durationInMinutes
+            markPlanMade(if (pumpTempBasalType == PumpTempBasalType.Absolute) MedLinkTbrKeepRule.percentOf(absoluteBasalValue, profile.getBasal()) else percent)
             tempBasalMicrobolusOperations.let {
                 // B12: one read of the first step (another thread can take it)
                 val first = it.firstOrNull()
@@ -2647,10 +2506,95 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             .comment(rh.gs(R.string.medtronic_cmd_desc_set_tbr))
     }
 
-    private fun calculateTotalSuspended(calcPercent: Double): Int {
-        val suspended = durationInMinutes!! * calcPercent
-        return BigDecimal(java.lang.Double.toString(suspended)).setScale(0, RoundingMode.HALF_UP)
-            .toInt()
+    /** T24: the TBR percent the running plan was made for (an absolute TBR as a percent of the basal). */
+    @Volatile private var planPercent = 0
+
+    /** T24: when the running plan was made or last extended. */
+    @Volatile private var planMadeAt = 0L
+
+    /** T24: the plan builders read the clock from [currentTime]; a plan extension sets it to the old end of the plan. */
+    @Volatile private var planClock: LocalDateTime? = null
+
+    private fun markPlanMade(percent: Int) {
+        planPercent = percent
+        planMadeAt = dateUtil.now()
+    }
+
+    /**
+     * T24 (`MedLinkTbrKeepRule`): a new TBR with the same percent as the running plan keeps it (less than 15 min after
+     * the plan was made), or keeps its steps and adds only the period from its old end to the new end (15 min or more).
+     * @return true when the plan was kept or extended: the caller must not clear or rebuild it
+     */
+    private fun keepTbrPlanIfSame(newPercent: Int, durationInMinutes: Int, profile: Profile, callback: Function1<*, *>): Boolean {
+        val plan = tempBasalMicrobolusOperations
+        val now = dateUtil.now()
+        val oldEnd = plan.endsAt
+        val newEnd = now + durationInMinutes * 60_000L
+        val decision = MedLinkTbrKeepRule.decide(now, plan.operations.isNotEmpty(), planPercent, newPercent, planMadeAt, oldEnd, newEnd)
+        val ends = LocalDateTime(oldEnd).toString("HH:mm")
+        when (decision.action) {
+            MedLinkTbrKeepRule.Action.REBUILD -> {
+                if (plan.operations.isNotEmpty()) aapsLogger.info(LTag.PUMP, "TBR $newPercent %: new plan (${decision.reason})")
+                return false
+            }
+
+            MedLinkTbrKeepRule.Action.KEEP    -> {
+                aapsLogger.info(LTag.PUMP, "TBR $newPercent %: plan kept as it is, ends $ends (${decision.reason})")
+                return true
+            }
+
+            MedLinkTbrKeepRule.Action.EXTEND  -> {
+                val added = extendPlan(oldEnd, newEnd, newPercent, profile, callback)
+                plan.durationInMinutes = durationInMinutes // the plan now ends at the new end
+                planMadeAt = now
+                aapsLogger.info(
+                    LTag.PUMP,
+                    "TBR $newPercent %: plan kept, $added steps added from $ends to ${LocalDateTime(newEnd).toString("HH:mm")} (${decision.reason})"
+                )
+                return true
+            }
+        }
+    }
+
+    /**
+     * T24: plans only the period from [oldEnd] to [newEnd] with the normal builders, as if it were [oldEnd] now, and adds
+     * the steps to the running plan. Below 100 %: a period too short for one suspension is fully suspended (less
+     * insulin, never more). Above 100 %: less than one bolus step in the period gives no step (never more insulin).
+     * @return the number of steps added
+     */
+    private fun extendPlan(oldEnd: Long, newEnd: Long, percent: Int, profile: Profile, callback: Function1<*, *>): Int {
+        val minutes = ((newEnd - oldEnd) / 60_000L).toInt()
+        if (minutes < Constants.INTERVAL_BETWEEN_OPERATIONS) return 0
+        val ops = tempBasalMicrobolusOperations.operations
+        val tail: LinkedBlockingDeque<TempBasalMicroBolusPair>
+        if (percent < 100) {
+            var suspended = MedLinkSuspensionPlan.suspendedMinutes(minutes, percent / 100.0)
+            if (suspended < Constants.INTERVAL_BETWEEN_OPERATIONS) suspended = minOf(minutes, Constants.INTERVAL_BETWEEN_OPERATIONS)
+            tail = buildSuspensionScheduler(suspended, minutes, callback, oldEnd)
+            val last = ops.peekLast()
+            val first = tail.peekFirst()
+            // the old plan starts the pump at its end and the new period stops it again at once: drop both commands
+            if (last != null && first != null && !last.isCommandIssued &&
+                last.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE &&
+                first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND &&
+                abs(first.releaseTime.toDate().time - last.releaseTime.toDate().time) < 60_000L
+            ) {
+                ops.removeLast()
+                tail.removeFirst()
+            }
+        } else {
+            val start = LocalDateTime(oldEnd)
+            planClock = start
+            try {
+                val startTas = start.millisOfDay / 1000
+                val profiles = extractTempProfiles(profile, startTas + minutes * 60L, startTas)
+                tail = buildFirstLevelTempBasalMicroBolusOperations(percent, profiles, minutes, callback, 0.0, PumpTempBasalType.Percent).operations
+            } finally {
+                planClock = null
+            }
+        }
+        ops.addAll(tail)
+        return tail.size
     }
 
     private fun buildFirstLevelTempBasalMicroBolusOperations(
@@ -2708,7 +2652,8 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     tempBasalList
                 )
             } else if (roundedTotalAmount < pumpType.bolusSize()) {
-                cancelTempBasal(false, true)
+                // T24: an extension of a running plan never cancels it (planClock set)
+                if (planClock == null) cancelTempBasal(false, true)
                 TempBasalMicrobolusOperations(
                     0, 0.0, 0,
                     LinkedBlockingDeque()
@@ -2793,7 +2738,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
 //    }
 
     open val currentTime: LocalDateTime
-        get() = LocalDateTime.now()
+        get() = planClock ?: LocalDateTime.now()
 
     private fun buildTempBasalSMBOperations(
         totalAmount: Double,
@@ -3083,6 +3028,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         )
         tempBasalMicrobolusOperations.operations =
             applyPlanCarry(tempBasalMicrobolusOperations.operations, previousFirst, durationInMinutes)
+        markPlanMade(if (basalType == PumpTempBasalType.Absolute) MedLinkTbrKeepRule.percentOf(absoluteBasalValue, profile.getBasal()) else percent)
         refreshAnyStatusThatNeedsToBeRefreshed()
         return buildPumpEnactResult().enacted(true).success(true)
             .comment(rh.gs(R.string.medtronic_cmd_desc_set_tbr))
@@ -3242,8 +3188,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 createTemporaryBasalData(durationInMinutes, percent.toDouble())
             }
         }
-        tempBasalMicrobolusOperations.clearOperations()
+        // T24: a TBR with the same percent as the running plan keeps it (MedLinkTbrKeepRule)
+        val kept = percent > 0 && percent != 100 && keepTbrPlanIfSame(percent, durationInMinutes, profile, func)
+        if (!kept) tempBasalMicrobolusOperations.clearOperations()
         val result: PumpEnactResult = when {
+            kept -> {
+                buildPumpEnactResult().enacted(true).success(true).comment(rh.gs(R.string.medtronic_cmd_desc_set_tbr))
+            }
+
             percent == 100 -> {
                 clearTempBasal()
             }
