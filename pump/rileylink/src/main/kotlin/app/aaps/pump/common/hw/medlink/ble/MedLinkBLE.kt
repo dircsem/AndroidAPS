@@ -28,6 +28,9 @@ import app.aaps.pump.common.hw.medlink.ble.command.BleCommand
 import app.aaps.pump.common.hw.medlink.ble.command.BleConnectCommand
 import app.aaps.pump.common.hw.medlink.ble.command.BleBolusCommand
 import app.aaps.pump.common.hw.medlink.ble.command.BleStopCommand
+import app.aaps.pump.common.hw.medlink.connection.MedLinkConnectBannerRule
+import app.aaps.pump.common.hw.medlink.connection.MedLinkConnectSkipRule
+import app.aaps.pump.common.hw.medlink.connection.MedLinkWakeupDropRule
 import app.aaps.core.interfaces.pump.MedLinkStopOrigin
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusAction
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkBolusOrigin
@@ -717,7 +720,7 @@ class MedLinkBLE //extends RileyLinkBLE
                             commandQueueBusy = CommandQueueBusy(false)
                             //                                break;
                         } else {
-                            if (isConnected && commands[0].command == MedLinkCommandType.Connect) {
+                            if (commands[0].command == MedLinkCommandType.Connect && mayWriteWithoutOkConn(System.currentTimeMillis())) {
                                 removeFirstCommand(true)
                             }
                             needRetry = false
@@ -998,6 +1001,15 @@ class MedLinkBLE //extends RileyLinkBLE
 
     private var connectTries = 0
     private fun medLinkConnect() {
+        // T26: after a drop in the wake-up phase, the reconnect waits 2 s
+        val reconnectIn = reconnectNotBefore - System.currentTimeMillis()
+        if (reconnectIn > 0L) {
+            if (!reconnectPending) {
+                reconnectPending = true
+                handler.postDelayed({ reconnectPending = false; medLinkConnect() }, reconnectIn)
+            }
+            return
+        }
         if (connectTries > commandAttempts()) {
             aapsLogger.info(LTag.PUMPBTCOMM, "max connection tries")
             return
@@ -1490,7 +1502,7 @@ class MedLinkBLE //extends RileyLinkBLE
         currentCommand = null
         lastCharacteristic = ""
         val com = nextCommand
-        if (hasCommandsToExecute() && MedLinkCommandType.Connect == com?.firstCommand() && isConnected) {
+        if (hasCommandsToExecute() && MedLinkCommandType.Connect == com?.firstCommand() && mayWriteWithoutOkConn(System.currentTimeMillis())) {
             aapsLogger.info(LTag.PUMPBTCOMM, "completed command")
             priorityExecutionCommandQueue.remove(com)
         }
@@ -1864,8 +1876,37 @@ class MedLinkBLE //extends RileyLinkBLE
         scheduleNextCommand(time - System.currentTimeMillis())
     }
 
+    /** T25: when the services of the current Bluetooth connection were found (0 = none yet). */
+    @Volatile private var gattReadyAt = 0L
+
+    /** T25: when the last MedLink banner ("… ok+conn or command") ended (0 = none). */
+    @Volatile private var bannerAt = 0L
+
+    /** T26: since when the MedLink is waking the pump ("ok+conn command confirmed", before "ready"); 0 = not now. */
+    @Volatile private var wakeupSince = 0L
+
+    /** T26: after a drop in the wake-up phase: listen until then, write no OK+CONN; 0 = not listening. */
+    @Volatile private var listenAfterDropUntil = 0L
+
+    /** T26: when the MedLink said the pump is connected after a reconnect after a drop; 0 = none. */
+    @Volatile private var connectedAfterDropAt = 0L
+
+    /**
+     * A command may be written with no OK+CONN only when the MedLink is surely awake ([MedLinkConnectSkipRule]): the
+     * "connected" flag alone was wrong after "time to powerdown 20" that follows an invalid first command.
+     */
+    private fun mayWriteWithoutOkConn(now: Long): Boolean =
+        MedLinkConnectSkipRule.maySkipOkConn(isConnected, now, lastConfirmedCommand, connectedAfterDropAt)
+
+    /** T26: no reconnect before this time (2 s after a drop in the wake-up phase). */
+    @Volatile private var reconnectNotBefore = 0L
+    @Volatile private var reconnectPending = false
+
     /** B10: when the last FRESH wake-up "ready" came (0 = none); the first command after it waits. */
     @Volatile private var freshWakeReadyAt = 0L
+
+    /** T26: after "pump connected" following a reconnect, the next command waits until then (0 = no wait). */
+    @Volatile private var settleUntil = 0L
 
     /** B10: the MedLink and the pump just woke up: hold the queue for [MedLinkFreshWake.SETTLE_MS]. */
     fun onFreshWakeReady() {
@@ -1877,12 +1918,13 @@ class MedLinkBLE //extends RileyLinkBLE
         get() {
             if (!hasCommandsToExecute()) return null
             val now = System.currentTimeMillis()
-            val hold = MedLinkFreshWake.holdMs(now, freshWakeReadyAt)
+            val hold = maxOf(MedLinkFreshWake.holdMs(now, freshWakeReadyAt), settleUntil - now)
             if (hold > 0L) {
                 scheduleNextCommand(hold)
                 return null
             }
             freshWakeReadyAt = 0L
+            settleUntil = 0L
             val nextComm = orderedQueues.asSequence().flatMap { it.asSequence() }.firstOrNull { mayRun(it, now) } ?: return null
             when (nextComm.postDecision(currentCommand)) {
                 CommandExecutor.PostDecision.POST            -> Unit
@@ -1908,12 +1950,36 @@ class MedLinkBLE //extends RileyLinkBLE
             if (nextComm.firstCommand() == MedLinkCommandType.StopStartPump &&
                 nextComm.getCurrentCommand() == MedLinkCommandType.StopStartPump &&
                 MedLinkStartStopSkipRule.shouldSkip(nextComm.secondCommand(), lastStatus, lastStatusSet, lastStartStopSent, now) ||
-                isConnected && nextComm.firstCommand() == MedLinkCommandType.Connect
+                nextComm.firstCommand() == MedLinkCommandType.Connect && mayWriteWithoutOkConn(now)
             ) {
                 aapsLogger.info(LTag.PUMPBTCOMM, "skipping ${nextComm.secondCommand()}: pump already $lastStatus")
                 currentCommand = nextComm
                 removeFirstCommand(true)
                 return nextCommand
+            }
+            // T25: the first OK+CONN of a connection waits for the MedLink banner (at most 3 s): written before it,
+            // it is lost and a second OK+CONN is needed
+            if (nextComm.firstCommand() == MedLinkCommandType.Connect && !mayWriteWithoutOkConn(now)) {
+                // T26: after a drop in the wake-up phase the MedLink goes on: listen, no OK+CONN until a message or the end
+                val listen = MedLinkWakeupDropRule.listenHoldMs(now, listenAfterDropUntil)
+                if (listen > 0L) {
+                    aapsLogger.info(LTag.PUMPBTCOMM, "reconnect after drop in wakeup phase, waiting for messages (${listen / 1000} s left)")
+                    scheduleNextCommand(listen)
+                    return null
+                }
+                if (listenAfterDropUntil > 0L) {
+                    // no message at all after the reconnect: a new OK+CONN, counted as a failed connection (T20)
+                    aapsLogger.info(LTag.PUMPBTCOMM, "no message after the reconnect: new OK+CONN")
+                    listenAfterDropUntil = 0L
+                    pumpConnectionError()
+                }
+                val wait = MedLinkConnectBannerRule.holdMs(now, gattReadyAt, bannerAt)
+                if (wait > 0L) {
+                    if (bannerAt >= gattReadyAt) aapsLogger.info(LTag.PUMPBTCOMM, "OK+CONN waits ${wait / 1000.0} s after the MedLink banner")
+                    else aapsLogger.info(LTag.PUMPBTCOMM, "OK+CONN waits for the MedLink banner (at most ${wait / 1000.0} s)")
+                    scheduleNextCommand(wait)
+                    return null
+                }
             }
             return nextComm
         }
@@ -1981,7 +2047,7 @@ class MedLinkBLE //extends RileyLinkBLE
         aapsLogger.info(LTag.PUMPBTCOMM, "" + priorityExecutionCommandQueue.size)
         aapsLogger.info(LTag.PUMPBTCOMM, "" + (lastConnection == 0L && !hasCommandsToExecute()))
         aapsLogger.info(
-            LTag.PUMPBTCOMM, "" + (!isConnected &&
+            LTag.PUMPBTCOMM, "" + (!mayWriteWithoutOkConn(System.currentTimeMillis()) &&
                     hasCommandsToExecute() && nextCommand!!.nextCommand() != MedLinkCommandType.NoCommand && //
                     !MedLinkCommandType.Connect.isSameCommand(nextCommand!!.firstCommand()) &&
                     !MedLinkCommandType.ReadCharacteristic.isSameCommand(nextCommand!!.nextCommand()) &&  //
@@ -1991,7 +2057,7 @@ class MedLinkBLE //extends RileyLinkBLE
                     currentCommand != null && currentCommand!!.firstCommand() != MedLinkCommandType.Connect))
 
         return (lastConnection == 0L && !hasCommandsToExecute()
-                || (!isConnected &&
+                || (!mayWriteWithoutOkConn(System.currentTimeMillis()) &&
                 hasCommandsToExecute() && nextCommand!!.nextCommand() != MedLinkCommandType.NoCommand && //
                 !MedLinkCommandType.Connect.isSameCommand(nextCommand!!.firstCommand()) &&
                 !MedLinkCommandType.ReadCharacteristic.isSameCommand(nextCommand!!.nextCommand()) &&  //
@@ -2059,8 +2125,10 @@ class MedLinkBLE //extends RileyLinkBLE
 //                        nextCommand()
 //                        return
                     }
-                    commandQueueBusy = CommandQueueBusy(true)
+                    // busy only when a command is really posted: a held OK+CONN (T25) left the queue busy for 5 s
+                    // (field 2026-11-17 20:55), so the banner could not release it and the MedLink refused it
                     if (currentCommand != null) {
+                        commandQueueBusy = CommandQueueBusy(true)
                         aapsLogger.info(LTag.PUMPBTCOMM, currentCommand.toString())
                         beforePost(currentCommand!!)
                         val executor = currentCommand!!
@@ -2139,6 +2207,41 @@ class MedLinkBLE //extends RileyLinkBLE
         }
     }
 
+    /** T26: a message while listening after a drop in the wake-up phase ([MedLinkWakeupDropRule.react]). */
+    private fun onMessageAfterDrop(previousChunk: String, answer: String) {
+        val reaction = MedLinkWakeupDropRule.react(previousChunk, answer) ?: return
+        aapsLogger.info(LTag.PUMPBTCOMM, "after the reconnect: ${answer.trim()} -> $reaction")
+        when (reaction) {
+            MedLinkWakeupDropRule.Reaction.WAIT         -> Unit // "ready" (GO_ON) comes later
+
+            MedLinkWakeupDropRule.Reaction.GO_ON        -> {
+                // the pump is connected: the queued commands go on; a queued OK+CONN is skipped (connected)
+                listenAfterDropUntil = 0L
+                isConnected = true
+                connectedAfterDropAt = System.currentTimeMillis()
+                // a command written a few ms after a MedLink message was lost (field log 2026-11-18 01:24:48)
+                settleUntil = connectedAfterDropAt + MedLinkWakeupDropRule.GO_ON_SETTLE_MS
+                aapsLogger.info(LTag.PUMPBTCOMM, "pump connected after the reconnect: the next command waits ${MedLinkWakeupDropRule.GO_ON_SETTLE_MS} ms")
+                nextCommand()
+            }
+
+            MedLinkWakeupDropRule.Reaction.SEND_OK_CONN -> {
+                // the MedLink is free (banner) or did not accept the old OK+CONN (5 s): not a failed connection
+                listenAfterDropUntil = 0L
+                bannerAt = System.currentTimeMillis()
+                nextCommand()
+            }
+
+            MedLinkWakeupDropRule.Reaction.FAILED       -> {
+                listenAfterDropUntil = 0L
+                bannerAt = System.currentTimeMillis()
+                // a running Connect command counts "pump no response" itself (BleConnectCommand): count it once
+                if (currentCommand?.firstCommand() != MedLinkCommandType.Connect) pumpConnectionError()
+                nextCommand()
+            }
+        }
+    }
+
     companion object {
 
         private val CCC_DESCRIPTOR_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -2184,6 +2287,16 @@ class MedLinkBLE //extends RileyLinkBLE
                 }
 
                 lastReceivedCharacteristic = System.currentTimeMillis()
+                // T26: the previous chunk, before it changes (answers come in 20-byte pieces)
+                val previousChunk = lastCharacteristic
+                if (MedLinkWakeupDropRule.startsWakeup(previousChunk, answer)) wakeupSince = System.currentTimeMillis()
+                if (answer.contains("ready") || (previousChunk + answer).contains("pump no response")) wakeupSince = 0L
+                // T25: the banner ended: the OK+CONN that waits for it can go now
+                val bannerEnd = MedLinkConnectBannerRule.isBannerEnd(lastCharacteristic, answer)
+                if (bannerEnd) {
+                    bannerAt = System.currentTimeMillis()
+                    aapsLogger.info(LTag.PUMPBTCOMM, "MedLink banner received")
+                }
                 removeNotificationCommand()
                 // aapsLogger.info(LTag.PUMPBTCOMM, answer)
                 // aapsLogger.info(LTag.PUMPBTCOMM, lastCharacteristic)
@@ -2210,12 +2323,10 @@ class MedLinkBLE //extends RileyLinkBLE
                 if (answer.trim { it <= ' ' }.isNotEmpty()) {
                     if (answer.contains("time to powerdown")) {
                         aapsLogger.info(LTag.PUMPBTCOMM, "time to powerdown")
-
-                        if (!answer.contains("5")) {
-                            isConnected = true
-                        }
                         commandQueueBusy = CommandQueueBusy(false)
                     }
+                    // the exact seconds, chunks joined (was: any chunk with a "5" counted as 5 s, also "15s")
+                    if (MedLinkWakeupDropRule.powerdownAwake(previousChunk, answer) == true) isConnected = true
                     if (currentCommand != null) {
                         val next = currentCommand!!.nextBleCommand()
                         if (next.isPresent) {
@@ -2262,6 +2373,10 @@ class MedLinkBLE //extends RileyLinkBLE
 //                    aapsLogger.info(LTag.PUMPBTCOMM, "" + answer.contains("\n"));
                     lastCharacteristic = answer
                     radioResponseCountNotified.run()
+                    // T25: no command was running (the OK+CONN waited): write it now
+                    if (bannerEnd && currentCommand == null && listenAfterDropUntil == 0L) nextCommand()
+                    // T26: the first messages after a reconnect in the wake-up phase decide what happens
+                    if (listenAfterDropUntil > 0L) onMessageAfterDrop(previousChunk, answer)
                 }
             }
 
@@ -2410,6 +2525,15 @@ class MedLinkBLE //extends RileyLinkBLE
                             )
                         }
                         commandQueueBusy = CommandQueueBusy(false)
+                        // T26: a drop while the MedLink wakes the pump: reconnect after 2 s and only listen.
+                        // Only the phase counts, not the "connected" flag (it was set by an earlier powerdown 20).
+                        val dropAt = System.currentTimeMillis()
+                        if (MedLinkWakeupDropRule.isWakeupDrop(wakeupSince, dropAt)) {
+                            reconnectNotBefore = dropAt + MedLinkWakeupDropRule.RECONNECT_DELAY_MS
+                            listenAfterDropUntil = reconnectNotBefore + MedLinkWakeupDropRule.LISTEN_MS
+                            aapsLogger.info(LTag.PUMPBTCOMM, "drop in the wakeup phase: reconnect in 2 s, then wait for messages")
+                        }
+                        wakeupSince = 0L
                         aapsLogger.info(LTag.PUMPBTCOMM, "Disconnecting")
                         close(true)
                         aapsLogger.warn(LTag.PUMPBTCOMM, "MedLink Disconnected.")
@@ -2581,6 +2705,7 @@ class MedLinkBLE //extends RileyLinkBLE
                         medLinkUtil!!.sendBroadcastMessage(message, context)
                         servicesDiscovered = true
                         commandQueueBusy = CommandQueueBusy(false)
+                        gattReadyAt = System.currentTimeMillis() // T25: the MedLink banner comes after this
                         enableNotifications()
                         //                        nextCommand();
                     } else {
