@@ -18,8 +18,11 @@ enum class GlassSlot {
  */
 data class GlassPillLayout(val left: List<GlassSlot>, val right: List<GlassSlot>, val rows: List<List<GlassSlot>>)
 
-/** Pills that fit beside the ring in one column (the ring is about 3 pill rows tall). */
-const val GLASS_SLOTS_BESIDE_RING = 3
+/**
+ * Pills beside the ring in one column. T30 (user, 2026-11-17): 4 (was 3). 4 pills are a little taller than the ring
+ * (130 dp); the ring keeps its place and the pills their size. With 6 pills or less nothing changes.
+ */
+const val GLASS_SLOTS_BESIDE_RING = 4
 
 /** Pills in one row below the ring (the same 3 columns as the top: left, under the ring, right). */
 const val GLASS_PILLS_PER_ROW = 3

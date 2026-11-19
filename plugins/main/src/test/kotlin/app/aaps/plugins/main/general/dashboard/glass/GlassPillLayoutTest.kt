@@ -69,11 +69,52 @@ class GlassPillLayoutTest {
     // ---- where they go ----
 
     @Test
-    fun `sketch A with the battery pill - 3 and 3 beside the ring, one row of 2`() {
+    fun `sketch A with the battery pill - 8 pills - 4 and 4 beside the ring, no row (T30)`() {
         val layout = layoutGlassPills(listOf(CANNULA, BATTERY_PAIR, TBR, DELIVERED, SENSOR, TARGET, LAST_BOLUS, TOOLS))
-        assertThat(layout.left).containsExactly(CANNULA, BATTERY_PAIR, TBR).inOrder()
-        assertThat(layout.right).containsExactly(DELIVERED, SENSOR, TARGET).inOrder()
-        assertThat(layout.rows).containsExactly(listOf(LAST_BOLUS, TOOLS))
+        assertThat(layout.left).containsExactly(CANNULA, BATTERY_PAIR, TBR, DELIVERED).inOrder()
+        assertThat(layout.right).containsExactly(SENSOR, TARGET, LAST_BOLUS, TOOLS).inOrder()
+        assertThat(layout.rows).isEmpty()
+    }
+
+    @Test
+    fun `T30 sketch - all pills with MedLink, insulin age and reservoir in one pill`() {
+        val shown = listOf(RESERVOIR_PAIR, CANNULA, BATTERY_PAIR, TBR, DELIVERED, SENSOR, LOOP, ACTIVITY, TARGET, LAST_BOLUS, IOB, LAST_CARBS, TOOLS)
+        val layout = layoutGlassPills(shown)
+        assertThat(layout.left).containsExactly(RESERVOIR_PAIR, CANNULA, BATTERY_PAIR, TBR).inOrder()
+        assertThat(layout.right).containsExactly(DELIVERED, SENSOR, LOOP, ACTIVITY).inOrder()
+        assertThat(layout.rows).containsExactly(listOf(TARGET, LAST_BOLUS, IOB), listOf(LAST_CARBS, TOOLS)).inOrder()
+    }
+
+    @Test
+    fun `T30 sketch - default selection with MedLink, 7 pills - 4 and 3 beside the ring`() {
+        val layout = layoutGlassPills(listOf(RESERVOIR, CANNULA, BATTERY_PAIR, SENSOR, LOOP, ACTIVITY, TOOLS))
+        assertThat(layout.left).containsExactly(RESERVOIR, CANNULA, BATTERY_PAIR, SENSOR).inOrder()
+        assertThat(layout.right).containsExactly(LOOP, ACTIVITY, TOOLS).inOrder()
+        assertThat(layout.rows).isEmpty()
+    }
+
+    @Test
+    fun `T30 - 7, 8, 9, 11 and 12 pills - beside the ring first, then full rows of 3`() {
+        val expected = mapOf(7 to Triple(4, 3, listOf<Int>()), 8 to Triple(4, 4, listOf()), 9 to Triple(4, 4, listOf(1)),
+            11 to Triple(4, 4, listOf(3)), 12 to Triple(4, 4, listOf(3, 1)))
+        for ((n, e) in expected) {
+            val shown = GlassSlot.entries.take(n)
+            val layout = layoutGlassPills(shown)
+            assertThat(layout.left).hasSize(e.first)
+            assertThat(layout.right).hasSize(e.second)
+            assertThat(layout.rows.map { it.size }).containsExactlyElementsIn(e.third).inOrder()
+            assertThat(layout.left + layout.right + layout.rows.flatten()).containsExactlyElementsIn(shown).inOrder()
+        }
+    }
+
+    @Test
+    fun `T30 - 6 pills or less - the same as before (3 and 3 at most, no row)`() {
+        for (n in 1..6) {
+            val layout = layoutGlassPills(GlassSlot.entries.take(n))
+            assertThat(layout.left.size).isAtMost(3)
+            assertThat(layout.right.size).isAtMost(3)
+            assertThat(layout.rows).isEmpty()
+        }
     }
 
     @Test
@@ -84,7 +125,7 @@ class GlassPillLayoutTest {
 
     @Test
     fun `odd and even counts - the columns differ by at most one, left first`() {
-        for (n in 1..6) {
+        for (n in 1..8) {
             val layout = layoutGlassPills(GlassSlot.entries.take(n))
             assertThat(layout.left.size - layout.right.size).isIn(listOf(0, 1))
             assertThat(layout.rows).isEmpty()
@@ -94,9 +135,9 @@ class GlassPillLayoutTest {
     @Test
     fun `more pills than the slots beside the ring - full rows first, the last row may be shorter`() {
         val layout = layoutGlassPills(GlassSlot.entries.toList())
-        assertThat(layout.left).hasSize(3)
-        assertThat(layout.right).hasSize(3)
-        assertThat(layout.rows.map { it.size }).containsExactly(3, 3, 3, 1).inOrder()
+        assertThat(layout.left).hasSize(4)
+        assertThat(layout.right).hasSize(4)
+        assertThat(layout.rows.map { it.size }).containsExactly(3, 3, 2).inOrder()
     }
 
     @Test
