@@ -1,7 +1,6 @@
 package app.aaps.pump.medtronic.data.dto
 
 import com.google.gson.annotations.Expose
-import org.joda.time.Instant
 import org.joda.time.LocalDateTime
 import java.util.concurrent.LinkedBlockingDeque
 
@@ -145,18 +144,5 @@ class TempBasalMicrobolusOperations {
         if (shouldBeSuspended) return true
         val oper = firstOrNull() ?: return false
         return oper.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE || absoluteRate == 0.0
-    }
-    /**
-     * Release time of the first op when it is a REACTIVATE, epoch 0 for another op, null with no ops.
-     * 4ae: was `operations.first`, which threw NoSuchElementException on an empty plan (logs/looplock.log).
-     */
-    fun reactivateTime(): LocalDateTime? {
-        val operation = operations.peekFirst() ?: return null
-        return if (operation.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE) {
-            operation.releaseTime
-        } else
-            Instant
-                .ofEpochMilli( 0L ).toDateTime()
-                .toLocalDateTime()
     }
 }

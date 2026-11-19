@@ -200,7 +200,6 @@ import org.joda.time.DateTime
 import org.joda.time.DateTimeZone
 import org.joda.time.Instant
 import org.joda.time.LocalDateTime
-import org.joda.time.Period
 import org.joda.time.Seconds
 import org.json.JSONObject
 import java.lang.Math.round
@@ -2218,11 +2217,6 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 aapsLogger.info(LTag.EVENTS, "" + medLinkBaseBasalRate)
                 aapsLogger.info(LTag.EVENTS, "" + absoluteRate)
                 aapsLogger.info(LTag.EVENTS, "" + pumpDescription.bolusStep)
-                val shouldExtend = tempBasalMicrobolusOperations.operations.isNotEmpty()
-                var previousReactivate: LocalDateTime? = null
-                if (shouldExtend) {
-                    previousReactivate = tempBasalMicrobolusOperations.reactivateTime()
-                }
                 tempBasalMicrobolusOperations.clearOperations()
                 val result = scheduleSuspension(
                     0, durationInMinutes, profile, callback,
@@ -2233,14 +2227,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 if(tempBasalMicrobolusOperations.operations.isEmpty()){
                     clearTempBasal()
                 }
-                // 4ae: the new plan can be empty (too few suspended minutes, cleared above): nothing to extend
-                if (shouldExtend) {
-                    val currentReactivate = tempBasalMicrobolusOperations.reactivateTime()
-                    if (currentReactivate != null && previousReactivate != null && currentReactivate.isAfter(previousReactivate)) {
-                        val duration = Period.fieldDifference(currentReactivate, previousReactivate)
-                        extendBasalTreatment(duration.minutes, callback)
-                    }
-                }
+                // Plan carry fix (field 2026-11-16 02:31:44): no "extend" of the old plan here any more. The new plan already
+                // has its REACTIVATE at the right time (built from now for the whole TBR). The old block set that REACTIVATE
+                // to now + (new - old REACTIVATE) minutes, about now: STOP and START 4 s apart.
                 result
             } else {
                 aapsLogger.info(LTag.EVENTS, "bolusingbasal")
