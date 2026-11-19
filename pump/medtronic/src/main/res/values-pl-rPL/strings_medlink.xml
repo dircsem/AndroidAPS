@@ -7,7 +7,7 @@
     <string name="medlink_bolus_stopped_partial">Bolus zatrzymany: podano %1$s z %2$s</string>
     <string name="medlink_bolus_stopped_unknown">Bolus zatrzymany: podana ilość nie jest znana. Sprawdź historię pompy.</string>
     <string name="medlink_command_with_code">%1$s - %2$s</string>
-    <string name="medlink_next_tbr_bolus">Bolus %1$s %2$s</string>
+    <string name="medlink_next_tbr_bolus">TBR %1$.2fU %2$s</string>
     <string name="medlink_next_suspend">Wstrzymanie %1$s</string>
     <string name="medlink_next_reactivate">Wznowienie pompy %1$s</string>
     <string name="medlink_tbr_display_minutes">Wykres bazy: minuty bloku</string>

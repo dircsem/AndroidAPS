@@ -7,7 +7,7 @@
     <string name="medlink_bolus_stopped_partial">Болюс остановлен: введено %1$s из %2$s</string>
     <string name="medlink_bolus_stopped_unknown">Болюс остановлен: введённое количество неизвестно. Проверьте историю помпы.</string>
     <string name="medlink_command_with_code">%1$s - %2$s</string>
-    <string name="medlink_next_tbr_bolus">Болюс %1$s %2$s</string>
+    <string name="medlink_next_tbr_bolus">TBR %1$.2fU %2$s</string>
     <string name="medlink_next_suspend">Остановка %1$s</string>
     <string name="medlink_next_reactivate">Запуск помпы %1$s</string>
     <string name="medlink_tbr_display_minutes">График базала: минуты блока</string>

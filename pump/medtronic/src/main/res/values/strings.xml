@@ -192,7 +192,7 @@
     <string name="medlink_min_battery_for_suspend" formatted="false">Minimum battery for suspension (%)</string>
     <string name="medlink_min_battery_for_suspend_summary" formatted="false">No suspension (temp basal below 100%) when the MedLink or the phone battery is at or below this value. A red message shows it in the status bar.</string>
     <string name="medlink_command_with_code" comment="MedLink command now running. %1$s=command code, example: M. %2$s=what it does, example: Read bolus status">%1$s - %2$s</string>
-    <string name="medlink_next_tbr_bolus" comment="Next operation of the temp basal plan. %1$s=dose with unit, example: 0.10 U. %2$s=time, example: 15:15">Bolus %1$s %2$s</string>
+    <string name="medlink_next_tbr_bolus" comment="Next operation of the temp basal plan. %1$.2f=dose in units, the U follows with no space, example: 0.10U. %2$s=time, example: 15:15. Short: the line has little space">TBR %1$.2fU %2$s</string>
     <string name="medlink_next_suspend" comment="Next operation of the temp basal plan: stop the pump. %1$s=time, example: 15:10">Suspend %1$s</string>
     <string name="medlink_next_reactivate" comment="Next operation of the temp basal plan: start the pump again. %1$s=time, example: 15:25">Start pump %1$s</string>
     <string name="medlink_tbr_display_minutes">Basal graph: block minutes</string>

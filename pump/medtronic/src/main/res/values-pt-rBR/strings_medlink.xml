@@ -7,7 +7,7 @@
     <string name="medlink_bolus_stopped_partial">Bólus parado: %1$s de %2$s entregues</string>
     <string name="medlink_bolus_stopped_unknown">Bólus parado: a quantidade entregue não é conhecida. Verifique o histórico da bomba.</string>
     <string name="medlink_command_with_code">%1$s - %2$s</string>
-    <string name="medlink_next_tbr_bolus">Bólus %1$s %2$s</string>
+    <string name="medlink_next_tbr_bolus">TBR %1$.2fU %2$s</string>
     <string name="medlink_next_suspend">Suspender %1$s</string>
     <string name="medlink_next_reactivate">Ligar bomba %1$s</string>
     <string name="medlink_tbr_display_minutes">Gráfico de basal: minutos do bloco</string>

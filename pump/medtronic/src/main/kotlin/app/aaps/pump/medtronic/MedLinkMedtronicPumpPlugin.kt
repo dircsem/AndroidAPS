@@ -5249,7 +5249,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             ?: return nextScheduledCommand()?.takeIf { it.isNotBlank() }
         val time = op.releaseTime.toString("HH:mm")
         return when (op.operationType) {
-            TempBasalMicroBolusPair.OperationType.BOLUS      -> rh.gs(R.string.medlink_next_tbr_bolus, rh.gs(app.aaps.core.ui.R.string.format_insulin_units, op.dose), time)
+            TempBasalMicroBolusPair.OperationType.BOLUS      -> rh.gs(R.string.medlink_next_tbr_bolus, op.dose, time)
             TempBasalMicroBolusPair.OperationType.SUSPEND    -> rh.gs(R.string.medlink_next_suspend, time)
             TempBasalMicroBolusPair.OperationType.REACTIVATE -> rh.gs(R.string.medlink_next_reactivate, time)
         }
