@@ -11,11 +11,17 @@ import kotlin.math.roundToInt
  *
  * @param rate delivered basal in U/h
  * @param percent of the profile basal in the same time (100 = no change)
- * @param minutes time used (MedLink setting "Main screen TBR: minutes")
+ * @param minutes time used ([PILL_MINUTES] for the TBR pill / "Last 30 min" chip)
  */
 data class MedLinkDeliveredBasal(val rate: Double, val percent: Int, val minutes: Int) {
 
     companion object {
+
+        /**
+         * Time of the TBR pill / "Last 30 min" chip: always 30 min (user, 2026-11-18). The MedLink setting
+         * "Main screen TBR: minutes" changes only the blocks of the basal graph, not this value.
+         */
+        const val PILL_MINUTES = 30
 
         private const val MINUTE_MS = 60_000L
         private const val HOUR_MS = 3_600_000.0

@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview
 
+import java.time.ZoneId
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.BS
@@ -108,6 +109,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -340,6 +342,14 @@ class OverviewDataCacheImpl @AssistedInject constructor(
                     aapsLogger.debug(LTag.UI, "Units changed, refreshing BgInfo and TempTarget")
                     updateBgInfoFromDatabase()
                     updateTempTargetFromDatabase()
+                }
+            }
+
+            // MedLink (T31): the basal graph blocks follow "Basal graph: block minutes"; redraw at once when it changes
+            scope.launch {
+                (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.tbrDisplayMinutesFlow()?.drop(1)?.collect {
+                    aapsLogger.debug(LTag.UI, "MedLink TBR minutes changed to $it, rebuilding the basal graph")
+                    rebuildBasalGraph()
                 }
             }
 
@@ -714,7 +724,7 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         val medLinkTbr = medLinkPump?.runningTempBasal(now)
         // MedLink: basal delivered in the last minutes, for the "Last 30 min" chip
         val medLinkDelivered = medLinkPump?.let {
-            MedLinkDeliveredBasal.calculate(now, it.tbrDisplayMinutes(), profileFunction, iobCobCalculator, persistenceLayer)
+            MedLinkDeliveredBasal.calculate(now, MedLinkDeliveredBasal.PILL_MINUTES, profileFunction, iobCobCalculator, persistenceLayer)
         }
         if (medLinkTbr != null) {
             val medLinkState = when {
@@ -990,7 +1000,8 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         var lastActualBasal = -1.0
         var maxBasal = 0.0
 
-        // MedLink: the past part of the actual basal is drawn as delivered insulin in 30 min blocks (see medLinkDeliveredBlocks)
+        // MedLink: the past part of the actual basal is drawn as delivered insulin in blocks of the setting
+        // "Basal graph: block minutes" (T31, MedLinkBasalBlocks)
         val medLink = isMedLinkPump()
         val now = dateUtil.now()
         val pastMinuteRates = mutableListOf<Pair<Long, Double>>()
@@ -1024,7 +1035,9 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         if (pastMinuteRates.isNotEmpty()) {
             val tbrBoluses = persistenceLayer.getBolusesFromTimeToTime(fromTime, now, true)
                 .filter { it.isValid && it.type == BS.Type.TBR }
-            val blocks = medLinkDeliveredBlocks(pastMinuteRates, tbrBoluses)
+            val blocks = MedLinkBasalBlocks.blocks(
+                pastMinuteRates, tbrBoluses.map { it.timestamp to it.amount }, medLinkBlockMinutes(), ZoneId.systemDefault()
+            ).map { GraphDataPoint(it.first, it.second) }
             blocks.forEach { maxBasal = max(maxBasal, it.value) }
             // blocks are in the past: they go before the points from now on
             actualBasal.addAll(0, blocks)
@@ -1043,21 +1056,9 @@ class OverviewDataCacheImpl @AssistedInject constructor(
             it == PumpType.MEDLINK_MEDTRONIC_523_723_REVEL || it == PumpType.MEDLINK_MEDTRONIC_554_754_VEO
         }
 
-    /**
-     * MedLink makes a temp basal with TBR microboluses (more than 100 %) and suspensions (less than 100 %, stored as
-     * a 0 U/h temp basal). A line of the temp basal rate alone does not show the microboluses, so for each 30 min block
-     * this returns the insulin really delivered in it as a rate:
-     * (basal line insulin, suspensions included + TBR microboluses) / block length.
-     * Blocks are aligned to :00 and :30; the first and the last block can be shorter (start of the graph, now).
-     */
-    private fun medLinkDeliveredBlocks(minuteRates: List<Pair<Long, Double>>, tbrBoluses: List<BS>): List<GraphDataPoint> =
-        minuteRates.groupBy { it.first / MEDLINK_BLOCK_MS }.values.map { minutes ->
-            val start = minutes.first().first
-            val end = minutes.last().first + 60 * 1000L
-            val basalUnits = minutes.sumOf { it.second } / 60.0
-            val bolusUnits = tbrBoluses.filter { it.timestamp in start until end }.sumOf { it.amount }
-            GraphDataPoint(start, (basalUnits + bolusUnits) * 60.0 / minutes.size)
-        }
+    /** MedLink (T31): block length of the basal graph (setting "Basal graph: block minutes"); 30 when the pump is not MedLink. */
+    private fun medLinkBlockMinutes(): Int =
+        (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.tbrDisplayMinutes() ?: 30
 
     // =========================================================================
     // NSClient status rebuild
@@ -1211,5 +1212,3 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         _calcProgressFlow.value = 100
     }
 }
-/** MedLink basal graph: length of a block of delivered insulin (`medLinkDeliveredBlocks`). */
-private const val MEDLINK_BLOCK_MS = 30 * 60 * 1000L

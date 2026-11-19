@@ -195,8 +195,8 @@
     <string name="medlink_next_tbr_bolus" comment="Next operation of the temp basal plan. %1$s=dose with unit, example: 0.10 U. %2$s=time, example: 15:15">Bolus %1$s %2$s</string>
     <string name="medlink_next_suspend" comment="Next operation of the temp basal plan: stop the pump. %1$s=time, example: 15:10">Suspend %1$s</string>
     <string name="medlink_next_reactivate" comment="Next operation of the temp basal plan: start the pump again. %1$s=time, example: 15:25">Start pump %1$s</string>
-    <string name="medlink_tbr_display_minutes">Main screen TBR: minutes</string>
-    <string name="medlink_tbr_display_minutes_summary">The TBR rate on the main screen is the basal delivered in this many minutes, taken from the AAPS database (temp basals, suspensions and TBR microboluses). Default 30 min.</string>
+    <string name="medlink_tbr_display_minutes">Basal graph: block minutes</string>
+    <string name="medlink_tbr_display_minutes_summary">Length of the blocks of the basal graph on the main screen, starting at :00. Each block shows the basal delivered in it, from the AAPS database (temp basals, suspensions and TBR microboluses). The TBR value on the main screen always uses the last 30 min. Default 30 min.</string>
     <string name="medlink_tbr_bolus_interval">TBR bolus interval (min)</string>
     <string name="medlink_tbr_bolus_interval_summary">Minimum time between two TBR boluses. The TBR plan spaces its boluses by this time, and a TBR bolus is not sent when the last TBR or manual bolus was less than this time ago. SMBs use the SMB interval of the loop.</string>
     <string name="medlink_command_attempts">Command attempts</string>

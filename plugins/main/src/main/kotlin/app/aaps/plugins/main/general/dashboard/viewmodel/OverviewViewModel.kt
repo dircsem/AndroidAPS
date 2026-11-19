@@ -683,12 +683,12 @@ class OverviewViewModel(
             scheduledBasalRateUh = scheduledBasalRateUh,
         )
         // MedLink: a temp basal above 100 % is TBR microboluses (no temp basal row). The TBR values below use the
-        // running plan; the "Last 30 min" box uses the basal delivered in the last minutes, from the database
-        // (MedLink setting "Main screen TBR: minutes"). Keep this when merging upstream.
+        // running plan; the "Last 30 min" box uses the basal delivered in the last 30 min, from the database
+        // (always 30 min; the MedLink setting "Main screen TBR: minutes" is only for the basal graph). Keep this when merging upstream.
         val medLinkPump = activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase
         val medLinkRunning = medLinkPump?.runningTempBasal(now)
         val medLinkDelivered = medLinkPump?.let {
-            MedLinkDeliveredBasal.calculate(now, it.tbrDisplayMinutes(), profileFunction, iobCobCalculator, persistenceLayer)
+            MedLinkDeliveredBasal.calculate(now, MedLinkDeliveredBasal.PILL_MINUTES, profileFunction, iobCobCalculator, persistenceLayer)
         }
         // MedLink: 3 decimals (Medtronic steps are 0.025 U/h); other pumps as upstream
         val basalRateFormat = if (medLinkPump != null) app.aaps.core.ui.R.string.pump_basal_rate_3_decimals else app.aaps.core.ui.R.string.pump_base_basal_rate

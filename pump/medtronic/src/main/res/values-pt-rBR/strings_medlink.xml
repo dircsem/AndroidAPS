@@ -10,8 +10,8 @@
     <string name="medlink_next_tbr_bolus">Bólus %1$s %2$s</string>
     <string name="medlink_next_suspend">Suspender %1$s</string>
     <string name="medlink_next_reactivate">Ligar bomba %1$s</string>
-    <string name="medlink_tbr_display_minutes">TBR na tela principal: minutos</string>
-    <string name="medlink_tbr_display_minutes_summary">A taxa de TBR na tela principal é a basal entregue nestes minutos, tirada do banco de dados do AAPS (basais temporárias, suspensões e microbólus de TBR). Padrão 30 min.</string>
+    <string name="medlink_tbr_display_minutes">Gráfico de basal: minutos do bloco</string>
+    <string name="medlink_tbr_display_minutes_summary">Tamanho dos blocos do gráfico de basal na tela principal, começando em :00. Cada bloco mostra a basal entregue nele, tirada do banco de dados do AAPS (basais temporárias, suspensões e microbolus de TBR). O valor de TBR na tela principal usa sempre os últimos 30 min. Padrão 30 min.</string>
     <string name="medlink_pump_profile_changed_title">Perfil da bomba mudou</string>
     <string name="medlink_pump_profile_differs_update">O perfil da bomba é diferente do perfil do AAPS:\n%1$s\nAtualizar o AAPS com o perfil da bomba?</string>
     <string name="medlink_pump_profile_not_on_hour">O perfil da bomba é diferente do perfil do AAPS:\n%1$s\nO perfil da bomba tem horários fora da hora cheia (%2$s). Os perfis do AAPS usam horas cheias, então o AAPS não pode usar este perfil. Mude estes horários na bomba para horas cheias.</string>

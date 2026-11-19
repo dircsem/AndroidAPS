@@ -12,6 +12,7 @@ import app.aaps.pump.medtronic.data.MedLinkResumeRule
 import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkLoopBolusMerge
 import app.aaps.pump.medtronic.data.MedLinkSentBolusKinds
+import app.aaps.pump.medtronic.data.MedLinkTbrDisplayMinutes
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +29,9 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.compose.icons.IcPluginMedtronic
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.keys.interfaces.withEntries
@@ -5226,7 +5229,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         )
     }
 
-    override fun tbrDisplayMinutes(): Int = preferences.get(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes)
+    // T31: only 5 / 10 / 15 / 30 / 60 / 120 (graph blocks start at local :00); an old free value is snapped down
+    override fun tbrDisplayMinutes(): Int = MedLinkTbrDisplayMinutes.snap(preferences.get(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes))
+
+    override fun tbrDisplayMinutesFlow(): Flow<Int> =
+        preferences.observe(MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes).map { MedLinkTbrDisplayMinutes.snap(it) }
 
     override fun currentCommandText(): String? {
         val ble = medLinkMedtronicService?.medLinkBLE ?: return null
@@ -5423,7 +5430,10 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             MedtronicBooleanPreferenceKey.SetNeutralTemp,
             MedLinkMedtronicIntPreferenceKey.CommandAttempts,
             MedLinkMedtronicIntPreferenceKey.MinBatteryForSuspend,
-            MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes,
+            // T31: a list of the allowed values, not a free number
+            MedLinkMedtronicIntPreferenceKey.TbrDisplayMinutes.withEntries(
+                MedLinkTbrDisplayMinutes.ALLOWED.associateWith { rh.gs(app.aaps.core.ui.R.string.format_mins, it) }
+            ),
             MedLinkMedtronicIntPreferenceKey.TbrBolusInterval,
             MedLinkMedtronicBooleanPreferenceKey.MinBasalAfterBolusEnabled,
             MedLinkMedtronicIntPreferenceKey.MinBasalAfterBolusPercent,

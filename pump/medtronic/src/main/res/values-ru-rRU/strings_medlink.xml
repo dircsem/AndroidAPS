@@ -10,8 +10,8 @@
     <string name="medlink_next_tbr_bolus">Болюс %1$s %2$s</string>
     <string name="medlink_next_suspend">Остановка %1$s</string>
     <string name="medlink_next_reactivate">Запуск помпы %1$s</string>
-    <string name="medlink_tbr_display_minutes">TBR на главном экране: минуты</string>
-    <string name="medlink_tbr_display_minutes_summary">Скорость TBR на главном экране — это базал, введённый за столько минут, по базе данных AAPS (временные базалы, остановки и микроболюсы TBR). По умолчанию 30 мин.</string>
+    <string name="medlink_tbr_display_minutes">График базала: минуты блока</string>
+    <string name="medlink_tbr_display_minutes_summary">Длина блоков графика базала на главном экране, начиная с :00. Каждый блок показывает базал, введённый в нём, по базе данных AAPS (временные базалы, остановки и микроболюсы TBR). Значение TBR на главном экране всегда использует последние 30 мин. По умолчанию 30 мин.</string>
     <string name="medlink_pump_profile_changed_title">Профиль в помпе изменён</string>
     <string name="medlink_pump_profile_differs_update">Профиль в помпе отличается от профиля AAPS:\n%1$s\nОбновить AAPS профилем из помпы?</string>
     <string name="medlink_pump_profile_not_on_hour">Профиль в помпе отличается от профиля AAPS:\n%1$s\nВ профиле помпы есть время не на целый час (%2$s). Профили AAPS используют только целые часы, поэтому AAPS не может взять этот профиль. Измените это время в помпе на целые часы.</string>

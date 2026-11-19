@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.keys.interfaces.Preferences
+import kotlinx.coroutines.flow.Flow
 
 interface MedLinkPumpPluginBase {
 
@@ -66,10 +67,14 @@ interface MedLinkPumpPluginBase {
     fun runningTempBasal(now: Long): MedLinkRunningTempBasal? = null
 
     /**
-     * MedLink setting "Main screen TBR: minutes": the main screen shows as TBR the basal delivered in this many
-     * minutes, calculated from the database (temp basals / suspensions + TBR microboluses).
+     * MedLink setting "Basal graph: block minutes" (T31): length of the blocks of the main screen basal graph, each
+     * block = the basal delivered in it, from the database (temp basals / suspensions + TBR microboluses). The TBR
+     * pill always uses 30 min (`MedLinkDeliveredBasal.PILL_MINUTES`).
      */
     fun tbrDisplayMinutes(): Int = 30
+
+    /** T31: [tbrDisplayMinutes] and every later change of it (the basal graph redraws at once); null = never changes. */
+    fun tbrDisplayMinutesFlow(): Flow<Int>? = null
 
     /** Main screen: the MedLink command running now, for example "M - Read bolus status"; null when idle. */
     fun currentCommandText(): String? = null

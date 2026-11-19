@@ -10,8 +10,8 @@
     <string name="medlink_next_tbr_bolus">Bolus %1$s %2$s</string>
     <string name="medlink_next_suspend">Wstrzymanie %1$s</string>
     <string name="medlink_next_reactivate">Wznowienie pompy %1$s</string>
-    <string name="medlink_tbr_display_minutes">TBR na ekranie głównym: minuty</string>
-    <string name="medlink_tbr_display_minutes_summary">Dawka TBR na ekranie głównym to baza podana w tylu minutach, z bazy danych AAPS (bazy tymczasowe, wstrzymania i mikrobolusy TBR). Domyślnie 30 min.</string>
+    <string name="medlink_tbr_display_minutes">Wykres bazy: minuty bloku</string>
+    <string name="medlink_tbr_display_minutes_summary">Długość bloków wykresu bazy na ekranie głównym, zaczynających się o :00. Każdy blok pokazuje bazę podaną w nim, z bazy danych AAPS (bazy tymczasowe, wstrzymania i mikrobolusy TBR). Wartość TBR na ekranie głównym zawsze używa ostatnich 30 min. Domyślnie 30 min.</string>
     <string name="medlink_pump_profile_changed_title">Profil w pompie zmieniony</string>
     <string name="medlink_pump_profile_differs_update">Profil w pompie różni się od profilu AAPS:\n%1$s\nZaktualizować AAPS profilem z pompy?</string>
     <string name="medlink_pump_profile_not_on_hour">Profil w pompie różni się od profilu AAPS:\n%1$s\nProfil w pompie ma godziny, które nie są pełne (%2$s). Profile AAPS używają pełnych godzin, więc AAPS nie może przyjąć tego profilu. Zmień te godziny w pompie na pełne.</string>
