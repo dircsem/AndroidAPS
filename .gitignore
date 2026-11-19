@@ -43,6 +43,7 @@ wear/watchfacepush/pumpcontrol/*
 .claude/settings.local.json
 /CLAUDE.md
 /logs/
+/backlog/
 .claude/CLAUDE_COMMANDS.md
 .aider*
 tmpclaude-*
