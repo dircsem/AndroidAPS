@@ -143,13 +143,20 @@ internal fun StatusAgoraCard(
                     modifier = Modifier.weight(TIR_COLUMN_WEIGHT).offset(y = TIR_RING_LIFT),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // T22: the whole ring is the touch target (big enough for shaky hands). The tap only opens the
-                    // running mode screen; the BOLUS protection asks first. No long press here.
+                    // T22: the whole ring is the touch target (big enough for shaky hands). Same as the loop pill
+                    // (user, 2026-11-19): tap = loop dashboard, long press = running mode screen (loop modes, suspend,
+                    // pump disconnect); the BOLUS protection asks first. Screens only, no action without a confirm.
                     Box(
                         modifier = Modifier
                             .size(TIR_RING_SIZE)
                             .clip(CircleShape)
-                            .clickable(role = Role.Button, onClickLabel = stringResource(CoreUiR.string.running_mode)) { onOpenRunningMode() },
+                            .combinedClickable(
+                                role = Role.Button,
+                                onClickLabel = stringResource(R.string.dashboard_glass_loop_dashboard_title),
+                                onLongClickLabel = stringResource(CoreUiR.string.running_mode),
+                                onClick = onOpenLoopDashboard,
+                                onLongClick = onOpenRunningMode
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         TirRing(
