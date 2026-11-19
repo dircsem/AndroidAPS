@@ -4,8 +4,8 @@
 <resources>
     <string name="medlink_profile_read_interval">Leitura do perfil da bomba (horas)</string>
     <string name="medlink_profile_read_interval_summary">A cada quantas horas o perfil da bomba (basal, relações de carboidrato, FSI, alvos) é lido para comparar com o AAPS. Cada leitura ocupa o MedLink por alguns segundos. 0 = sem leitura periódica (ainda lê ao abrir o app, na tela Perfis e quando a basal é diferente). Padrão 6.</string>
-    <string name="medlink_bolus_stopped_partial">Bólus parado: %1$s de %2$s entregues</string>
-    <string name="medlink_bolus_stopped_unknown">Bólus parado: a quantidade entregue não é conhecida. Verifique o histórico da bomba.</string>
+    <string name="medlink_bolus_stopped_partial">Bolus parado: %1$s de %2$s entregues</string>
+    <string name="medlink_bolus_stopped_unknown">Bolus parado: a quantidade entregue não é conhecida. Verifique o histórico da bomba.</string>
     <string name="medlink_command_with_code">%1$s - %2$s</string>
     <string name="medlink_next_tbr_bolus">TBR %1$.2fU %2$s</string>
     <string name="medlink_next_suspend">Suspender %1$s</string>
