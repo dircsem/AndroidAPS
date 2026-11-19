@@ -66,4 +66,15 @@ class GlassAgeSinceTest {
     @Test fun `1 h - 1h`() { assertThat(glassAgeSince(now - 60 * min, now)).isEqualTo(GlassAge(1, GlassAge.AgeUnit.HOURS)) }
     @Test fun `23 h 59 min - 23h`() { assertThat(glassAgeSince(now - (24 * 60 - 1) * min, now)).isEqualTo(GlassAge(23, GlassAge.AgeUnit.HOURS)) }
     @Test fun `over 24 h - days`() { assertThat(glassAgeSince(now - 50 * 60 * min, now)).isEqualTo(GlassAge(2, GlassAge.AgeUnit.DAYS)) }
+
+    // ---- joined reservoir pill: days and hours ----
+
+    @Test fun `days hours - no time or future - null`() {
+        assertThat(glassDaysHoursSince(null, now)).isNull()
+        assertThat(glassDaysHoursSince(now + min, now)).isNull()
+    }
+
+    @Test fun `days hours - just changed - 0 0`() { assertThat(glassDaysHoursSince(now, now)).isEqualTo(GlassDaysHours(0, 0)) }
+    @Test fun `days hours - 23 h 59 min - 0 23`() { assertThat(glassDaysHoursSince(now - (24 * 60 - 1) * min, now)).isEqualTo(GlassDaysHours(0, 23)) }
+    @Test fun `days hours - 51 h 30 min - 2 3`() { assertThat(glassDaysHoursSince(now - (51 * 60 + 30) * min, now)).isEqualTo(GlassDaysHours(2, 3)) }
 }

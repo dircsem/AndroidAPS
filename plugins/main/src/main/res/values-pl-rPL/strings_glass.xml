@@ -21,6 +21,10 @@
     <string name="dashboard_glass_last_carbs_short">Ost. węgl.</string>
     <string name="dashboard_glass_treatment_short">Terapie</string>
     <string name="dashboard_glass_two_values">%1$s·%2$s</string>
+    <string name="dashboard_glass_reservoir_level_label">Zbiornik</string>
+    <string name="dashboard_glass_reservoir_pair_label">Ins. i zb.</string>
+    <string name="dashboard_glass_reservoir_units">%1$s%2$s</string>
+    <string name="dashboard_glass_age_days_hours">%1$d%2$s%3$d</string>
     <string name="dashboard_glass_bolus_with_age">%1$s·%2$s</string>
     <string name="dashboard_glass_age_value">%1$d%2$s</string>
 </resources>

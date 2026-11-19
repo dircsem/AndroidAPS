@@ -10,6 +10,8 @@ import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.LAST_CARBS
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.LOOP
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.BATTERY_PAIR
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.RESERVOIR
+import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.RESERVOIR_LEVEL
+import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.RESERVOIR_PAIR
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.SENSOR
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.TARGET
 import app.aaps.plugins.main.general.dashboard.glass.GlassSlot.TBR
@@ -47,8 +49,21 @@ class GlassPillLayoutTest {
     fun `everything selected - the fixed order`() {
         val shown = shownGlassSlots(GlassPillId.entries, hasMedLinkBattery = true, hasDelivered = true)
         assertThat(shown).containsExactly(
-            RESERVOIR, CANNULA, BATTERY_PAIR, TBR, DELIVERED, SENSOR, LOOP, ACTIVITY, TARGET, LAST_BOLUS, IOB, LAST_CARBS, TOOLS
+            RESERVOIR_PAIR, CANNULA, BATTERY_PAIR, TBR, DELIVERED, SENSOR, LOOP, ACTIVITY, TARGET, LAST_BOLUS, IOB, LAST_CARBS, TOOLS
         ).inOrder()
+    }
+
+    @Test
+    fun `T29 reservoir pill - shown only when selected, first in the pump group`() {
+        assertThat(shownGlassSlots(listOf(GlassPillId.PUMP_RESERVOIR), hasMedLinkBattery = false, hasDelivered = false)).containsExactly(RESERVOIR, TOOLS).inOrder()
+        assertThat(shownGlassSlots(listOf(GlassPillId.RESERVOIR_LEVEL, GlassPillId.CANNULA), hasMedLinkBattery = false, hasDelivered = false))
+            .containsExactly(RESERVOIR_LEVEL, CANNULA, TOOLS).inOrder()
+    }
+
+    @Test
+    fun `insulin age and reservoir level both selected - one pill`() {
+        assertThat(shownGlassSlots(listOf(GlassPillId.RESERVOIR_LEVEL, GlassPillId.PUMP_RESERVOIR, GlassPillId.CANNULA), hasMedLinkBattery = false, hasDelivered = false))
+            .containsExactly(RESERVOIR_PAIR, CANNULA, TOOLS).inOrder()
     }
 
     // ---- where they go ----
@@ -81,7 +96,7 @@ class GlassPillLayoutTest {
         val layout = layoutGlassPills(GlassSlot.entries.toList())
         assertThat(layout.left).hasSize(3)
         assertThat(layout.right).hasSize(3)
-        assertThat(layout.rows.map { it.size }).containsExactly(3, 3, 2).inOrder()
+        assertThat(layout.rows.map { it.size }).containsExactly(3, 3, 3, 1).inOrder()
     }
 
     @Test

@@ -276,13 +276,20 @@ class StatusViewModel @Inject constructor(
                 decimalFormatter.to0Decimal(reservoirLevel, insulinUnit)
             }
         } else null
+        // MedLink fork: the same number without the unit, for the Glass pills
+        val levelNumber: String? = if (reservoirLevel > 0) {
+            if (!config.AAPSCLIENT && isPatchPump && reservoirLevel >= maxReading) "${decimalFormatter.to0Decimal(maxReading)}+"
+            else decimalFormatter.to0Decimal(reservoirLevel)
+        } else null
 
         return StatusItem(
             label = rh.gs(R.string.insulin_label),
             age = event?.let { formatAge(it.timestamp) } ?: "-",
+            ageTimestamp = event?.timestamp,
             ageStatus = event?.let { getAgeStatus(it.timestamp, IntKey.OverviewIageWarning, IntKey.OverviewIageCritical) } ?: StatusLevel.UNSPECIFIED,
             agePercent = event?.let { getAgePercent(it.timestamp, IntKey.OverviewIageCritical) } ?: 0f,
             level = level,
+            levelNumber = levelNumber,
             levelStatus = if (reservoirLevel > 0) getLevelStatus(reservoirLevel, IntKey.OverviewResWarning, IntKey.OverviewResCritical) else StatusLevel.UNSPECIFIED,
             levelPercent = -1f, // No progress bar - reservoir sizes vary by pump
             icon = IcPumpCartridge,

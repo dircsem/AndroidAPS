@@ -9,6 +9,9 @@ import app.aaps.plugins.main.general.dashboard.DashboardV2ToolAction
 enum class GlassPillId {
     IOB, TARGET, BASAL_RATE, LAST_BOLUS, LAST_CARBS,
     PUMP_RESERVOIR, CANNULA, BATTERY, SENSOR, LOOP_STATUS, ACTIVITY,
+
+    /** T29: remaining reservoir (units), colored by the reservoir warning settings. Added last: saved names stay valid. */
+    RESERVOIR_LEVEL,
 }
 
 /** Where a pill renders: the always-shown top grid, or the optional bottom row. */
@@ -39,6 +42,8 @@ val GLASS_PILL_CATALOG: List<GlassPillCatalogEntry> = listOf(
     GlassPillCatalogEntry(GlassPillId.SENSOR, R.string.dashboard_glass_personalize_sensor_label, GlassPillLocation.TOP_GRID, defaultSelected = true),
     GlassPillCatalogEntry(GlassPillId.LOOP_STATUS, R.string.dashboard_glass_loop_label, GlassPillLocation.TOP_GRID, defaultSelected = true),
     GlassPillCatalogEntry(GlassPillId.ACTIVITY, R.string.dashboard_glass_activity_label, GlassPillLocation.TOP_GRID, defaultSelected = true),
+    // T29: not selected by default (user, 2026-11-17); the user turns it on in Personalize
+    GlassPillCatalogEntry(GlassPillId.RESERVOIR_LEVEL, R.string.dashboard_glass_reservoir_level_label, GlassPillLocation.TOP_GRID),
 )
 
 /** Parses a comma-joined [StringNonKey.GlassSelectedPills] value, dropping unknown or blank entries. */

@@ -493,8 +493,11 @@ internal fun buildGlassUiState(
         trendArrowRes = status.trendArrowRes,
         timeAgo = status.timeAgo,
         insulinAge = lights?.insulinStatus?.age ?: "--",
-        // T14: a low reservoir colors the pill too (level), not only an old insulin (age): the worse of the two
-        insulinStatus = worseStatusLevel(lights?.insulinStatus?.ageStatus, lights?.insulinStatus?.levelStatus) ?: StatusLevel.UNSPECIFIED,
+        insulinChangedAtMs = lights?.insulinStatus?.ageTimestamp,
+        // T29: the age color only; the reservoir level color is on its own pill (user, 2026-11-17)
+        insulinStatus = lights?.insulinStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
+        reservoirLevelNumber = lights?.insulinStatus?.levelNumber,
+        reservoirLevelStatus = lights?.insulinStatus?.takeIf { it.levelNumber != null }?.levelStatus ?: StatusLevel.UNSPECIFIED,
         cannulaAge = lights?.cannulaStatus?.age ?: "--",
         cannulaAgeStatus = lights?.cannulaStatus?.ageStatus ?: StatusLevel.UNSPECIFIED,
         // B5: level when the pump gives one (else age), colored by the worse of the two, like circle-top

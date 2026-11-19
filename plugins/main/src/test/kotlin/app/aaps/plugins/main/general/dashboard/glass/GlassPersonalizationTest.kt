@@ -26,7 +26,7 @@ class GlassPersonalizationTest {
     }
 
     @Test
-    fun `all 11 catalog entries round-trip through serialize and parse`() {
+    fun `all 12 catalog entries round-trip through serialize and parse`() {
         val allIds = GLASS_PILL_CATALOG.map { it.id }.toSet()
         val serialized = serializeSelectedGlassPills(allIds)
         assertThat(parseSelectedGlassPills(serialized).toSet()).isEqualTo(allIds)
@@ -52,8 +52,24 @@ class GlassPersonalizationTest {
         val topGridIds = GLASS_PILL_CATALOG.filter { it.location == GlassPillLocation.TOP_GRID }.map { it.id }.toSet()
         assertThat(topGridIds).containsExactly(
             GlassPillId.PUMP_RESERVOIR, GlassPillId.CANNULA, GlassPillId.BATTERY,
-            GlassPillId.SENSOR, GlassPillId.LOOP_STATUS, GlassPillId.ACTIVITY,
+            GlassPillId.SENSOR, GlassPillId.LOOP_STATUS, GlassPillId.ACTIVITY, GlassPillId.RESERVOIR_LEVEL,
         )
+    }
+
+    @Test
+    fun `T29 - an old saved selection without the reservoir pill loads as before, the new pill off`() {
+        val old = "PUMP_RESERVOIR,CANNULA,BATTERY,SENSOR,LOOP_STATUS,ACTIVITY,IOB"
+        val parsed = parseSelectedGlassPills(old)
+        assertThat(parsed).doesNotContain(GlassPillId.RESERVOIR_LEVEL)
+        assertThat(parsed).hasSize(7)
+        // the one-time default merge does not turn it on either
+        assertThat(withTopGridDefaultsMerged(parsed.toSet())).doesNotContain(GlassPillId.RESERVOIR_LEVEL)
+    }
+
+    @Test
+    fun `T29 - the reservoir pill is saved and loaded`() {
+        val ids = setOf(GlassPillId.RESERVOIR_LEVEL, GlassPillId.CANNULA)
+        assertThat(parseSelectedGlassPills(serializeSelectedGlassPills(ids)).toSet()).isEqualTo(ids)
     }
 
     @Test

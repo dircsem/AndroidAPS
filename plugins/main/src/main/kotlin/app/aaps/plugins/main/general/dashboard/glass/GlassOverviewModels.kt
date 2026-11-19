@@ -12,8 +12,14 @@ data class GlassUiState(
     val trendArrowRes: Int? = null,
     val timeAgo: String = "--",
     val insulinAge: String = "--",
-    /** Reservoir color: the worse of the insulin age status and the reservoir level status (user, 2026-11-14). */
+    /** When the reservoir was changed; null when unknown. The joined reservoir pill builds its short age from it. */
+    val insulinChangedAtMs: Long? = null,
+    /** Insulin age color: the age status only (T29, user 2026-11-17; the level color moved to [reservoirLevelStatus]). */
     val insulinStatus: StatusLevel = StatusLevel.UNSPECIFIED,
+    /** T29: remaining reservoir, the number only (for example `86`); null when unknown. The card adds the unit. */
+    val reservoirLevelNumber: String? = null,
+    /** T29: the reservoir level status from the settings (OverviewResWarning / OverviewResCritical); none when unknown. */
+    val reservoirLevelStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     val cannulaAge: String = "--",
     val cannulaAgeStatus: StatusLevel = StatusLevel.UNSPECIFIED,
     /** Pump battery: the level when the pump gives one, else the age (B5). */

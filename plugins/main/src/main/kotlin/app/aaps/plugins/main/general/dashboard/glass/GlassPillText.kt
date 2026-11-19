@@ -61,3 +61,16 @@ fun glassAgeSince(atMs: Long?, nowMs: Long): GlassAge? {
         else                 -> GlassAge(minutes / (24L * 60L), GlassAge.AgeUnit.DAYS)
     }
 }
+
+/** A time as whole days and the hours left over (for example 2 days 3 hours). */
+data class GlassDaysHours(val days: Long, val hours: Long)
+
+/**
+ * The time since [atMs] in whole days and hours (rounded down), for the joined reservoir pill (`2d3`).
+ * Null when there is no time or it is in the future.
+ */
+fun glassDaysHoursSince(atMs: Long?, nowMs: Long): GlassDaysHours? {
+    if (atMs == null || atMs > nowMs) return null
+    val hours = (nowMs - atMs) / 3_600_000L
+    return GlassDaysHours(hours / 24L, hours % 24L)
+}

@@ -305,6 +305,12 @@ private fun GlassSlotPill(
             onOpenPump, statusLevelToColor(state.insulinStatus)
         )
 
+        // T29: remaining reservoir, colored by the reservoir warning settings (no color when unknown)
+        GlassSlot.RESERVOIR_LEVEL -> SidePill(
+            stringResource(R.string.dashboard_glass_reservoir_level_label), reservoirLevelText(state), R.drawable.ic_glyco_insulin, isDark,
+            onOpenPump, statusLevelToColor(state.reservoirLevelStatus)
+        )
+
         GlassSlot.CANNULA         -> SidePill(
             stringResource(R.string.dashboard_glass_cannula_age_label), state.cannulaAge, R.drawable.ic_glyco_cannula, isDark,
             onOpenCannula, statusLevelToColor(state.cannulaAgeStatus)
@@ -314,6 +320,19 @@ private fun GlassSlotPill(
             stringResource(R.string.dashboard_glass_pump_battery_short), state.batteryValue, R.drawable.ic_glyco_battery, isDark,
             onOpenBattery, statusLevelToColor(state.batteryStatus)
         )
+
+        // insulin age and reservoir level in ONE pill (user, 2026-11-18), each value in its own warning color.
+        // Short to fit: no hour unit and no insulin unit (`2d3·86`, user 2026-11-18). nowMs keeps the age moving.
+        GlassSlot.RESERVOIR_PAIR  -> {
+            val age = glassDaysHoursSince(state.insulinChangedAtMs, nowMs)?.let {
+                stringResource(R.string.dashboard_glass_age_days_hours, it.days, stringResource(InterfacesR.string.shortday), it.hours)
+            } ?: state.insulinAge
+            TwoValuePill(
+                stringResource(R.string.dashboard_glass_reservoir_pair_label), R.drawable.ic_glyco_insulin, isDark, onOpenPump,
+                age, statusLevelToColor(state.insulinStatus),
+                state.reservoirLevelNumber ?: "--", statusLevelToColor(state.reservoirLevelStatus)
+            )
+        }
 
         // MedLink only: pump and MedLink battery in ONE pill (user, 2026-11-14), each value in its own warning color
         GlassSlot.BATTERY_PAIR    -> TwoValuePill(
@@ -385,6 +404,13 @@ private fun GlassSlotPill(
         )
     }
 }
+
+/** The reservoir level with the unit and no space (for example `86U`), so it fits the small pill; `--` when unknown. */
+@Composable
+private fun reservoirLevelText(state: GlassUiState): String =
+    state.reservoirLevelNumber?.let {
+        stringResource(R.string.dashboard_glass_reservoir_units, it, stringResource(CoreUiR.string.insulin_unit_shortname))
+    } ?: "--"
 
 /**
  * One pill with two values, each value in its own color.

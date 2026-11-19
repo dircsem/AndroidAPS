@@ -6,6 +6,10 @@ import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.CarbsGraphPoint
 import app.aaps.core.interfaces.overview.graph.TreatmentGraphData
 import app.aaps.plugins.main.general.dashboard.viewmodel.StatusCardState
+import app.aaps.core.ui.compose.StatusLevel
+import app.aaps.core.ui.compose.icons.IcPumpCartridge
+import app.aaps.ui.compose.overview.statusLights.StatusItem
+import app.aaps.ui.compose.overview.statusLights.StatusUiState
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
@@ -71,4 +75,33 @@ class GlassUiStateBuilderTest {
         assertThat(state.glucoseTimestampMs).isEqualTo(123_000L)
     }
 
+    // ---- T29: reservoir level pill, insulin age color ----
+
+    private fun lights(level: String?, levelStatus: StatusLevel, ageStatus: StatusLevel = StatusLevel.NORMAL) = StatusUiState(
+        insulinStatus = StatusItem(label = "Insulin", age = "2d", ageTimestamp = 42_000L, ageStatus = ageStatus, levelNumber = level, levelStatus = levelStatus, icon = IcPumpCartridge)
+    )
+
+    @Test
+    fun `reservoir pill - level text and the warning color from the settings`() {
+        for (status in listOf(StatusLevel.NORMAL, StatusLevel.WARNING, StatusLevel.CRITICAL)) {
+            val state = buildGlassUiState(status = minimalStatus(), lights = lights("86", status), treatmentData = treatmentData())
+            assertThat(state.reservoirLevelNumber).isEqualTo("86")
+            assertThat(state.insulinChangedAtMs).isEqualTo(42_000L)
+            assertThat(state.reservoirLevelStatus).isEqualTo(status)
+        }
+    }
+
+    @Test
+    fun `reservoir pill - unknown level - dashes and no color`() {
+        val state = buildGlassUiState(status = minimalStatus(), lights = lights(null, StatusLevel.CRITICAL), treatmentData = treatmentData())
+        assertThat(state.reservoirLevelNumber).isNull()
+        assertThat(state.reservoirLevelStatus).isEqualTo(StatusLevel.UNSPECIFIED)
+    }
+
+    @Test
+    fun `insulin age pill - the age color only, a low reservoir does not color it`() {
+        val state = buildGlassUiState(status = minimalStatus(), lights = lights("5", StatusLevel.CRITICAL, ageStatus = StatusLevel.NORMAL), treatmentData = treatmentData())
+        assertThat(state.insulinStatus).isEqualTo(StatusLevel.NORMAL)
+        assertThat(state.reservoirLevelStatus).isEqualTo(StatusLevel.CRITICAL)
+    }
 }

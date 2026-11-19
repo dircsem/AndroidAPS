@@ -21,6 +21,10 @@
     <string name="dashboard_glass_command_next_line">Próx.: %1$s</string>
     <string name="dashboard_glass_batteries_label" formatted="false">Bomba ML%</string>
     <string name="dashboard_glass_two_values">%1$s·%2$s</string>
+    <string name="dashboard_glass_reservoir_level_label">Reservat.</string>
+    <string name="dashboard_glass_reservoir_pair_label">Ins. e Res.</string>
+    <string name="dashboard_glass_reservoir_units">%1$s%2$s</string>
+    <string name="dashboard_glass_age_days_hours">%1$d%2$s%3$d</string>
     <string name="dashboard_glass_bolus_with_age">%1$s·%2$s</string>
     <string name="dashboard_glass_age_value">%1$d%2$s</string>
 </resources>
