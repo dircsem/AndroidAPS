@@ -57,8 +57,8 @@ internal class RunningModeManagementViewModelTest {
         whenever(persistenceLayer.observeChanges(RM::class.java)).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeChanges(EPS::class.java)).thenReturn(emptyFlow())
         sut = RunningModeManagementViewModel(
-            loop, activePlugin, profileFunction, translator, preferences, persistenceLayer, aapsLogger,
-            rxBus, rh, dateUtil, config, batchExecutor, CoroutineScope(UnconfinedTestDispatcher())
+            loop, activePlugin, profileFunction, translator, rh, preferences, persistenceLayer, aapsLogger,
+            rxBus, dateUtil, config, batchExecutor, CoroutineScope(UnconfinedTestDispatcher())
         )
     }
 

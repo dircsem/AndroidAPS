@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profile.SingleProfile
+import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sync.NsClient
@@ -101,6 +102,8 @@ internal class ProfileManagementViewModelTest {
         // Pairing and reachability are inputs of uiState, so the combine needs real flows here.
         whenever(nsClient.masterOrPairedClientFlow).thenReturn(MutableStateFlow(true))
         whenever(nsClient.masterReachable).thenReturn(MutableStateFlow(true))
+        // MedLink (B6): init asks the active pump for a profile read; a plain pump (not MedLink) does nothing
+        whenever(activePlugin.activePump).thenReturn(mock<PumpWithConcentration>())
         sut = ProfileManagementViewModel(
             profileRepository, profileFunction, rh, dateUtil, aapsLogger, activePlugin,
             profileUtil, decimalFormatter, persistenceLayer, insulinManager, preferences, config,

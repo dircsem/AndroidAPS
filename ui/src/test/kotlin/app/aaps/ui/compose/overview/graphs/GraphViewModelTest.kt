@@ -1,10 +1,21 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
@@ -30,6 +41,16 @@ internal class GraphViewModelTest {
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var rh: ResourceHelper
+    @Mock private lateinit var iobCobCalculator: IobCobCalculator
+    @Mock private lateinit var decimalFormatter: DecimalFormatter
+    @Mock private lateinit var loop: Loop
+    @Mock private lateinit var config: Config
+    @Mock private lateinit var persistenceLayer: PersistenceLayer
+    @Mock private lateinit var constraintChecker: ConstraintsChecker
+    @Mock private lateinit var profileFunction: ProfileFunction
+    @Mock private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
+    @Mock private lateinit var profileUtil: ProfileUtil
+    @Mock private lateinit var activePlugin: ActivePlugin
 
     private lateinit var sut: GraphViewModel
 
@@ -45,7 +66,15 @@ internal class GraphViewModelTest {
         // init{} builds a cold flow chain (.drop(1)...) on each observed key — must be non-null.
         whenever(preferences.observe(UnitDoubleKey.OverviewHighMark)).thenReturn(MutableStateFlow(180.0))
         whenever(preferences.observe(UnitDoubleKey.OverviewLowMark)).thenReturn(MutableStateFlow(72.0))
-        sut = GraphViewModel(cache, graphConfigRepository, aapsLogger, preferences, dateUtil, rh)
+        whenever(preferences.observe(StringKey.GeneralUnits)).thenReturn(MutableStateFlow("mg/dl"))
+        whenever(preferences.get(StringKey.OverviewVicoBgReadingTint)).thenReturn("")
+        whenever(preferences.get(StringKey.OverviewVicoChartBackdrop)).thenReturn("")
+        whenever(preferences.observe(StringKey.OverviewVicoBgReadingTint)).thenReturn(MutableStateFlow(""))
+        whenever(preferences.observe(StringKey.OverviewVicoChartBackdrop)).thenReturn(MutableStateFlow(""))
+        sut = GraphViewModel(
+            cache, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, iobCobCalculator, decimalFormatter, loop,
+            config, persistenceLayer, constraintChecker, profileFunction, processedDeviceStatusData, profileUtil, activePlugin
+        )
     }
 
     @AfterEach

@@ -3,6 +3,7 @@ package app.aaps.ui.compose.treatmentsSheet
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.insulin.InsulinManager
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -46,6 +47,7 @@ internal class TreatmentViewModelTest {
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var dexcomBoyda: DexcomBoyda
     @Mock private lateinit var elementAvailability: ElementAvailability
+    @Mock private lateinit var insulinManager: InsulinManager
 
     private lateinit var sut: TreatmentViewModel
 
@@ -68,7 +70,7 @@ internal class TreatmentViewModelTest {
         whenever(rxBus.toFlow(EventRefreshOverview::class.java)).thenReturn(emptyFlow())
         sut = TreatmentViewModel(
             rh, preferences, activePlugin, config, profileFunction, loop, iobCobCalculator,
-            constraintChecker, quickWizard, rxBus, aapsLogger, dexcomBoyda, elementAvailability
+            constraintChecker, quickWizard, rxBus, aapsLogger, dexcomBoyda, elementAvailability, insulinManager
         )
     }
 
