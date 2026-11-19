@@ -21,4 +21,6 @@
     <string name="dashboard_glass_command_next_line">Próx.: %1$s</string>
     <string name="dashboard_glass_batteries_label" formatted="false">Bomba ML%</string>
     <string name="dashboard_glass_two_values">%1$s·%2$s</string>
+    <string name="dashboard_glass_bolus_with_age">%1$s·%2$s</string>
+    <string name="dashboard_glass_age_value">%1$d%2$s</string>
 </resources>

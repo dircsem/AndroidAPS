@@ -484,6 +484,7 @@ internal fun buildGlassUiState(
     treatmentData: TreatmentGraphData,
 ): GlassUiState {
     if (status == null) return GlassUiState()
+    val lastBolus = treatmentData.boluses.filter { it.isValid && it.timestamp <= System.currentTimeMillis() }.maxByOrNull { it.timestamp }
     return GlassUiState(
         currentBg = status.glucoseText,
         unit = status.unitText,
@@ -522,7 +523,9 @@ internal fun buildGlassUiState(
         medLinkCommandNext = status.medLinkCommandNext,
         stepsText = status.stepsText ?: "--",
         hrText = status.hrText ?: "--",
-        lastBolusText = treatmentData.boluses.filter { it.isValid && it.timestamp <= System.currentTimeMillis() }.maxByOrNull { it.timestamp }?.label ?: "--",
+        // T27: dose and time come from the same bolus (all boluses: manual, SMB, MedLink TBR; none in the future)
+        lastBolusText = lastBolus?.label ?: "--",
+        lastBolusAtMs = lastBolus?.timestamp,
         lastCarbsText = treatmentData.carbs.filter { it.isValid && it.timestamp <= System.currentTimeMillis() }.maxByOrNull { it.timestamp }?.label ?: "--",
         tir = buildGlassTir(status),
         warmup = status.warmup,

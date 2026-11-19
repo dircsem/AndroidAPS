@@ -237,6 +237,8 @@
     <string name="dashboard_glass_delivered_label" comment="Glass pill title, at most 11 characters (longer titles are cut). Basal delivered in the last minutes. %1$d=minutes. Example: Basal 30 min">Bas. %1$d min</string>
     <string name="dashboard_glass_batteries_label" formatted="false" comment="Glass pill title, at most 11 characters: one pill with the pump battery and the MedLink battery. ML = MedLink (device name); ML% = the second value is the MedLink battery in %, shown without the % sign">Pump ML%</string>
     <string name="dashboard_glass_two_values" comment="Glass pill value with two values. %1$s=first value, %2$s=second value. Example: pump battery and MedLink battery 3d3h·38%">%1$s·%2$s</string>
+    <string name="dashboard_glass_bolus_with_age" comment="Glass Last bolus pill value. %1$s=dose with unit, example: 0.4U. %2$s=time since that bolus, example: 12m. Example: 0.4U·12m. Keep it short (small pill).">%1$s·%2$s</string>
+    <string name="dashboard_glass_age_value" comment="Short time in a Glass pill. %1$d=number, %2$s=short unit (m, h or d). Example: 12m">%1$d%2$s</string>
     <string name="dashboard_glass_personalize_pump_label">Pump</string>
     <string name="dashboard_glass_personalize_cannula_label">Cannula</string>
     <string name="dashboard_glass_personalize_battery_label">Battery</string>

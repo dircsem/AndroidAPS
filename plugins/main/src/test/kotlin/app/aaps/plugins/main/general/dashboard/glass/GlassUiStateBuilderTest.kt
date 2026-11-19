@@ -48,12 +48,15 @@ class GlassUiStateBuilderTest {
         )
         val state = buildGlassUiState(status = minimalStatus(), lights = null, treatmentData = data)
         assertThat(state.lastBolusText).isEqualTo("1.50 U")
+        // T27: the time of the same bolus, not of the invalid newer one
+        assertThat(state.lastBolusAtMs).isEqualTo(2000L)
     }
 
     @Test
     fun `no valid bolus or carbs falls back to placeholder`() {
         val state = buildGlassUiState(status = minimalStatus(), lights = null, treatmentData = treatmentData())
         assertThat(state.lastBolusText).isEqualTo("--")
+        assertThat(state.lastBolusAtMs).isNull()
         assertThat(state.lastCarbsText).isEqualTo("--")
     }
 
@@ -67,4 +70,5 @@ class GlassUiStateBuilderTest {
         assertThat(state.isGlucoseActual).isFalse()
         assertThat(state.glucoseTimestampMs).isEqualTo(123_000L)
     }
+
 }

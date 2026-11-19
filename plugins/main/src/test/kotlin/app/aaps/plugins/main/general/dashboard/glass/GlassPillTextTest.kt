@@ -52,3 +52,18 @@ class GlassPillTextTest {
         assertThat(r.text.substring(r.second!!)).isEqualTo("38")
     }
 }
+
+/** T27: time since the last bolus in the Last bolus pill. */
+class GlassAgeSinceTest {
+
+    private val now = 1_000_000_000_000L
+    private val min = 60_000L
+
+    @Test fun `no bolus - no time`() { assertThat(glassAgeSince(null, now)).isNull() }
+    @Test fun `bolus in the future - ignored`() { assertThat(glassAgeSince(now + min, now)).isNull() }
+    @Test fun `just now - 0m`() { assertThat(glassAgeSince(now, now)).isEqualTo(GlassAge(0, GlassAge.AgeUnit.MINUTES)) }
+    @Test fun `59 min - 59m`() { assertThat(glassAgeSince(now - 59 * min - 30_000L, now)).isEqualTo(GlassAge(59, GlassAge.AgeUnit.MINUTES)) }
+    @Test fun `1 h - 1h`() { assertThat(glassAgeSince(now - 60 * min, now)).isEqualTo(GlassAge(1, GlassAge.AgeUnit.HOURS)) }
+    @Test fun `23 h 59 min - 23h`() { assertThat(glassAgeSince(now - (24 * 60 - 1) * min, now)).isEqualTo(GlassAge(23, GlassAge.AgeUnit.HOURS)) }
+    @Test fun `over 24 h - days`() { assertThat(glassAgeSince(now - 50 * 60 * min, now)).isEqualTo(GlassAge(2, GlassAge.AgeUnit.DAYS)) }
+}

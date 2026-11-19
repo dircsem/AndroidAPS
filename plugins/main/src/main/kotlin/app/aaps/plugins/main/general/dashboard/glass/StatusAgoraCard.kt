@@ -1,5 +1,6 @@
 package app.aaps.plugins.main.general.dashboard.glass
 
+import app.aaps.core.interfaces.R as InterfacesR
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -115,7 +116,7 @@ internal fun StatusAgoraCard(
             )
             val drawPill: @Composable (GlassSlot) -> Unit = { slot ->
                 GlassSlotPill(
-                    slot = slot, state = state, isDark = isDark,
+                    slot = slot, state = state, isDark = isDark, nowMs = nowMs,
                     onOpenLoop = onOpenLoop, onOpenLoopDashboard = onOpenLoopDashboard, onOpenTarget = onOpenTarget,
                     onOpenInsulin = onOpenInsulin, onOpenPump = onOpenPump, onOpenCannula = onOpenCannula,
                     onOpenBattery = onOpenBattery, onOpenBasal = onOpenBasal, onOpenSensorInsert = onOpenSensorInsert,
@@ -285,6 +286,7 @@ private fun GlassSlotPill(
     slot: GlassSlot,
     state: GlassUiState,
     isDark: Boolean,
+    nowMs: Long,
     onOpenLoop: () -> Unit,
     onOpenLoopDashboard: () -> Unit,
     onOpenTarget: () -> Unit,
@@ -360,9 +362,13 @@ private fun GlassSlotPill(
             onOpenTarget, if (state.isTempTargetActive) TEMP_TARGET_COLOR else null, iconVector = Icons.Filled.Adjust
         )
 
-        GlassSlot.LAST_BOLUS      -> SidePill(
-            stringResource(R.string.dashboard_glass_last_bolus_short), state.lastBolusText, R.drawable.ic_glyco_insulin, isDark, onOpenInsulin
-        )
+        // T27: dose and the time since that bolus; nowMs (minute clock of the card) keeps the time moving
+        GlassSlot.LAST_BOLUS      -> {
+            val age = glassAgeSince(state.lastBolusAtMs, nowMs)
+            val value = if (age == null) state.lastBolusText
+            else stringResource(R.string.dashboard_glass_bolus_with_age, state.lastBolusText, glassAgeText(age))
+            SidePill(stringResource(R.string.dashboard_glass_last_bolus_short), value, R.drawable.ic_glyco_insulin, isDark, onOpenInsulin)
+        }
 
         GlassSlot.IOB             -> SidePill(
             stringResource(R.string.dashboard_glass_iob_label), state.iobText, R.drawable.ic_glyco_insulin, isDark, onOpenInsulin
@@ -630,3 +636,17 @@ private fun CgmLinkBannerText(banner: GlassCgmLinkStatus.Banner) {
         modifier = Modifier.fillMaxWidth()
     )
 }
+
+
+/** T27: `12m`, `3h`, `2d`, with the short AAPS units (translated). */
+@Composable
+private fun glassAgeText(age: GlassAge): String = stringResource(
+    R.string.dashboard_glass_age_value, age.value,
+    stringResource(
+        when (age.unit) {
+            GlassAge.AgeUnit.MINUTES -> InterfacesR.string.shortminute
+            GlassAge.AgeUnit.HOURS   -> InterfacesR.string.shorthour
+            GlassAge.AgeUnit.DAYS    -> InterfacesR.string.shortday
+        }
+    )
+)

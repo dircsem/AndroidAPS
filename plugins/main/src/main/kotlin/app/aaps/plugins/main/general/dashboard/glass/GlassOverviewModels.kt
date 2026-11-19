@@ -43,6 +43,8 @@ data class GlassUiState(
     val stepsText: String = "--",
     val hrText: String = "--",
     val lastBolusText: String = "--",
+    /** T27: time of the bolus in [lastBolusText] (the same bolus); null = no bolus. */
+    val lastBolusAtMs: Long? = null,
     val lastCarbsText: String = "--",
     /** Today's time in range since midnight; null early in the day or without data (ring shows an empty track). */
     val tir: GlassTir? = null,

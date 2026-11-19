@@ -42,3 +42,22 @@ fun placeTwoValues(marked: String, first: String, second: String): GlassTwoValue
     }
     return GlassTwoValues(text.toString(), firstRange, secondRange)
 }
+
+/** T27: a time since an event, as one number and one unit (shown as `12m`, `3h`, `2d`). */
+data class GlassAge(val value: Long, val unit: AgeUnit) {
+    enum class AgeUnit { MINUTES, HOURS, DAYS }
+}
+
+/**
+ * T27: the time since [atMs], for the short pill text: minutes below 1 h, hours below 24 h, then days (whole units,
+ * rounded down). Null when there is no time or it is in the future (a future bolus is not shown, as before).
+ */
+fun glassAgeSince(atMs: Long?, nowMs: Long): GlassAge? {
+    if (atMs == null || atMs > nowMs) return null
+    val minutes = (nowMs - atMs) / 60_000L
+    return when {
+        minutes < 60L        -> GlassAge(minutes, GlassAge.AgeUnit.MINUTES)
+        minutes < 24L * 60L  -> GlassAge(minutes / 60L, GlassAge.AgeUnit.HOURS)
+        else                 -> GlassAge(minutes / (24L * 60L), GlassAge.AgeUnit.DAYS)
+    }
+}
