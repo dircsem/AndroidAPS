@@ -5,7 +5,7 @@ import androidx.compose.runtime.compositionLocalOf
 interface GlassHeroCommands {
     fun openLoop()
 
-    /** T22: tap on the BG circle. Opens the running mode screen (suspend loop / pump), behind the BOLUS protection. */
+    /** T22: tap on the BG circle. Opens the Glass running mode screen (loop modes, suspend, pump disconnect), behind the BOLUS protection. */
     fun openRunningMode()
     fun openLoopDashboard()
     fun openTarget()

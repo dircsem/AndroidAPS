@@ -1497,7 +1497,9 @@ internal class DashboardShellController(
                 }
             }
 
-            override fun openRunningMode() = openLoopDialog()
+            // T22 fix (user, 2026-11-17): the Glass version of the running mode screen (loop modes, suspend, pump
+            // disconnect), the same screen as the loop pill; not the original AAPS screen. BOLUS protection in openLoop().
+            override fun openRunningMode() = openLoop()
 
             override fun openLoopDashboard() =
                 uiInteraction.openComposeMainAtRoute(host.context, "glass_loop_dashboard")
