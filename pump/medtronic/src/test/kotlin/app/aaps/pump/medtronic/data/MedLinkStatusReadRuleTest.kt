@@ -102,4 +102,36 @@ class MedLinkStatusReadRuleTest {
         assertEquals(1 * min, waitMs(9 * min, startStopAgo = 1 * min))
         assertEquals(0L, waitMs(11 * min, startStopAgo = 0L))
     }
+
+    // T23 leftover: a planned S just before a STOP / START step waits for it (the answer gives the pump state)
+
+    private fun waitWithStep(statusAgo: Long, stepIn: Long) =
+        MedLinkStatusReadRule.statusReadWaitMs(now, now - statusAgo, 0L, nextStartStopStepAt = now + stepIn)
+
+    @Test
+    fun `T23 step - STOP or START in 90 s - the S waits for its answer, no extra connection`() {
+        assertEquals(90_000L + MedLinkStatusReadRule.STEP_ANSWER_MS, waitWithStep(5 * min, 90_000L))
+    }
+
+    @Test
+    fun `T23 step - more than 2 min away - read now`() {
+        assertEquals(0L, waitWithStep(5 * min, 3 * min))
+    }
+
+    @Test
+    fun `T23 step - never past the 10 min limit - read now`() {
+        // status 9 min old, step in 90 s: waiting would make it older than 10 min
+        assertEquals(0L, waitWithStep(9 * min, 90_000L))
+    }
+
+    @Test
+    fun `T23 step - a step in the past (late or failed) does not delay the read`() {
+        assertEquals(0L, waitWithStep(5 * min, -30_000L))
+    }
+
+    @Test
+    fun `T23 step - no step - as before`() {
+        assertEquals(0L, MedLinkStatusReadRule.statusReadWaitMs(now, now - 5 * min, 0L, nextStartStopStepAt = 0L))
+        assertEquals(3 * min, MedLinkStatusReadRule.statusReadWaitMs(now, now - 1 * min, 0L, nextStartStopStepAt = 0L))
+    }
 }

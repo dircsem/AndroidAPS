@@ -1265,13 +1265,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                         // T23: no S when the last one (or a STOP / START answer) is fresh; never older than 10 min
                         val now = dateUtil.now()
                         val lastStatusAt = medLinkPumpStatus.lastConnection
-                        val wait = MedLinkStatusReadRule.statusReadWaitMs(now, lastStatusAt, lastStartStopAnswerAt)
+                        val wait = statusReadWaitMs(now)
                         if (wait > 0L) {
-                            aapsLogger.info(
-                                LTag.PUMPBTCOMM,
-                                "status read skipped: last S ${(now - lastStatusAt) / 1000}s ago, " +
-                                    "last STOP/START ${if (lastStartStopAnswerAt > 0L) "${(now - lastStartStopAnswerAt) / 1000}s ago" else "none"}, next in ${wait / 1000}s"
-                            )
+                            logStatusReadSkipped(now, wait, "")
                             scheduleNextRefresh(MedLinkMedtronicStatusRefreshType.PumpHistory, now + wait - lastStatusAt)
                         } else {
                             aapsLogger.debug(LTag.PUMPBTCOMM, "refreshing")
@@ -1298,13 +1294,40 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 300000L
             } else 0L
             lastTryToConnect = System.currentTimeMillis()
-            readPumpData(false)
-            // scheduleNextRefresh()
-            scheduleNextRefresh(MedLinkMedtronicStatusRefreshType.PumpHistory, additionalMillis);
-            aapsLogger.info(LTag.PUMPBTCOMM, "posthistory")
+            // T23 (field log 2026-11-19 06:49:45): the 10 min backup read counts from its own last run, not from the
+            // last good S, so it sent an S 100 s before the planned one. It now skips too while the state is fresh;
+            // the 10 min limit after the last good S still holds. With no refresh planned (start) it always reads.
+            val backupWait = if (medLinkStatusRefreshMap.isEmpty()) 0L else statusReadWaitMs(dateUtil.now())
+            if (backupWait > 0L) {
+                logStatusReadSkipped(dateUtil.now(), backupWait, " (10 min backup read)")
+            } else {
+                readPumpData(false)
+                scheduleNextRefresh(MedLinkMedtronicStatusRefreshType.PumpHistory, additionalMillis)
+                aapsLogger.info(LTag.PUMPBTCOMM, "posthistory")
+            }
 
         }
         if (resetTime) setLastCommunicationToNow()
+    }
+
+    /**
+     * T23 ([MedLinkStatusReadRule]): how long a status read (S) can still wait; 0 = read now. A STOP / START step of the
+     * plan soon gives the pump state with its answer (one connection, not two); TBR bolus steps do not count.
+     */
+    private fun statusReadWaitMs(now: Long): Long {
+        val nextStartStopStep = tempBasalMicrobolusOperations.operations.firstOrNull {
+            !it.isCommandIssued && it.operationType != TempBasalMicroBolusPair.OperationType.BOLUS
+        }?.releaseTime?.toDate()?.time ?: 0L
+        return MedLinkStatusReadRule.statusReadWaitMs(now, medLinkPumpStatus.lastConnection, lastStartStopAnswerAt, nextStartStopStep)
+    }
+
+    private fun logStatusReadSkipped(now: Long, wait: Long, which: String) {
+        val lastStatusAt = medLinkPumpStatus.lastConnection
+        aapsLogger.info(
+            LTag.PUMPBTCOMM,
+            "status read skipped$which: last S ${(now - lastStatusAt) / 1000}s ago, " +
+                "last STOP/START ${if (lastStartStopAnswerAt > 0L) "${(now - lastStartStopAnswerAt) / 1000}s ago" else "none"}, next in ${wait / 1000}s"
+        )
     }
 
     private fun getStartStopCallback(
