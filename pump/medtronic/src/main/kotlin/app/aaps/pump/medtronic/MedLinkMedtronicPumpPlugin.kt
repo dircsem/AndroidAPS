@@ -164,6 +164,7 @@ import app.aaps.pump.medtronic.data.EnliteInterval
 import app.aaps.pump.medtronic.data.MedLinkMedtronicHistoryData
 import app.aaps.pump.medtronic.data.MedLinkProfileReadRule
 import app.aaps.pump.medtronic.data.MedLinkStatusReadRule
+import app.aaps.pump.medtronic.data.MedLinkStopPendingRule
 import app.aaps.pump.medtronic.data.MedLinkTbrKeepRule
 import app.aaps.pump.medtronic.data.MedLinkPumpProfileDiff
 import app.aaps.pump.medtronic.data.MedLinkSuspendBatteryRule
@@ -555,6 +556,19 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     /** T23: phone time of the last STOP / START that the pump confirmed (its answer also gives the pump state). */
     @Volatile private var lastStartStopAnswerAt = 0L
 
+    /** B18 ([MedLinkStopPendingRule]): phone time when a STOP was queued and its answer did not come yet; 0 = none. */
+    @Volatile private var stopQueuedAt = 0L
+
+    /**
+     * B18: true when a "safety" STOP (pump runs while the TBR is 0 %) must not be queued, because another STOP is
+     * still on its way. Never used for the STOP of a plan step.
+     */
+    private fun skipSafetyStop(): Boolean {
+        if (!MedLinkStopPendingRule.isStopPending(dateUtil.now(), stopQueuedAt)) return false
+        aapsLogger.info(LTag.PUMP, "B18: a STOP queued ${(dateUtil.now() - stopQueuedAt) / 1000}s ago has no answer yet, no second STOP")
+        return true
+    }
+
     private fun stopPump(callback: Callback, origin: MedLinkStopOrigin = MedLinkStopOrigin.AUTOMATIC) {
         aapsLogger.info(LTag.PUMP, "MedtronicPumpPlugin::stopPump - $origin")
         aapsLogger.info(LTag.PUMP, "batteryDelta $batteryDelta")
@@ -578,6 +592,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 ChangeStatusCallback.OperationType.STOP, this
             )
             val startStopFunction = function.andThen { f: MedLinkStandardReturn<PumpDriverState> ->
+                stopQueuedAt = 0L // B18: the STOP got its answer
                 result = when {
                     f.functionResult === PumpDriverState.Suspended -> {
                         lastStartStopAnswerAt = dateUtil.now()
@@ -609,6 +624,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     origin
                 ), CommandPriority.NORMAL
             )
+            stopQueuedAt = dateUtil.now() // B18
             medLinkMedtronicService?.medtronicUIComm?.executeCommandCP(message)
         }
     }
@@ -2196,7 +2212,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             pumpEnactResultProvider.get().enacted(true).success(true)
         } else if (absoluteRate == 0.0 && (temporaryBasal != null && temporaryBasal!!.desiredRate == absoluteRate && absoluteRate == medLinkPumpStatus.currentBasal) || absoluteRate == medLinkPumpStatus.currentBasal) {
             aapsLogger.info(LTag.EVENTS, "extendbasaltreatment")
-            if (medLinkPumpStatus.pumpRunningState === PumpRunningState.Running || medLinkPumpStatus.pumpRunningState === PumpRunningState.Unknow || forceStop) {
+            if ((medLinkPumpStatus.pumpRunningState === PumpRunningState.Running || medLinkPumpStatus.pumpRunningState === PumpRunningState.Unknow || forceStop) && !skipSafetyStop()) {
                 stopPump(object : Callback() {
                     override fun run() {
                         aapsLogger.info(LTag.PUMP, "Stopping unstopped pump")
@@ -2404,6 +2420,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     private fun runPumpForNewPlan(reason: String) {
         aapsLogger.info(LTag.PUMP, "B17: the new plan needs the pump running ($reason)")
         medLinkMedtronicService?.medLinkBLE?.dropQueuedAutomaticStops(reason)
+        stopQueuedAt = 0L // B18: the waiting STOPs are gone (a STOP being sent now still answers)
         startPump(object : Callback() {
             override fun run() {
                 aapsLogger.info(LTag.PUMP, "B17: start for the new plan ($reason): ${result?.success}")
@@ -4904,7 +4921,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         // a plan with microboluses is a TBR above the basal: never a reason to suspend
         val zeroTbrPlan = tempBasalMicrobolusOperations.operations.none { it.operationType == TempBasalMicroBolusPair.OperationType.BOLUS }
         val tbr = temporaryBasal // B12: read once, the plan can change between two reads
-        if (zeroTbrPlan && tbr?.rate == 0.0 && tbr.duration > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow)) {
+        if (zeroTbrPlan && tbr?.rate == 0.0 && tbr.duration > 0 && (medLinkPumpStatus.pumpRunningState == PumpRunningState.Running || medLinkPumpStatus.pumpRunningState == PumpRunningState.Unknow) && !skipSafetyStop()) {
             stopPump(object : Callback() {
                 override fun run() {
                     aapsLogger.info(LTag.PUMP, "Stopping unstopped pump")
