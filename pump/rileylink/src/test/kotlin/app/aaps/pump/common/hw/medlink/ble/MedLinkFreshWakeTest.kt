@@ -22,6 +22,21 @@ class MedLinkFreshWakeTest {
         assertTrue(MedLinkFreshWake.isFreshWake(freshBanner))
     }
 
+    /**
+     * Field log 2026-11-18: the MedLink was awake, only the pump woke up ("confirmed pump wakeup … ready"). `A` written
+     * 0.8 s later: "invalid command" 7 of 7 (02:03:58 and others). The same wait is used after a pump wake-up.
+     */
+    @Test
+    fun `a pump wake-up of a MedLink that was already awake is a fresh wake-up too`() {
+        val pumpWake = listOf("send command for pump wakeup", "confirmed pump wakeup", "medtronic veo", "ready").joinToString("\n")
+        assertTrue(MedLinkFreshWake.isFreshWake(pumpWake))
+    }
+
+    @Test
+    fun `the answer to OK+CONN alone is not a pump wake-up`() {
+        assertFalse(MedLinkFreshWake.isFreshWake("ok+conn command confirmed for pump wakeup\nready"))
+    }
+
     @Test
     fun `a ready of a MedLink that was already awake is not a fresh wake-up`() {
         assertFalse(MedLinkFreshWake.isFreshWake("powerdown after timeout\nready"))
