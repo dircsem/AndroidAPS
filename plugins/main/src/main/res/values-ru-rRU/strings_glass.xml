@@ -20,5 +20,5 @@
     <string name="dashboard_glass_basal_t_label">Скорость базала</string>
     <string name="dashboard_glass_last_carbs_short">Посл. углев.</string>
     <string name="dashboard_glass_treatment_short">Терапия</string>
-    <string name="dashboard_glass_two_values">%1$s · %2$s</string>
+    <string name="dashboard_glass_two_values">%1$s·%2$s</string>
 </resources>

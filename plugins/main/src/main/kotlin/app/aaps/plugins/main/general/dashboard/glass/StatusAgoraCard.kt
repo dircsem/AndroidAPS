@@ -314,27 +314,11 @@ private fun GlassSlotPill(
         )
 
         // MedLink only: pump and MedLink battery in ONE pill (user, 2026-11-14), each value in its own warning color
-        GlassSlot.BATTERY_PAIR    -> {
-            val pump = state.batteryValue
-            val medLink = state.medLinkBattery.orEmpty()
-            val text = stringResource(R.string.dashboard_glass_two_values, pump, medLink)
-            val pumpColor = statusLevelToColor(state.batteryStatus)
-            val medLinkColor = statusLevelToColor(state.medLinkBatteryStatus)
-            val styled = buildAnnotatedString {
-                append(text)
-                // the template decides the order (also right-to-left): color each value where it really is
-                text.indexOf(pump).takeIf { it >= 0 && pump.isNotEmpty() }?.let { addStyle(SpanStyle(color = pumpColor), it, it + pump.length) }
-                text.lastIndexOf(medLink).takeIf { it >= 0 && medLink.isNotEmpty() }?.let { addStyle(SpanStyle(color = medLinkColor), it, it + medLink.length) }
-            }
-            GlassPill(
-                label = stringResource(R.string.dashboard_glass_batteries_label),
-                value = text,
-                styledValue = styled,
-                isDark = isDark,
-                modifier = Modifier.width(GLASS_PILL_WIDTH).clickable { onOpenBattery() },
-                leadingIcon = { PillIcon(R.drawable.ic_glyco_battery, isDark) }
-            )
-        }
+        GlassSlot.BATTERY_PAIR    -> TwoValuePill(
+            stringResource(R.string.dashboard_glass_batteries_label), R.drawable.ic_glyco_battery, isDark, onOpenBattery,
+            state.batteryValue, statusLevelToColor(state.batteryStatus),
+            state.medLinkBattery.orEmpty(), statusLevelToColor(state.medLinkBatteryStatus)
+        )
 
         GlassSlot.TBR             -> SidePill(
             stringResource(R.string.dashboard_glass_tbr_short), state.basalPercentText, R.drawable.ic_glyco_insulin, isDark, onOpenBasal
@@ -394,6 +378,37 @@ private fun GlassSlotPill(
             stringResource(R.string.dashboard_glass_tools_label), "", R.drawable.ic_glyco_settings, isDark, onOpenTools
         )
     }
+}
+
+/**
+ * One pill with two values, each value in its own color.
+ * T28: the template decides the order (also right-to-left); each value is colored at its known place.
+ */
+@Composable
+private fun TwoValuePill(
+    label: String,
+    @DrawableRes iconRes: Int,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    first: String,
+    firstColor: Color,
+    second: String,
+    secondColor: Color,
+) {
+    val placed = placeTwoValues(stringResource(R.string.dashboard_glass_two_values, GLASS_MARK_FIRST, GLASS_MARK_SECOND), first, second)
+    val styled = buildAnnotatedString {
+        append(placed.text)
+        placed.first?.let { addStyle(SpanStyle(color = firstColor), it.first, it.last + 1) }
+        placed.second?.let { addStyle(SpanStyle(color = secondColor), it.first, it.last + 1) }
+    }
+    GlassPill(
+        label = label,
+        value = placed.text,
+        styledValue = styled,
+        isDark = isDark,
+        modifier = Modifier.width(GLASS_PILL_WIDTH).clickable { onClick() },
+        leadingIcon = { PillIcon(iconRes, isDark) }
+    )
 }
 
 @Composable
