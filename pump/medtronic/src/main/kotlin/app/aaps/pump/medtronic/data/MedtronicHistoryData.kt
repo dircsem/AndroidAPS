@@ -596,7 +596,9 @@ open class MedtronicHistoryData @Inject constructor(
 
     private fun processBolusEntries(entryList: MutableList<PumpHistoryEntry>) {
 
-        val boluses = pumpSyncStorage.getBoluses()
+        // a copy taken under the lock (`MedLinkSyncStorageLock.kt`): the list is changed by other threads; removes go
+        // through the storage (locked) and from this copy
+        val boluses = pumpSyncStorage.locked { getBoluses().toMutableList() }
 
         for (bolus in entryList) {
 
@@ -627,7 +629,7 @@ open class MedtronicHistoryData @Inject constructor(
                     //aapsLogger.debug(LTag.PUMP, String.format("DD: entryWithTempId.bolusData=%s", if (entryWithTempId.bolusData == null) "null" else entryWithTempId.bolusData))
 
                     temporaryId = entryWithTempId.temporaryId
-                    pumpSyncStorage.removeBolusWithTemporaryId(temporaryId)
+                    pumpSyncStorage.locked { removeBolusWithTemporaryId(temporaryId) }
                     boluses.remove(entryWithTempId)
                     //type = entryWithTempId.bolusType
                 }
@@ -740,7 +742,8 @@ open class MedtronicHistoryData @Inject constructor(
             }
         }
 
-        val tbrRecords = pumpSyncStorage.getTBRs()
+        // a copy taken under the lock, see processBolusEntries
+        val tbrRecords = pumpSyncStorage.locked { getTBRs().toMutableList() }
 
         val processList: MutableList<TempBasalProcessDTO> = createTBRProcessList(entryList)
 
@@ -800,7 +803,7 @@ open class MedtronicHistoryData @Inject constructor(
                             aapsLogger.debug(LTag.PUMP, "syncTemporaryBasalWithTempId - Result: $result")
                         }
 
-                        pumpSyncStorage.removeTemporaryBasalWithTemporaryId(entryWithTempId.temporaryId)
+                        pumpSyncStorage.locked { removeTemporaryBasalWithTemporaryId(entryWithTempId.temporaryId) }
                         tbrRecords.remove(entryWithTempId)
 
                         entryWithTempId.pumpId = tempBasalProcessDTO.pumpId

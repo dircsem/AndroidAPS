@@ -13,6 +13,7 @@ import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkLoopBolusMerge
 import app.aaps.pump.medtronic.data.MedLinkSentBolusKinds
 import app.aaps.pump.medtronic.data.MedLinkTbrDisplayMinutes
+import app.aaps.pump.medtronic.data.locked
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
@@ -388,13 +389,9 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             }
             val detailedBolusInfo = DetailedBolusInfo()
             detailedBolusInfo.lastKnownBolusTime =
-                if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time else if (pumpSyncStorage.pumpSyncStorageBolus.isNotEmpty()) {
-                    val bolusList = pumpSyncStorage.pumpSyncStorageBolus
-                    bolusList.sortBy { it.date }
-                    bolusList[0].date
-                } else {
-                    System.currentTimeMillis()
-                }
+                if (medLinkPumpStatus.lastBolusTime != null) medLinkPumpStatus.lastBolusTime!!.time
+                // the oldest stored bolus (was: sort the stored list in place, with no lock)
+                else pumpSyncStorage.locked { pumpSyncStorageBolus.minOfOrNull { it.date } } ?: System.currentTimeMillis()
             detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
             detailedBolusInfo.insulin = oper.dose
             detailedBolusInfo.bolusType = BS.Type.TBR
@@ -1447,7 +1444,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             ) }
             medLinkPumpStatus.tempBasalDuration = duration
             medLinkPumpStatus.tempBasalAmount = dose
-            pumpSyncStorage.addTemporaryBasalRateWithTempId(tempData, true, this)
+            pumpSyncStorage.locked { addTemporaryBasalRateWithTempId(tempData, true, this@MedLinkMedtronicPumpPlugin) }
             preferences.inc(MedtronicLongNonKey.TbrsSet)
         }
         finishAction("TBR")
@@ -3373,8 +3370,12 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             reactivateOper.get().setReleaseTime(duration)
             if (medLinkPumpStatus.runningTBR != null) {
                 medLinkPumpStatus.runningTBR?.durationInSeconds = duration * 60
-                pumpSyncStorage.pumpSyncStorageTBR.add(medLinkPumpStatus.runningTBR!!)
-                pumpSyncStorage.saveStorageTBR()
+                medLinkPumpStatus.runningTBR?.let { tbr ->
+                    pumpSyncStorage.locked {
+                        pumpSyncStorageTBR.add(tbr)
+                        saveStorageTBR()
+                    }
+                }
             }
             callback.invoke(result)
         } else {
@@ -4666,7 +4667,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 remainingBolus = bInfo
                 readBolusHistory()
             } else if (bInfo.carbs != 0.0) {
-                pumpSyncStorage.addBolusWithTempId(bInfo, true, this)
+                pumpSyncStorage.locked { addBolusWithTempId(bInfo, true, this@MedLinkMedtronicPumpPlugin) }
             } else if (bInfo.insulin > 0) {
                 if (mod != 0 && lastProcessedBolusTimestamp == (bInfo.bolusTimestamp?.minus(mod)
                         ?: bInfo.timestamp.minus(mod))
@@ -4697,7 +4698,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                 if (lastProcessedBolusTimestamp < System.currentTimeMillis() + 120000) {
                     val parts = joinedParts
                     if (parts == null) {
-                        pumpSyncStorage.addMedLinkBolusWithTempId(bInfo, true, this)
+                        pumpSyncStorage.locked { addMedLinkBolusWithTempId(bInfo, true, this@MedLinkMedtronicPumpPlugin) }
                     } else {
                         // part i at pump time + i s: the same records (and temporary ids) as the bolus tracker
                         parts.forEachIndexed { i, part ->
@@ -4706,7 +4707,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                             partInfo.bolusType = part.type
                             partInfo.bolusTimestamp = bInfo.bolusTimestamp?.let { MedLinkLoopBolusMerge.partTime(it, i) }
                             partInfo.timestamp = MedLinkLoopBolusMerge.partTime(bInfo.timestamp, i)
-                            pumpSyncStorage.addMedLinkBolusWithTempId(partInfo, true, this)
+                            pumpSyncStorage.locked { addMedLinkBolusWithTempId(partInfo, true, this@MedLinkMedtronicPumpPlugin) }
                         }
                     }
                 }
