@@ -29,6 +29,12 @@ class BleBolusCommand(
      */
     var onQueueResult: ((success: Boolean, delivered: Double) -> Unit)? = null
 
+    /**
+     * This bolus was joined with other boluses: the pump gets one bolus with this total (for example manual 3.0 U +
+     * TBR 0.2 U = 3.2 U). Used by the progress dialog to show the real amount (field 2026-11-19 23:01).
+     */
+    var onTotal: ((total: Double) -> Unit)? = null
+
     /** While the pump delivers this bolus: (delivered so far, total requested). Used by the progress dialog. */
     var onProgress: ((delivered: Double, requested: Double) -> Unit)? = null
 

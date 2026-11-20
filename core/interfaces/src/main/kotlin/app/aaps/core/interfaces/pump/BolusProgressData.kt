@@ -61,6 +61,14 @@ class BolusProgressData @Inject constructor(
     }
 
     /**
+     * MedLink fork: the pump gives more than the bolus the queue started (a manual bolus joined with a TBR / SMB bolus,
+     * for example 3.0 U + 0.2 U = 3.2 U): the dialog shows this total. Keep this when merging upstream.
+     */
+    fun updateTotal(insulin: Double) {
+        _state.update { if (it == null || it.insulin == insulin) it else it.copy(insulin = insulin) }
+    }
+
+    /**
      * Called by pump drivers to report delivery progress.
      * Purely informational — does not control dialog lifecycle.
      */

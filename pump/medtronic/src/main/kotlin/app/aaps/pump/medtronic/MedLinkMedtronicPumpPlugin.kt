@@ -4078,10 +4078,14 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                     )
                 } else aapsLogger.info(LTag.PUMP, "${bolus.bolusType} bolus ${bolus.insulin}U result already sent, ignoring success=$success delivered=$delivered")
             }
-            // progress dialog of a manual bolus (a merged TBR/SMB is part of the total: show the manual share)
-            if (manual) bleBolusCommand.onProgress = { delivered, requested ->
-                val fraction = if (requested > 0.0) (delivered / requested).coerceIn(0.0, 1.0) else 0.0
-                bolusProgressData.updateProgress(PumpInsulin(bolus.insulin * fraction))
+            // progress dialog of a manual bolus: a joined TBR / SMB bolus is part of what the pump gives, so the dialog
+            // shows the joined total (user, field 2026-11-19 23:01: manual 3.0 U + TBR 0.2 U was shown as 3.00 U)
+            if (manual) {
+                bleBolusCommand.onTotal = { total -> bolusProgressData.updateTotal(total) }
+                bleBolusCommand.onProgress = { delivered, requested ->
+                    if (requested > bolus.insulin) bolusProgressData.updateTotal(requested)
+                    bolusProgressData.updateProgress(PumpInsulin(delivered.coerceIn(0.0, requested)))
+                }
             }
             // 4p: until the pump delivers, tell the user what the bolus waits for (moving bar)
             if (manual) {

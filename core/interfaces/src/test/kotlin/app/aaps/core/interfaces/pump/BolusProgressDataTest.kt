@@ -91,4 +91,21 @@ class BolusProgressDataTest {
 
         assertThat(sut.state.value).isNull()
     }
+
+    // MedLink fork (field 2026-11-19 23:01): manual 3.0 U joined with a TBR bolus of 0.2 U: the pump gives 3.2 U
+    @Test
+    fun `updateTotal - the dialog shows the joined total, and the percent follows it`() {
+        sut.start(insulin = 3.0, isSMB = false)
+        sut.updateTotal(3.2)
+        assertThat(sut.state.value?.insulin).isEqualTo(3.2)
+        sut.updateProgress(PumpInsulin(1.6))
+        assertThat(sut.state.value?.percent).isEqualTo(50)
+    }
+
+    @Test
+    fun `updateTotal - no bolus running - nothing happens`() {
+        sut.updateTotal(3.2)
+        assertThat(sut.state.value).isNull()
+    }
 }
+

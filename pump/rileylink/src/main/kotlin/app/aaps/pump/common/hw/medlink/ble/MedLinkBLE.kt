@@ -1548,6 +1548,11 @@ class MedLinkBLE //extends RileyLinkBLE
         }
     }
 
+    /** The parts of a joined bolus learn the total the pump gets (the progress dialog of a manual part shows it). */
+    private fun tellTotal(parts: List<BleBolusCommand>, total: Double) {
+        parts.forEach { p -> p.onTotal?.let { cb -> handler.post { cb(total) } } }
+    }
+
     /** Amount written to the pump: the sum of the parts when loop boluses were merged. */
     private fun bolusAmount(executor: CommandExecutor<*>): Double? =
         bolusParts(executor).takeIf { it.isNotEmpty() }?.let { parts -> MedLinkLoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin }) }
@@ -1580,6 +1585,7 @@ class MedLinkBLE //extends RileyLinkBLE
             setBolusAmount(target, amountIndex, total)
             parts.add(newPart)
             mergedBolusParts[target] = parts
+            tellTotal(parts, total)
             aapsLogger.info(
                 LTag.PUMPBTCOMM,
                 "BOLUS merged ${type} ${newPart.detailedBolusInfo.insulin}U into queued ${target.firstCommand()}: " +
@@ -1627,6 +1633,7 @@ class MedLinkBLE //extends RileyLinkBLE
         if (!bolusTracker.onMerged(total, manual = newParts.any { it.type() == MedLinkCommandType.Bolus })) return false
         setBolusAmount(target, amountIndex, total)
         mergedBolusParts[target] = parts
+        tellTotal(parts, total)
         aapsLogger.info(
             LTag.PUMPBTCOMM,
             "BOLUS joined tracked ${target.firstCommand()} ($reason): ${parts.joinToString { "${it.detailedBolusInfo.bolusType} ${it.detailedBolusInfo.insulin}U" }} -> ${total}U"
@@ -1707,6 +1714,7 @@ class MedLinkBLE //extends RileyLinkBLE
             val total = MedLinkLoopBolusMerge.total(parts.map { it.detailedBolusInfo.insulin })
             setBolusAmount(manual, amountIndex, total)
             mergedBolusParts[manual] = parts
+            tellTotal(parts, total)
             bolusExecutionQueue.removeIf { e -> removed.any { it === e } }
             removed.filter { isBolusExecutor(it) }.map { it.firstCommand() }.distinct().forEach { type ->
                 if (bolusExecutionQueue.none { it.firstCommand() == type }) bolusExecutionHash.remove(type)
