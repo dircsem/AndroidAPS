@@ -2218,6 +2218,10 @@ class MedLinkBLE //extends RileyLinkBLE
                 // the pump is connected: the queued commands go on; a queued OK+CONN is skipped (connected)
                 listenAfterDropUntil = 0L
                 isConnected = true
+                // the pump queue waits for this state ("connected"); a new Bluetooth connection set it to MedLinkReady
+                // and only a "ready" answer sets it back. Without this line the queue waited 7 min and dropped two
+                // manual boluses (field 2026-11-19 23:05-23:12)
+                medLinkServiceData?.medLinkServiceState = MedLinkServiceState.PumpConnectorReady
                 connectedAfterDropAt = System.currentTimeMillis()
                 // a command written a few ms after a MedLink message was lost (field log 2026-11-18 01:24:48)
                 settleUntil = connectedAfterDropAt + MedLinkWakeupDropRule.GO_ON_SETTLE_MS
