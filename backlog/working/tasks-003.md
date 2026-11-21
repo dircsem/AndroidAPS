@@ -52,6 +52,24 @@ Related: T17 (Glass layout; do not move the circle's tap area there).
   pump" (T0 user suspend) are not changed.
 - Build: `:plugins:main:compileFullDebugKotlin` OK.
 
+### Fix (2026-11-17, user field test) — not committed, app not built yet
+- The circle opened the ORIGINAL AAPS running mode screen (`openLoopDialog()` → `uiInteraction.openRunningModeScreen`).
+  The user wants the Glass version (`glass_loop_detail`, `GlassLoopDetailScreen`: loop modes, suspend, pump disconnect),
+  the screen the BG number opened before T22. `GlassHeroCommands.openRunningMode()` now calls `openLoop()` (same Glass
+  screen as the loop pill, same BOLUS protection). The other `openLoopDialog()` callers (legacy status card / loop
+  indicator / legacy hero) are not changed.
+- **Field 2026-11-18 (user): PASS for step 1.** A tap on the Glass circle opens the right screen (Glass loop detail).
+  Steps 2 (suspend the loop 1 h, then resume) and 3 (long press on the loop pill) not reported yet.
+- **COMMITTED `3ba46b73e1` (2026-11-19, user request).** Only `DashboardShellController.kt` and `GlassHeroCommands.kt`.
+- **Field 2026-11-19 (user): steps 2 (suspend loop / resume) and 3 (loop pill long press) PASS.**
+
+### Change (2026-11-19, user request) — not committed, app not built yet
+- The circle now works like the loop pill: tap = loop dashboard (`onOpenLoopDashboard`), long press = Glass loop
+  detail (`onOpenRunningMode` -> `openLoop()`, BOLUS protection). `combinedClickable` with click labels
+  "Loop Dashboard" / "Running mode" (existing strings). User chose this over "tap detail, long press dashboard".
+- Field test: tap on the circle -> loop dashboard; long press -> protection, then loop detail.
+- **Field 2026-11-19 (user): PASS. COMMITTED** (see `git log`, "the BG circle works like the loop pill").
+
 ## T23 — One status read per loop cycle; no S right after STOP / START
 Priority: P2 (pump battery)
 Seen: log analysis, 2026-11-14 (see `bugs-003.md` header).
