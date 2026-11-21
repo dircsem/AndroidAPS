@@ -9,11 +9,13 @@ import kotlinx.coroutines.delay
 import kotlin.coroutines.cancellation.CancellationException
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.pump.medtronic.data.MedLinkResumeRule
-import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import app.aaps.pump.common.hw.medlink.bolus.MedLinkLoopBolusMerge
 import app.aaps.pump.medtronic.data.MedLinkSentBolusKinds
 import app.aaps.pump.medtronic.data.MedLinkTbrDisplayMinutes
+import app.aaps.pump.medtronic.data.MedLinkCancelTbrRule
 import app.aaps.pump.medtronic.data.locked
+import app.aaps.pump.medtronic.service.MedLinkSuspendGuard
+import app.aaps.pump.medtronic.data.MedLinkZeroTbrRule
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
@@ -104,6 +106,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -604,6 +607,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
                         lastStartStopAnswerAt = dateUtil.now()
                         // B12: only an automatic stop may be undone by the app (MedLinkResumeRule); kept over a restart
                         preferences.put(MedtronicLongNonKey.MedLinkAutoStopAt, if (origin == MedLinkStopOrigin.AUTOMATIC) dateUtil.now() else 0L)
+                        syncSuspendGuard() // B15: set after an automatic stop, removed after a user stop
                         pumpEnactResultProvider.get().success(true).enacted(true)
                     }
 
@@ -1185,6 +1189,7 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     protected open fun refreshAnyStatusThatNeedsToBeRefreshed() {
+        guardHeartbeat()
         val statusRefresh = workWithStatusRefresh(
             StatusRefreshAction.GetData, null,
             0L
@@ -3322,14 +3327,31 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
         }
         // B12: one read of the first step (another thread can take it)
         val first = tempBasalMicrobolusOperations.firstOrNull()
-        if (first != null) {
-            if ((first.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE && !first.isCommandIssued) ||
-                (first.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && first.isCommandIssued) ||
-                currentPumpStatus.isSuspended()
-            ) {
-                startPump(callback, true)
-            }
-            tempBasalMicrobolusOperations.clearOperations()
+        val pumpSuspended = currentPumpStatus.isSuspended() || medLinkPumpStatus.pumpRunningState.isSuspended()
+        // unknown running mode: as "loop not running" (the cancel asks for the normal basal)
+        val loopEnactsTbr = try {
+            runBlocking { loop.get().runningMode() }.isClosedLoopOrLgs()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.PUMP, "cancelTempBasal: running mode not read", e)
+            false
+        }
+        val start = MedLinkCancelTbrRule.shouldStart(
+            hasPlan = first != null,
+            firstIsUnsentReactivate = first?.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE && !first.isCommandIssued,
+            firstIsSentSuspend = first?.operationType == TempBasalMicroBolusPair.OperationType.SUSPEND && first.isCommandIssued,
+            pumpSuspended = pumpSuspended,
+            loopEnactsTbr = loopEnactsTbr
+        )
+        if (first != null) tempBasalMicrobolusOperations.clearOperations()
+        aapsLogger.info(
+            LTag.PUMP,
+            "cancelTempBasal: plan ${if (first != null) "cleared" else "none"}, pump ${if (pumpSuspended) "suspended" else "running"}, " +
+                "loop ${if (loopEnactsTbr) "sets TBRs" else "does not set TBRs"}: ${if (start) "START" else "no START"}"
+        )
+        if (start) startPump(callback, true)
+        else {
+            // field 2026-11-19: with no START the queue was never answered and waited 10 min (no TBR, no bolus)
+            callback?.result(pumpEnactResultProvider.get().success(true).enacted(false))?.run()
         }
 
         // val responseTask2 = medLinkService?.medtronicUIComm?.executeCommand(MedtronicCommandType.CancelTBR)
@@ -4984,10 +5006,21 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             clearAutoStop()
             return
         }
+        syncSuspendGuard() // B15: follow the plan of now (a new TBR moves its REACTIVATE)
         val now = dateUtil.now()
         val autoStopAt = preferences.get(MedtronicLongNonKey.MedLinkAutoStopAt)
         val plan = tempBasalMicrobolusOperations
         val nextReactivate = plan.operations.firstOrNull { it.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE }
+        // low BG: wait for the loop (user, 2026-11-19). glucoseStatusData is null when the BG is old: then no wait.
+        val bgMgdl = glucoseStatusProvider.get().glucoseStatusData?.glucose
+        val lowMarkMgdl = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val lastLoopRunAt = loop.get().lastRun?.lastAPSRun ?: 0L
+        if (autoStopAt > 0L && MedLinkResumeRule.waitsForLoop(autoStopAt, plan.clearedAt, bgMgdl, lowMarkMgdl, lastLoopRunAt))
+            aapsLogger.info(
+                LTag.PUMP,
+                "B12: pump suspended, BG $bgMgdl mg/dL below the low mark $lowMarkMgdl and no loop run since " +
+                    dateUtil.timeString(maxOf(autoStopAt, plan.clearedAt)) + ": waiting for the loop, no start"
+            )
         val action = MedLinkResumeRule.decide(
             now = now,
             pumpSuspended = medLinkPumpStatus.pumpRunningState == PumpRunningState.Suspended ||
@@ -4996,7 +5029,11 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             planHasSteps = plan.firstOrNull() != null,
             nextReactivateAt = nextReactivate?.releaseTime?.toDate()?.time ?: 0L,
             planClearedAt = plan.clearedAt,
-            zeroTbrLimitActive = zeroTbrLimitActive()
+            zeroTbrLimitActive = zeroTbrLimitActive(),
+            bgMgdl = bgMgdl,
+            lowMarkMgdl = lowMarkMgdl,
+            lastLoopRunAt = lastLoopRunAt,
+            databaseTbrEndAt = if (nextReactivate == null) lowTbrEndForRule(now) else 0L
         )
         if (action == MedLinkResumeRule.Action.NONE) return
         aapsLogger.warn(
@@ -5004,18 +5041,18 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
             "B12: pump suspended since the automatic stop at ${dateUtil.timeString(autoStopAt)}, " +
                 "plan ${if (nextReactivate != null) "REACTIVATE at ${nextReactivate.releaseTime.toString("HH:mm:ss")}" else "has no REACTIVATE"}: $action"
         )
-        startPump(object : Callback() {
+        // ALARM_ONLY: low BG and no loop run since the stop: no START, only tell the user (user, 2026-11-19)
+        if (action != MedLinkResumeRule.Action.ALARM_ONLY) startPump(object : Callback() {
             override fun run() {
                 aapsLogger.info(LTag.PUMP, "B12: start of a pump left suspended: ${result?.success}")
             }
         }, true)
-        if (action == MedLinkResumeRule.Action.ALARM && now - lastStillSuspendedAlarmAt >= MedLinkResumeRule.ALARM_MARGIN_MS) {
+        if (action != MedLinkResumeRule.Action.START && now - lastStillSuspendedAlarmAt >= MedLinkResumeRule.ALARM_MARGIN_MS) {
             lastStillSuspendedAlarmAt = now
-            uiInteraction.runAlarm(
-                rh.gs(R.string.medlink_pump_still_suspended_message, dateUtil.timeString(autoStopAt)),
-                rh.gs(R.string.medlink_pump_still_suspended_title),
-                app.aaps.core.ui.R.raw.alarm
-            )
+            val message = if (action == MedLinkResumeRule.Action.ALARM_ONLY)
+                rh.gs(R.string.medlink_pump_still_suspended_low_bg_message, dateUtil.timeString(autoStopAt))
+            else rh.gs(R.string.medlink_pump_still_suspended_message, dateUtil.timeString(autoStopAt))
+            uiInteraction.runAlarm(message, rh.gs(R.string.medlink_pump_still_suspended_title), app.aaps.core.ui.R.raw.alarm)
         }
     }
 
@@ -5150,7 +5187,89 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     /** B12: the pump runs again: no automatic stop left to undo. */
     private fun clearAutoStop() {
         if (preferences.get(MedtronicLongNonKey.MedLinkAutoStopAt) != 0L) preferences.put(MedtronicLongNonKey.MedLinkAutoStopAt, 0L)
+        lastLowTbrEndAt = 0L
+        if (guardScheduledAt != 0L) {
+            MedLinkSuspendGuard.cancel(context) // B15
+            guardScheduledAt = 0L
+        }
     }
+
+    /**
+     * B15: sets or moves the Android guard alarm ([MedLinkSuspendGuard]) for the current automatic stop: 10 min after
+     * the next plan REACTIVATE, or 15 min after the stop with no REACTIVATE ([MedLinkResumeRule.guardAlarmAt]).
+     * No automatic stop: the guard is removed.
+     */
+    private fun syncSuspendGuard() {
+        val now = dateUtil.now()
+        lastGuardHeartbeatAt = now
+        val autoStopAt = preferences.get(MedtronicLongNonKey.MedLinkAutoStopAt)
+        if (autoStopAt <= 0L) {
+            if (guardScheduledAt != 0L) {
+                MedLinkSuspendGuard.cancel(context)
+                guardScheduledAt = 0L
+            }
+            return
+        }
+        val nextReactivate = tempBasalMicrobolusOperations.operations
+            .firstOrNull { it.operationType == TempBasalMicroBolusPair.OperationType.REACTIVATE }
+        // no plan REACTIVATE (plan lost in a restart): the end of the AAPS TBR below 100 % is the planned start
+        val reactivateAt = nextReactivate?.releaseTime?.toDate()?.time ?: lowTbrEndForRule(now)
+        // the app is alive now: the guard stays at least 20 min ahead (it is only for a dead or frozen app)
+        val at = MedLinkResumeRule.guardAlarmAt(autoStopAt, reactivateAt, now)
+        if (abs(at - guardScheduledAt) >= GUARD_RESCHEDULE_MIN_MS) {
+            MedLinkSuspendGuard.schedule(context, at, autoStopAt)
+            guardScheduledAt = at
+            if (!MedLinkSuspendGuard.canUseFullScreen(context))
+                aapsLogger.warn(LTag.PUMP, "B15: full screen notifications are not allowed for AAPS: the guard alarm can not open AAPS over the lock screen")
+        }
+    }
+
+    /**
+     * B15: time the guard alarm is set to now (0 = none), so it is set again only when the time really changes.
+     * -1 after an app start: an alarm from before a crash may still be set, so the first sync always sets or removes it.
+     */
+    @Volatile private var guardScheduledAt = -1L
+
+    /** B15: last sign of life of the app sent to the guard. */
+    @Volatile private var lastGuardHeartbeatAt = 0L
+
+    /**
+     * B15: the refresh loop runs every few seconds while the app works. At most once a minute it moves the guard 20 min
+     * ahead, so the guard sounds only when the app is dead or frozen (user, 2026-11-19: no extra alarms at night).
+     */
+    private fun guardHeartbeat() {
+        if (dateUtil.now() - lastGuardHeartbeatAt < GUARD_HEARTBEAT_MS) return
+        try {
+            syncSuspendGuard()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.PUMP, "B15: guard heartbeat failed", e)
+        }
+    }
+
+    /**
+     * B12 (field 2026-11-19): the end of the TBR below 100 % that the AAPS database has as running at [now], or 0.
+     * After an app restart the plan is lost, but this TBR is what the loop asked ([MedLinkResumeRule.lowTbrEndAt]).
+     */
+    private fun databaseLowTbrEndAt(now: Long): Long {
+        val tbr = runBlocking { persistenceLayer.getTemporaryBasalActiveAt(now) } ?: return 0L
+        val basal = runBlocking { profileFunction.get().getProfile() }?.getBasal()
+        val end = MedLinkResumeRule.lowTbrEndAt(tbr.timestamp, tbr.duration, tbr.rate, tbr.isAbsolute, basal)
+        if (end > now) {
+            aapsLogger.info(LTag.PUMP, "B12: AAPS TBR ${tbr.rate}${if (tbr.isAbsolute) " U/h" else " %"} runs until ${dateUtil.timeString(end)}: no start before")
+            lastLowTbrEndAt = end
+        }
+        return if (end > now) end else 0L
+    }
+
+    /**
+     * B12 (field 2026-11-19 16:59): end of the last AAPS TBR below 100 % seen while the pump was suspended, also after it
+     * ended (the database has no active TBR then). Without it the rule counted from the old stop and alarmed at once.
+     * Cleared when the pump runs again.
+     */
+    @Volatile private var lastLowTbrEndAt = 0L
+
+    /** B12: the running AAPS TBR end, or the last one seen ([lastLowTbrEndAt]). */
+    private fun lowTbrEndForRule(now: Long): Long = databaseLowTbrEndAt(now).takeIf { it > 0L } ?: lastLowTbrEndAt
 
     override val temporaryBasal: PumpSync.PumpState.TemporaryBasal?
         get() {
@@ -5301,6 +5420,13 @@ open class MedLinkMedtronicPumpPlugin @Inject constructor(
     }
 
     companion object {
+
+        /** B15: the guard is moved at most once a minute by the refresh loop. */
+        private const val GUARD_HEARTBEAT_MS = 60_000L
+
+        /** B15: the guard alarm is set again only when its time changes by this much or more. */
+        private const val GUARD_RESCHEDULE_MIN_MS = 30_000L
+
         var isBusy = false
 
         private const val HOUR_MS = 3_600_000L

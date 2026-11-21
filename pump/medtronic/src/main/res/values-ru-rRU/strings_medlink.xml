@@ -36,7 +36,11 @@
     <string name="medlink_pump_unreachable_message">MedLink не смог связаться с помпой %1$d раз подряд (с %2$s). Подача инсулина могла остановиться. Проверьте помпу: батарея, расстояние, сообщение на экране помпы.</string>
     <string name="medlink_pump_still_suspended_title">Помпа всё ещё остановлена</string>
     <string name="medlink_pump_still_suspended_message">Приложение остановило помпу в %1$s для временного базала, и помпа всё ещё остановлена. Приложение сейчас пытается её запустить. Проверьте помпу и запустите её вручную, если она не работает.</string>
+    <string name="medlink_pump_still_suspended_low_bg_message">Приложение остановило помпу в %1$s для временного базала, и помпа всё ещё остановлена. Глюкоза ниже нижней границы, и цикл не работал с этого времени, поэтому приложение не запускает помпу. Проверьте, что цикл работает, и проверьте помпу.</string>
+    <string name="medlink_suspend_guard_channel">MedLink: помпа всё ещё остановлена</string>
+    <string name="medlink_suspend_guard_message">Помпа была остановлена в %1$s для временного базала и не была запущена снова. AAPS может не работать. Откройте AAPS и проверьте помпу. Запустите помпу вручную, если она не работает.</string>
     <string name="medlink_silence_15_min">Тихо 15 мин</string>
+    <string name="medlink_silence_30_min">Тихо 30 мин</string>
     <string name="medlink_pump_connection_restored">Связь с помпой восстановлена</string>
     <string name="medlink_zero_tbr_question">Помпа не отвечала с %1$s до %2$s, и её батарея старая. AAPS записал базал 0 %% на это время. %3$s Оставить базал 0 %%?</string>
     <string name="medlink_zero_tbr_hint_stopped">Резервуар не уменьшился (%1$s до, %2$s сейчас): помпа, вероятно, стояла.</string>

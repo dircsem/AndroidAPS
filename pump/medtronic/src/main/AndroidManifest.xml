@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- B15: the guard alarm opens AAPS over the lock screen -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application android:supportsRtl="true">
         <service
             android:name=".service.RileyLinkMedtronicService"
@@ -20,6 +23,11 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.MaterialComponents.Translucent" />
+
+        <!-- B15: guard alarm when the pump may stay suspended and the app is dead (also the "Silence 30 min" button) -->
+        <receiver
+            android:name=".service.MedLinkSuspendGuardReceiver"
+            android:exported="false" />
 
         <uses-library
             android:name="org.apache.http.legacy"
