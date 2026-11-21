@@ -7,6 +7,7 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.pump.MedLinkDeliveredBasal
 import app.aaps.core.interfaces.pump.MedLinkPumpPluginBase
+import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
@@ -347,7 +348,16 @@ class OverviewDataCacheImpl @AssistedInject constructor(
 
             // MedLink (T31): the basal graph blocks follow "Basal graph: block minutes"; redraw at once when it changes
             scope.launch {
-                (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.tbrDisplayMinutesFlow()?.drop(1)?.collect {
+                // at app start this runs before the plugins pick the pump ("No pump selected" crashed the app,
+                // field 2026-11-19 16:40:58): wait for it
+                var pump = selectedPumpOrNull()
+                var waited = 0
+                while (pump == null && waited < PUMP_WAIT_MAX_S) {
+                    delay(1_000L)
+                    waited++
+                    pump = selectedPumpOrNull()
+                }
+                (pump as? MedLinkPumpPluginBase)?.tbrDisplayMinutesFlow()?.drop(1)?.collect {
                     aapsLogger.debug(LTag.UI, "MedLink TBR minutes changed to $it, rebuilding the basal graph")
                     rebuildBasalGraph()
                 }
@@ -720,7 +730,7 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         val now = dateUtil.now()
         // MedLink: a temp basal above 100 % is a plan of microboluses (not in the database). Use the running plan;
         // without one, a suspension (0 U/h temp basal in the database) is handled below like for other pumps.
-        val medLinkPump = activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase
+        val medLinkPump = selectedPumpOrNull() as? MedLinkPumpPluginBase
         val medLinkTbr = medLinkPump?.runningTempBasal(now)
         // MedLink: basal delivered in the last minutes, for the "Last 30 min" chip
         val medLinkDelivered = medLinkPump?.let {
@@ -1056,9 +1066,17 @@ class OverviewDataCacheImpl @AssistedInject constructor(
             it == PumpType.MEDLINK_MEDTRONIC_523_723_REVEL || it == PumpType.MEDLINK_MEDTRONIC_554_754_VEO
         }
 
+    /** MedLink: the selected pump, or null while no pump is selected yet (app start: `selectedActivePump()` throws then). */
+    private fun selectedPumpOrNull(): Pump? =
+        try {
+            activePlugin.activePump.selectedActivePump()
+        } catch (_: IllegalStateException) {
+            null
+        }
+
     /** MedLink (T31): block length of the basal graph (setting "Basal graph: block minutes"); 30 when the pump is not MedLink. */
     private fun medLinkBlockMinutes(): Int =
-        (activePlugin.activePump.selectedActivePump() as? MedLinkPumpPluginBase)?.tbrDisplayMinutes() ?: 30
+        (selectedPumpOrNull() as? MedLinkPumpPluginBase)?.tbrDisplayMinutes() ?: 30
 
     // =========================================================================
     // NSClient status rebuild
@@ -1212,3 +1230,6 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         _calcProgressFlow.value = 100
     }
 }
+
+/** MedLink: how long the basal graph observer waits at app start for the plugins to pick the pump. */
+private const val PUMP_WAIT_MAX_S = 120
